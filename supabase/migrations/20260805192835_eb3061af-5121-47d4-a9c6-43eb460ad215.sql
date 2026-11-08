@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.record_equipment_purchase(uuid,text,numeric,uuid,uuid,date,text,text,uuid,uuid,uuid,integer,numeric,numeric,boolean,text,text,boolean,boolean);

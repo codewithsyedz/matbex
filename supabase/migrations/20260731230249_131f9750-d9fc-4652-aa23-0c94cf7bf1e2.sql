@@ -1,0 +1,1 @@
+ALTER TABLE public.device_licenses ADD COLUMN IF NOT EXISTS revoked_reason text;

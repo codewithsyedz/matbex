@@ -1,0 +1,5 @@
+Bug fixes and performance improvements.
+
+- Faster sync between POS terminals and the dashboard
+- Improved offline reliability
+- Minor UI polish

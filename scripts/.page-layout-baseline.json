@@ -1,0 +1,428 @@
+{
+  "note": "Pages not yet aligned to the VAT Return spacing contract. Shrink this list; never add to it.",
+  "reference": "src/pages/VatReturn.tsx",
+  "exempt": {
+    "src/pages/ApplicationVerification.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ArabicHomepage.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/Auth.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/AuthCallback.tsx": [
+      "root-container"
+    ],
+    "src/pages/CFD.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/Chat.tsx": [
+      "root-container"
+    ],
+    "src/pages/Cockpit.tsx": [
+      "root-container"
+    ],
+    "src/pages/CockpitStocktake.tsx": [
+      "root-container"
+    ],
+    "src/pages/CustomerAccount.tsx": [
+      "root-container"
+    ],
+    "src/pages/CustomerLogin.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/Driver.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/FloorPlan.tsx": [
+      "root-container"
+    ],
+    "src/pages/GuestOrder.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/Index.tsx": [
+      "root-container"
+    ],
+    "src/pages/KdsStations.tsx": [
+      "root-container"
+    ],
+    "src/pages/Kiosk.tsx": [
+      "root-container"
+    ],
+    "src/pages/KitchenDisplay.tsx": [
+      "root-container"
+    ],
+    "src/pages/Landing.tsx": [
+      "root-container"
+    ],
+    "src/pages/ManagerApp.tsx": [
+      "root-container"
+    ],
+    "src/pages/Migration.tsx": [
+      "root-container"
+    ],
+    "src/pages/NotFound.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/OAuthConsent.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/OfflineAuditReport.tsx": [
+      "root-container"
+    ],
+    "src/pages/Onboarding.tsx": [
+      "root-container"
+    ],
+    "src/pages/OrderManager.tsx": [
+      "root-container"
+    ],
+    "src/pages/PaymentSuccess.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/PosAckDiagnostics.tsx": [
+      "card-title-typography"
+    ],
+    "src/pages/PosTables.tsx": [
+      "container-vertical-rhythm",
+      "h1-typography"
+    ],
+    "src/pages/PublicOrder.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/PublicOrderTrack.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/QuickBooksCallback.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/RecordSale.tsx": [
+      "card-title-typography",
+      "root-container"
+    ],
+    "src/pages/RecordSaleMobile.tsx": [
+      "root-container"
+    ],
+    "src/pages/Register.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ResetPassword.tsx": [
+      "card-title-typography",
+      "root-container"
+    ],
+    "src/pages/SeoDiagnostics.tsx": [
+      "card-title-typography"
+    ],
+    "src/pages/TenantLanding.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/VatReturn.tsx": [
+      "container-vertical-rhythm"
+    ],
+    "src/pages/VerifyZatcaReport.tsx": [
+      "root-container"
+    ],
+    "src/pages/Waiter.tsx": [
+      "root-container"
+    ],
+    "src/pages/ZohoCallback.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminA11yDialogs.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminAddons.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminApplicationQueue.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminAuditLogs.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminChatAnalytics.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminChatModeration.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminContactMessages.tsx": [
+      "card-header-padding",
+      "root-container"
+    ],
+    "src/pages/admin/AdminCurrencies.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminCustomDomains.tsx": [
+      "card-title-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminDLQ.tsx": [
+      "card-title-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminDevices.tsx": [
+      "card-header-padding",
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminEdgeFunctionHealth.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminFeatureFlags.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminKsaSetupGuide.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminLandingCMS.tsx": [
+      "card-header-padding",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminOverview.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminPasswordReset.tsx": [
+      "card-title-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminPlans.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminReleaseNotes.tsx": [
+      "root-container"
+    ],
+    "src/pages/admin/AdminResidencyAudit.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminSEO.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminSecurityDashboard.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminSettings.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminSubdomains.tsx": [
+      "card-header-padding",
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminSuperAuditLogs.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminTenantCosts.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminTenantDetails.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminTenants.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminWebhooks.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/SyncHealth.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/ArVsFoodics.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/ArVsJazr.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/ArVsQoyod.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/ArVsSapaad.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/blog/InventoryManagement.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/blog/PrimeCost.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/blog/RestaurantKPIs.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/blog/WasteControl.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/blog/ZatcaFines.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/blog/ZatcaOnboarding.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/blog/ZatcaPhase2.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ar/blog/ZatcaQrCode.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/blog/MenuEngineeringMatrixGuide.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/blog/RestaurantCogsGuide.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/blog/ZatcaPhase2Guide.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/company/About.tsx": [
+      "root-container"
+    ],
+    "src/pages/company/Blog.tsx": [
+      "root-container"
+    ],
+    "src/pages/company/Careers.tsx": [
+      "root-container"
+    ],
+    "src/pages/company/Press.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/company/Stats.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/embed/FoodCostEmbed.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/en/VsSapaad.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/legal/Cookies.tsx": [
+      "root-container"
+    ],
+    "src/pages/legal/PrivacyPolicy.tsx": [
+      "root-container"
+    ],
+    "src/pages/legal/Security.tsx": [
+      "root-container"
+    ],
+    "src/pages/legal/TermsOfService.tsx": [
+      "root-container"
+    ],
+    "src/pages/resources/API.tsx": [
+      "root-container"
+    ],
+    "src/pages/resources/Community.tsx": [
+      "root-container"
+    ],
+    "src/pages/resources/Documentation.tsx": [
+      "root-container"
+    ],
+    "src/pages/resources/HelpCenter.tsx": [
+      "root-container"
+    ],
+    "src/pages/resources/Integrations.tsx": [
+      "root-container"
+    ],
+    "src/pages/resources/InvestmentTiers.tsx": [
+      "root-container"
+    ],
+    "src/pages/resources/Status.tsx": [
+      "root-container"
+    ],
+    "src/pages/seo/HelpArticlePage.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/seo/SeoLanding.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/tools/CogsCalculator.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/tools/FoodCostCalculator.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/tools/MenuPriceCalculator.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/tools/ToolsHub.tsx": [
+      "h1-typography",
+      "root-container"
+    ]
+  }
+}

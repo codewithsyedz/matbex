@@ -1,0 +1,5 @@
+CREATE TABLE public.pos_payment_method_audit (id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY, tenant_id UUID NOT NULL, restaurant_id UUID NOT NULL, payment_method TEXT NOT NULL, from_bucket TEXT, to_bucket TEXT, action TEXT NOT NULL CHECK (action IN ('create','update','delete')), changed_by UUID, changed_at TIMESTAMPTZ NOT NULL DEFAULT now());
+CREATE INDEX idx_pos_pm_audit_restaurant_time ON public.pos_payment_method_audit(restaurant_id, changed_at DESC);
+ALTER TABLE public.pos_payment_method_audit ENABLE ROW LEVEL SECURITY;
+CREATE POLICY view_pm_audit ON public.pos_payment_method_audit FOR SELECT TO authenticated USING (tenant_id IN (SELECT tenant_id FROM public.profiles WHERE id = auth.uid()));
+CREATE POLICY insert_pm_audit ON public.pos_payment_method_audit FOR INSERT TO authenticated WITH CHECK (tenant_id IN (SELECT tenant_id FROM public.profiles WHERE id = auth.uid()) AND changed_by = auth.uid());

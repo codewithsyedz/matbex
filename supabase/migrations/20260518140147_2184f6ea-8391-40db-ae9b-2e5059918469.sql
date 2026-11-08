@@ -1,0 +1,1 @@
+ALTER TYPE public.superadmin_action_type ADD VALUE IF NOT EXISTS 'TENANT_RENAME';

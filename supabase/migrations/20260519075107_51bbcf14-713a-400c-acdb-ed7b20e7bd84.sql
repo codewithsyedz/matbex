@@ -1,0 +1,2 @@
+ALTER TABLE public.team_invitations DROP CONSTRAINT team_invitations_role_check;
+ALTER TABLE public.team_invitations ADD CONSTRAINT team_invitations_role_check CHECK (role = ANY (ARRAY['owner','manager','cashier','accountant']));

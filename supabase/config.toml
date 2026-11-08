@@ -1,0 +1,79 @@
+project_id = "tlkyubkbbqwmzjaogavb"
+
+[functions]
+  [functions.auth-email-hook]
+    verify_jwt = false
+  [functions.auto-shift-manager]
+    verify_jwt = false
+  [functions.cache-proxy]
+    verify_jwt = false
+  [functions.charge-hala-card]
+    verify_jwt = false
+  [functions.complete-registration-payment]
+    verify_jwt = false
+  [functions.create-registration-checkout]
+    verify_jwt = false
+  [functions.create-tenant-user]
+    verify_jwt = false
+  [functions.generate-invoice-pdf]
+    verify_jwt = false
+  [functions.get-exchange-rates]
+    verify_jwt = false
+  [functions.process-export-requests]
+    verify_jwt = false
+  [functions.resolve-tenant-code]
+    verify_jwt = false
+  [functions.send-audit-alert]
+    verify_jwt = false
+  [functions.send-auth-email]
+    verify_jwt = false
+  [functions.send-daily-profit-summary]
+    verify_jwt = false
+  [functions.send-expiry-alerts]
+    verify_jwt = false
+  [functions.send-invite]
+    verify_jwt = false
+  [functions.send-reorder-email]
+    verify_jwt = false
+  [functions.send-salary-reminder]
+    verify_jwt = false
+  [functions.send-scheduled-reports]
+    verify_jwt = false
+  [functions.send-webhook-notifications]
+    verify_jwt = false
+  [functions.send-weekly-digest]
+    verify_jwt = false
+  [functions.stripe-webhook]
+    verify_jwt = false
+  [functions.terminal-api]
+    verify_jwt = false
+  [functions.track-login-attempt]
+    verify_jwt = false
+  [functions.track-session]
+    verify_jwt = false
+  [functions.twilio-status-webhook]
+    verify_jwt = false
+  [functions.verify-registration-payment]
+    verify_jwt = false
+  [functions.payments-webhook]
+    verify_jwt = false
+  [functions.payments-reconciler]
+    verify_jwt = false
+  [functions.zoho-oauth-exchange]
+    verify_jwt = false
+  [functions.delivery-webhook]
+    verify_jwt = false
+  [functions.qr-create-order]
+    verify_jwt = false
+  [functions.checkout-com-webhook]
+    verify_jwt = false
+  [functions.application-verification]
+    verify_jwt = false
+  [functions.preview-transactional-email]
+    verify_jwt = false
+  [functions.send-loyalty-reengagement]
+    verify_jwt = true
+  [functions.send-contact-enquiry]
+    verify_jwt = false
+  [functions.generate-income-journal]
+    verify_jwt = true

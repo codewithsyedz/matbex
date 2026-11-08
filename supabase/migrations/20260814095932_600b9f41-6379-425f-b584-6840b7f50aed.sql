@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.mark_expense_vat_not_applicable(uuid);

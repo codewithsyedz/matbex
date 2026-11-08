@@ -1,0 +1,22 @@
+Matbex Product Screenshots - Media Kit
+
+This package contains official product screenshots for media use.
+
+Included Screenshots:
+1. Dashboard Overview - Daily profit tracking and KPI cards
+2. COGS Management - Real-time cost of goods sold tracking
+3. Inventory Management - Stock levels and reorder alerts
+4. Sales Recording - POS integration and daily sales entry
+5. Reports - Profit & Loss statements and trend analysis
+6. Menu Builder - Digital menu management with QR codes
+7. Staff Management - Payroll and scheduling interface
+8. Settings - Branding customization panel
+
+Usage Guidelines:
+- Screenshots may be used for press articles and product reviews
+- Please credit "Matbex" when using these images
+- Do not modify UI elements or add fake data overlays
+
+For custom demo screenshots, contact press@matbex.com
+
+© 2026 Matbex. All rights reserved.

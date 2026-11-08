@@ -1,0 +1,1 @@
+UPDATE public.promotion_campaigns SET subheadline = 'The first 50 restaurants get half off Growth Bundle for the first 12 months, then keep 25% off for life. Plus free data migration, founder WhatsApp line, and your logo on our Trusted by wall.' WHERE subheadline LIKE '%life — plus%';

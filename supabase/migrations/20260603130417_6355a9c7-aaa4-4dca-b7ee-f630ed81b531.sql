@@ -1,0 +1,2 @@
+ALTER TABLE public.feature_flags ADD COLUMN IF NOT EXISTS min_plan text;
+COMMENT ON COLUMN public.feature_flags.min_plan IS 'Lowest plan name (trial|free|pro|enterprise) entitled to this feature. NULL = available to all.';

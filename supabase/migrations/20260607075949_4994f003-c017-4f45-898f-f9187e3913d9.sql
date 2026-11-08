@@ -1,0 +1,1 @@
+ALTER TABLE public.pos_hardware_settings ADD COLUMN IF NOT EXISTS pos_layout_template text NOT NULL DEFAULT 'classic_dense';

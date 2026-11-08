@@ -1,0 +1,8 @@
+[
+  {
+    "name": "Initial JS (entry + critical chunks)",
+    "path": "dist/assets/index-*.js",
+    "limit": "250 KB",
+    "gzip": true
+  }
+]

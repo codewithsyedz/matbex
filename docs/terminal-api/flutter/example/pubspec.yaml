@@ -1,0 +1,31 @@
+name: matbex_pos_demo
+description: Minimal Matbex Terminal API demo (Android + iOS).
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: ">=3.3.0 <4.0.0"
+  flutter: ">=3.19.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.6
+  dio: ^5.4.0
+  uuid: ^4.0.0
+  flutter_secure_storage: ^9.0.0
+  sqflite: ^2.3.0
+  path: ^1.9.0
+  path_provider: ^2.1.0
+  connectivity_plus: ^6.0.0
+  supabase_flutter: ^2.5.0
+  intl: ^0.19.0
+
+dev_dependencies:
+  flutter_lints: ^4.0.0
+  flutter_test:
+    sdk: flutter
+  sqflite_common_ffi: ^2.3.0
+
+flutter:
+  uses-material-design: true

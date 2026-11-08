@@ -1,0 +1,131 @@
+{
+  "_doc": "Edge functions deployed with verify_jwt = false that are intentionally public. Each entry MUST have a 'reason'. Adding a new function here is a security-sensitive change — get a reviewer.",
+  "auth-email-hook": {
+    "reason": "Supabase auth webhook - secret-validated by Supabase signature.",
+    "added_at": "2026-06-03"
+  },
+  "auto-shift-manager": {
+    "reason": "Internal pg_cron invocation; not user-callable in practice.",
+    "added_at": "2026-06-03"
+  },
+  "cache-proxy": {
+    "reason": "Read-through Redis proxy for public dashboard cache reads.",
+    "added_at": "2026-06-03"
+  },
+  "complete-registration-payment": {
+    "reason": "Pre-auth registration flow - no user account yet.",
+    "added_at": "2026-06-03"
+  },
+  "create-registration-checkout": {
+    "reason": "Pre-auth registration flow - no user account yet.",
+    "added_at": "2026-06-03"
+  },
+  "create-tenant-user": {
+    "reason": "First-user bootstrap before tenant/user exists.",
+    "added_at": "2026-06-03"
+  },
+  "generate-invoice-pdf": {
+    "reason": "Signed-URL PDF rendering for ZATCA invoices; access controlled by signed URL.",
+    "added_at": "2026-06-03"
+  },
+  "get-exchange-rates": {
+    "reason": "Public FX rates passthrough; no PII.",
+    "added_at": "2026-06-03"
+  },
+  "process-export-requests": {
+    "reason": "pg_cron worker; not user-callable.",
+    "added_at": "2026-06-03"
+  },
+  "resolve-tenant-code": {
+    "reason": "Pre-auth subdomain resolution.",
+    "added_at": "2026-06-03"
+  },
+  "send-audit-alert": {
+    "reason": "Internal cron/event notifier.",
+    "added_at": "2026-06-03"
+  },
+  "send-auth-email": {
+    "reason": "Supabase Auth email hook - signature validated.",
+    "added_at": "2026-06-03"
+  },
+  "send-daily-profit-summary": {
+    "reason": "pg_cron worker; not user-callable.",
+    "added_at": "2026-06-03"
+  },
+  "send-expiry-alerts": {
+    "reason": "pg_cron worker; not user-callable.",
+    "added_at": "2026-06-03"
+  },
+  "send-invite": {
+    "reason": "Pre-auth invite acceptance flow.",
+    "added_at": "2026-06-03"
+  },
+  "send-salary-reminder": {
+    "reason": "pg_cron worker; not user-callable.",
+    "added_at": "2026-06-03"
+  },
+  "send-scheduled-reports": {
+    "reason": "pg_cron worker; not user-callable.",
+    "added_at": "2026-06-03"
+  },
+  "send-webhook-notifications": {
+    "reason": "pg_cron worker; not user-callable.",
+    "added_at": "2026-06-03"
+  },
+  "send-weekly-digest": {
+    "reason": "pg_cron worker; not user-callable.",
+    "added_at": "2026-06-03"
+  },
+  "stripe-webhook": {
+    "reason": "Stripe webhook - signature validated.",
+    "added_at": "2026-06-03"
+  },
+  "terminal-api": {
+    "reason": "POS terminal device flow uses device JWT, not user JWT.",
+    "added_at": "2026-06-03"
+  },
+  "track-login-attempt": {
+    "reason": "Pre-auth login telemetry.",
+    "added_at": "2026-06-03"
+  },
+  "track-session": {
+    "reason": "Pre-auth session start telemetry.",
+    "added_at": "2026-06-03"
+  },
+  "twilio-status-webhook": {
+    "reason": "Twilio webhook - signature validated.",
+    "added_at": "2026-06-03"
+  },
+  "verify-registration-payment": {
+    "reason": "Pre-auth registration flow - folder may be stub during migration.",
+    "added_at": "2026-06-03"
+  },
+  "payments-webhook": {
+    "reason": "Payment gateway webhook - signature validated.",
+    "added_at": "2026-06-03"
+  },
+  "payments-reconciler": {
+    "reason": "pg_cron worker; not user-callable.",
+    "added_at": "2026-06-03"
+  },
+  "zoho-oauth-exchange": {
+    "reason": "OAuth callback - state-validated.",
+    "added_at": "2026-06-03"
+  },
+  "delivery-webhook": {
+    "reason": "Delivery aggregator webhook - signature validated.",
+    "added_at": "2026-06-03"
+  },
+  "qr-create-order": {
+    "reason": "Public QR ordering flow; uses table/restaurant token, not user JWT.",
+    "added_at": "2026-06-03"
+  },
+  "checkout-com-webhook": {
+    "reason": "Checkout.com webhook - signature validated.",
+    "added_at": "2026-06-03"
+  },
+  "application-verification": {
+    "reason": "Pre-auth onboarding application status checks.",
+    "added_at": "2026-06-03"
+  }
+}

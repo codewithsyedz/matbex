@@ -1,0 +1,593 @@
+{
+  "info": {
+    "_postman_id": "b796f734-4768-4b51-83f6-e7928416150d",
+    "name": "Matbex Terminal API",
+    "description": "REST API for Android / iOS native POS terminals.\n\nAuth: every request (except POST /pair) requires both `X-Terminal-Key` (from /pair) and `Authorization: Bearer <cashier JWT>` (from Supabase Auth).\n\nAll writes should include a unique `Idempotency-Key` UUID \u2014 replays return the original response.\n\nSee docs/terminal-api.md for full reference.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Auto-generate a fresh idempotency key per request",
+          "pm.variables.set('idempotencyKey', require('uuid').v4 ? require('uuid').v4() : (crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + '-' + Math.random()));"
+        ]
+      }
+    }
+  ],
+  "item": [
+    {
+      "name": "Pairing",
+      "description": "Initial device enrollment. Owner generates a code in Settings \u2192 POS Terminals.",
+      "item": [
+        {
+          "name": "Pair device (one-time)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/pair",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "pair"
+              ]
+            },
+            "description": "Exchange a 6-digit pairing code for a device key. The raw key is returned ONCE \u2014 store it securely (Android Keystore / iOS Keychain). The server only stores its SHA-256 hash.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"code\": \"{{pairingCode}}\",\n  \"name\": \"Counter 1\",\n  \"platform\": \"android\",\n  \"app_version\": \"1.0.0\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "description": "",
+      "item": [
+        {
+          "name": "Heartbeat",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/health",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "description": "Updates terminal `last_seen_at`. Call periodically (e.g. every 60s while the app is foregrounded)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Menu & Customers",
+      "description": "",
+      "item": [
+        {
+          "name": "Get menu",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/menu",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "menu"
+              ]
+            },
+            "description": "Active menu items with prices, variants, and image URLs. Cache locally for offline."
+          }
+        },
+        {
+          "name": "Search customers",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/customers?q=john",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "customers"
+              ],
+              "query": [
+                {
+                  "key": "q",
+                  "value": "john"
+                }
+              ]
+            },
+            "description": "Search by name / phone / email. Limit 50."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Shifts",
+      "description": "",
+      "item": [
+        {
+          "name": "Current shift",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/shifts/current",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "shifts",
+                "current"
+              ]
+            },
+            "description": "Returns the cashier's currently open shift, if any."
+          }
+        },
+        {
+          "name": "Open shift",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/shifts/open",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "shifts",
+                "open"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"opening_float\": 100.0,\n  \"notes\": \"Morning shift\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Close shift",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/shifts/close",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "shifts",
+                "close"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shift_id\": \"{{shiftId}}\",\n  \"counted_cash\": 540.5,\n  \"counted_card\": 1230.0,\n  \"notes\": \"EOD\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Cash event (drop / payout / pay-in)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/shifts/cash-event",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "shifts",
+                "cash-event"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shift_id\": \"{{shiftId}}\",\n  \"event_type\": \"drop\",\n  \"amount\": 200.0,\n  \"description\": \"Safe drop\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Sales",
+      "description": "",
+      "item": [
+        {
+          "name": "Record sale",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sales",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sales"
+              ]
+            },
+            "description": "Records a sale and (if applicable) a cash_event under the active shift. Always send a unique Idempotency-Key \u2014 safe for offline retry.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"shift_id\": \"{{shiftId}}\",\n  \"payment_method\": \"cash\",\n  \"is_unpaid\": false,\n  \"customer_id\": null,\n  \"items\": [\n    {\n      \"menu_item_id\": \"{{menuItemId}}\",\n      \"quantity\": 2,\n      \"unit_price\": 25.0,\n      \"variant\": \"full\"\n    },\n    {\n      \"menu_item_id\": \"{{menuItemId}}\",\n      \"quantity\": 1,\n      \"unit_price\": 12.5\n    }\n  ]\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Void sale",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sales/{{saleId}}/void",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sales",
+                "{{saleId}}",
+                "void"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"reason\": \"Customer cancelled\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        },
+        {
+          "name": "Today's sales",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/sales/today",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "sales",
+                "today"
+              ]
+            },
+            "description": "All of today's sales for the restaurant (across cashiers)."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Settlements",
+      "description": "",
+      "item": [
+        {
+          "name": "Record customer payment",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "X-Terminal-Key",
+                "value": "{{deviceKey}}"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{cashierJwt}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{idempotencyKey}}"
+              },
+              {
+                "key": "X-App-Version",
+                "value": "1.0.0"
+              },
+              {
+                "key": "X-Platform",
+                "value": "android"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/settlements",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "settlements"
+              ]
+            },
+            "description": "Apply a customer payment against outstanding unpaid sales.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"customer_id\": \"{{customerId}}\",\n  \"amount\": 150.0,\n  \"payment_method\": \"cash\",\n  \"note\": \"Partial settlement\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          }
+        }
+      ]
+    }
+  ]
+}

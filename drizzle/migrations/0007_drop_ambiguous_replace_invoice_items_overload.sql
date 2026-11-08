@@ -1,0 +1,1 @@
+DROP FUNCTION IF EXISTS public.replace_invoice_items(uuid, jsonb);

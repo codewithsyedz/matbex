@@ -1,0 +1,281 @@
+openapi: 3.1.0
+info:
+  title: Matbex Terminal API
+  version: "1.0.0"
+  description: |
+    REST API for Android / iOS native POS terminals.
+    Every request except `POST /pair` requires both `X-Terminal-Key`
+    and `Authorization: Bearer <cashier JWT>`. All writes should send
+    a unique `Idempotency-Key` - replays return the original response.
+  contact:
+    name: Matbex
+    url: https://www.matbex.com
+servers:
+  - url: https://tlkyubkbbqwmzjaogavb.supabase.co/functions/v1/terminal-api
+    description: Production
+
+security:
+  - terminalKey: []
+    cashierJwt: []
+
+components:
+  securitySchemes:
+    terminalKey:
+      type: apiKey
+      in: header
+      name: X-Terminal-Key
+    cashierJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      schema: { type: string, format: uuid }
+      description: UUID v4. Required for safe retry of any write.
+    AppVersion:
+      name: X-App-Version
+      in: header
+      required: false
+      schema: { type: string }
+    Platform:
+      name: X-Platform
+      in: header
+      required: false
+      schema: { type: string, enum: [android, ios, web] }
+  schemas:
+    Error:
+      type: object
+      properties:
+        api_version: { type: string, example: "1" }
+        error:
+          type: object
+          properties:
+            code: { type: string }
+            message: { type: string }
+    PairRequest:
+      type: object
+      required: [code]
+      properties:
+        code: { type: string, example: "482915" }
+        name: { type: string, example: "Counter 1" }
+        platform: { type: string, enum: [android, ios, web] }
+        app_version: { type: string }
+    PairResponse:
+      type: object
+      properties:
+        data:
+          type: object
+          properties:
+            terminal_id: { type: string, format: uuid }
+            restaurant_id: { type: string, format: uuid }
+            name: { type: string }
+            device_key:
+              type: string
+              description: Raw key - returned ONCE. Store securely.
+    SaleItem:
+      type: object
+      required: [menu_item_id, quantity, unit_price]
+      properties:
+        menu_item_id: { type: string, format: uuid }
+        quantity: { type: number }
+        unit_price: { type: number }
+        variant: { type: string, nullable: true }
+    SaleRequest:
+      type: object
+      required: [shift_id, payment_method, items]
+      properties:
+        shift_id: { type: string, format: uuid }
+        payment_method: { type: string, enum: [cash, card, transfer, customer_credit] }
+        is_unpaid: { type: boolean, default: false }
+        customer_id: { type: string, format: uuid, nullable: true }
+        items:
+          type: array
+          items: { $ref: '#/components/schemas/SaleItem' }
+    SaleResponse:
+      type: object
+      properties:
+        api_version: { type: string }
+        data:
+          type: object
+          properties:
+            sale:
+              type: object
+              properties:
+                id: { type: string, format: uuid }
+                total: { type: number }
+                receipt_number: { type: string }
+            receipt_number: { type: string }
+    OpenShiftRequest:
+      type: object
+      required: [opening_float]
+      properties:
+        opening_float: { type: number }
+        notes: { type: string }
+    CloseShiftRequest:
+      type: object
+      required: [shift_id, counted_cash]
+      properties:
+        shift_id: { type: string, format: uuid }
+        counted_cash: { type: number }
+        counted_card: { type: number }
+        notes: { type: string }
+    CashEventRequest:
+      type: object
+      required: [shift_id, event_type, amount]
+      properties:
+        shift_id: { type: string, format: uuid }
+        event_type: { type: string, enum: [drop, payout, pay-in, open, close] }
+        amount: { type: number }
+        description: { type: string }
+        payment_method: { type: string, enum: [cash, card] }
+    SettlementRequest:
+      type: object
+      required: [customer_id, amount, payment_method]
+      properties:
+        customer_id: { type: string, format: uuid }
+        amount: { type: number }
+        payment_method: { type: string, enum: [cash, card, transfer] }
+        note: { type: string }
+    VoidRequest:
+      type: object
+      properties:
+        reason: { type: string }
+
+paths:
+  /pair:
+    post:
+      summary: Pair device (one-time)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PairRequest' }
+      responses:
+        '200':
+          description: Paired
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PairResponse' }
+        '401':
+          description: Invalid code
+          content:
+            application/json: { schema: { $ref: '#/components/schemas/Error' } }
+
+  /health:
+    get:
+      summary: Heartbeat
+      responses:
+        '200': { description: OK }
+
+  /menu:
+    get:
+      summary: Active menu
+      responses:
+        '200': { description: Menu items }
+
+  /customers:
+    get:
+      summary: Search customers
+      parameters:
+        - name: q
+          in: query
+          schema: { type: string }
+      responses:
+        '200': { description: Up to 50 matches }
+
+  /shifts/current:
+    get:
+      summary: Current open shift
+      responses:
+        '200': { description: Shift or null }
+
+  /shifts/open:
+    post:
+      summary: Open a shift
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/OpenShiftRequest' }
+      responses:
+        '200': { description: Shift opened }
+
+  /shifts/close:
+    post:
+      summary: Close a shift
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CloseShiftRequest' }
+      responses:
+        '200': { description: Shift closed }
+
+  /shifts/cash-event:
+    post:
+      summary: Cash drawer event
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CashEventRequest' }
+      responses:
+        '200': { description: Recorded }
+
+  /sales:
+    post:
+      summary: Record a sale
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaleRequest' }
+      responses:
+        '200':
+          description: Sale recorded
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SaleResponse' }
+
+  /sales/{id}/void:
+    post:
+      summary: Void a sale
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/VoidRequest' }
+      responses:
+        '200': { description: Voided }
+
+  /sales/today:
+    get:
+      summary: Today's sales
+      responses:
+        '200': { description: Sales list }
+
+  /settlements:
+    post:
+      summary: Record customer payment
+      parameters: [{ $ref: '#/components/parameters/IdempotencyKey' }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SettlementRequest' }
+      responses:
+        '200': { description: Settlement recorded }

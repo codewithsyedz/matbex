@@ -1,0 +1,2 @@
+ALTER TABLE public.day_end_adjustments ADD COLUMN IF NOT EXISTS branch_id uuid REFERENCES public.branches(id) ON DELETE SET NULL;
+CREATE INDEX IF NOT EXISTS idx_day_end_adjustments_branch ON public.day_end_adjustments(branch_id);

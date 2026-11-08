@@ -1,0 +1,3 @@
+CREATE POLICY "Users can delete settlement invoices in their restaurant" ON public.settlement_invoices FOR DELETE TO authenticated USING (can_access_restaurant(restaurant_id));
+CREATE POLICY "Users can delete settlement payments in their restaurant" ON public.settlement_payments FOR DELETE TO authenticated USING (can_access_restaurant(restaurant_id));
+CREATE POLICY "Users can delete settlement audit logs in their restaurant" ON public.settlement_audit_logs FOR DELETE TO authenticated USING (can_access_restaurant(restaurant_id));

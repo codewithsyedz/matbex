@@ -1,0 +1,159 @@
+name: Android Fastlane Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      lane:
+        description: "Fastlane lane to run"
+        required: true
+        default: "beta"
+        type: choice
+        options:
+          - beta
+          - alpha
+          - production
+          - upload_assets
+      bump:
+        description: "Version bump (patch | minor | major | explicit semver like 1.4.2)"
+        required: false
+        default: "patch"
+      rollout:
+        description: "Production staged rollout fraction (0.0-1.0). Only used for production lane."
+        required: false
+        default: "0.1"
+      upload_assets:
+        description: "Also upload store listing assets (icon, feature graphic, screenshots) on beta/alpha/production"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+      validate_only:
+        description: "Dry-run upload (validate with Play API, do not publish)"
+        required: false
+        default: "false"
+        type: choice
+        options:
+          - "false"
+          - "true"
+
+concurrency:
+  group: android-fastlane-${{ github.event.inputs.lane }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Fastlane ${{ github.event.inputs.lane }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+
+    env:
+      LC_ALL: en_US.UTF-8
+      LANG: en_US.UTF-8
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      FASTLANE_HIDE_CHANGELOG: "1"
+      FASTLANE_DISABLE_COLORS: "1"
+      FASTLANE_VALIDATE_ONLY: ${{ github.event.inputs.validate_only == 'true' && '1' || '' }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "21"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Ruby + Bundler cache
+        uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.2"
+          bundler-cache: true
+          working-directory: fastlane
+
+      - name: Install Node dependencies
+        run: npm ci
+
+      - name: Decode Play Store service-account key
+        env:
+          PLAY_STORE_JSON_KEY_BASE64: ${{ secrets.PLAY_STORE_JSON_KEY }}
+        run: |
+          if [ -z "$PLAY_STORE_JSON_KEY_BASE64" ]; then
+            echo "::error::Missing required secret PLAY_STORE_JSON_KEY (base64 of Play Console service-account JSON)."
+            exit 1
+          fi
+          mkdir -p fastlane
+          echo "$PLAY_STORE_JSON_KEY_BASE64" | base64 -d > fastlane/play-store-key.json
+          echo "SUPPLY_JSON_KEY_FILE=$(pwd)/fastlane/play-store-key.json" >> "$GITHUB_ENV"
+
+      - name: Decode signing keystore
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "::error::Missing required secret ANDROID_KEYSTORE_BASE64."
+            exit 1
+          fi
+          mkdir -p android/app
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > android/app/release.keystore
+          echo "ANDROID_KEYSTORE_FILE=$(pwd)/android/app/release.keystore" >> "$GITHUB_ENV"
+
+      - name: Run Fastlane
+        working-directory: fastlane
+        env:
+          ANDROID_KEYSTORE_FILE: ${{ env.ANDROID_KEYSTORE_FILE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_PACKAGE_NAME: ${{ secrets.ANDROID_PACKAGE_NAME }}
+          SUPPLY_JSON_KEY_FILE: ${{ env.SUPPLY_JSON_KEY_FILE }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          LANE: ${{ github.event.inputs.lane }}
+          BUMP: ${{ github.event.inputs.bump }}
+          ROLLOUT: ${{ github.event.inputs.rollout }}
+          ASSETS: ${{ github.event.inputs.upload_assets }}
+        run: |
+          set -euo pipefail
+          ARGS=""
+          if [ "$LANE" != "upload_assets" ]; then
+            ARGS="bump:${BUMP:-patch}"
+            if [ "$LANE" = "production" ] && [ -n "${ROLLOUT:-}" ]; then
+              ARGS="$ARGS rollout:$ROLLOUT"
+            fi
+            if [ "${ASSETS:-false}" = "true" ]; then
+              ARGS="$ARGS assets:true"
+            fi
+          fi
+          echo "Running: bundle exec fastlane android $LANE $ARGS"
+          bundle exec fastlane android "$LANE" $ARGS
+
+      - name: Upload AAB artifact
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: matbex-android-aab-${{ github.event.inputs.lane }}-${{ github.sha }}
+          path: android/app/build/outputs/bundle/release/*.aab
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Cleanup secrets
+        if: always()
+        run: |
+          rm -f fastlane/play-store-key.json
+          rm -f android/app/release.keystore

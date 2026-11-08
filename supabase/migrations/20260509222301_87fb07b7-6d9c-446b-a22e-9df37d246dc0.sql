@@ -1,0 +1,1 @@
+ALTER TABLE public.daily_sales_summary ADD COLUMN IF NOT EXISTS ledger_posted_at TIMESTAMP WITH TIME ZONE;

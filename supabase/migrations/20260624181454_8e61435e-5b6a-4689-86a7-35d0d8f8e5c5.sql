@@ -1,0 +1,1 @@
+DELETE FROM public.daily_sales_summary WHERE id = '7f339b9d-d9f8-4696-8402-159814a8650a' AND sales_date = '2026-06-24' AND ledger_posted = false;

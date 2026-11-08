@@ -1,0 +1,15 @@
+ALTER TABLE public.zatca_settings
+  ADD COLUMN IF NOT EXISTS cr_number text,
+  ADD COLUMN IF NOT EXISTS branch_address_ar text,
+  ADD COLUMN IF NOT EXISTS branch_address_en text,
+  ADD COLUMN IF NOT EXISTS google_maps_url text,
+  ADD COLUMN IF NOT EXISTS tagline_ar text,
+  ADD COLUMN IF NOT EXISTS tagline_en text,
+  ADD COLUMN IF NOT EXISTS footer_message_ar text,
+  ADD COLUMN IF NOT EXISTS footer_message_en text,
+  ADD COLUMN IF NOT EXISTS show_discount_row boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS show_item_count boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS show_terminal_id boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS show_printer_id boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS show_branch_name boolean NOT NULL DEFAULT true,
+  ADD COLUMN IF NOT EXISTS show_logo boolean NOT NULL DEFAULT true;

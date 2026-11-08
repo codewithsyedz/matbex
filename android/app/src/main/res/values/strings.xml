@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">matbex</string>
+    <string name="title_activity_main">matbex</string>
+    <string name="package_name">net.matbex.app</string>
+    <string name="custom_url_scheme">net.matbex.app</string>
+</resources>

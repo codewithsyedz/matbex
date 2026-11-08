@@ -1,0 +1,1 @@
+CREATE POLICY "Users can delete adjustments for their tenant" ON public.customer_balance_adjustments FOR DELETE TO authenticated USING (can_access_restaurant(restaurant_id));

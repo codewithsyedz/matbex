@@ -1,0 +1,5 @@
+node_modules/
+dist/
+logs/
+src/assets/fonts/*.ttf
+src/assets/fonts/*.otf

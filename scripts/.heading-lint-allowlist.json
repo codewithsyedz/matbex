@@ -1,0 +1,97 @@
+[
+  {
+    "file": "src/components/cms/fallbacks/InvestmentTiersFallback.tsx",
+    "line": 198,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/components/onboarding/AddonsStep.tsx",
+    "line": 254,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/components/onboarding/PlanSelector.tsx",
+    "line": 218,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/Auth.tsx",
+    "line": 719,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/CustomerDetail.tsx",
+    "line": 1404,
+    "message": "Heading skip: <h1> → <h4> (jump of 3)"
+  },
+  {
+    "file": "src/pages/DailyProfit.tsx",
+    "line": 629,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/Expenses.tsx",
+    "line": 1709,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/Loyalty.tsx",
+    "line": 187,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/Menu.tsx",
+    "line": 544,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/OfflineAuditReport.tsx",
+    "line": 170,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/RecordSale.tsx",
+    "line": 3307,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/Reports.tsx",
+    "line": 1006,
+    "message": "Heading skip: <h1> → <h4> (jump of 3)"
+  },
+  {
+    "file": "src/pages/Sales.tsx",
+    "line": 1394,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/Settings.tsx",
+    "line": 215,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/Shifts.tsx",
+    "line": 909,
+    "message": "Heading skip: <h1> → <h4> (jump of 3)"
+  },
+  {
+    "file": "src/pages/Team.tsx",
+    "line": 1184,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  },
+  {
+    "file": "src/pages/admin/AdminApplicationQueue.tsx",
+    "line": 496,
+    "message": "Heading skip: <h1> → <h4> (jump of 3)"
+  },
+  {
+    "file": "src/pages/admin/AdminLandingCMS.tsx",
+    "line": 1202,
+    "message": "Heading skip: <h1> → <h4> (jump of 3)"
+  },
+  {
+    "file": "src/pages/admin/AdminPlans.tsx",
+    "line": 323,
+    "message": "Heading skip: <h1> → <h3> (jump of 2)"
+  }
+]

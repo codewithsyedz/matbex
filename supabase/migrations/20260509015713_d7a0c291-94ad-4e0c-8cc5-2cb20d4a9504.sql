@@ -1,0 +1,1 @@
+ALTER TYPE public.day_end_adjustment_reason ADD VALUE IF NOT EXISTS 'unrecorded_sales';

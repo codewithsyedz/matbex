@@ -1,0 +1,32 @@
+{
+  "name": "matbex-print-agent",
+  "version": "1.0.0",
+  "description": "Local Windows print service for Matbex POS — receives JSON, prints raw ESC/POS to USB thermal printers (TA-900U / PA-900U) with full Arabic shaping.",
+  "main": "src/server.js",
+  "bin": "src/server.js",
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "node src/server.js",
+    "build:win": "pkg . --targets node18-win-x64 --output dist/matbex-print-agent.exe"
+  },
+  "pkg": {
+    "assets": [
+      "src/assets/**/*",
+      "node_modules/@napi-rs/canvas-*/**/*"
+    ],
+    "targets": ["node18-win-x64"],
+    "outputPath": "dist"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "cors": "^2.8.5",
+    "@napi-rs/canvas": "^0.1.56",
+    "arabic-persian-reshaper": "^1.0.0",
+    "bidi-js": "^1.0.3",
+    "usb": "^2.13.0",
+    "qrcode": "^1.5.3"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  }
+}

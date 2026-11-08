@@ -1,0 +1,3 @@
+ALTER TABLE public.zatca_provider_applications DROP CONSTRAINT zatca_provider_applications_tenant_id_key;
+CREATE INDEX zatca_provider_applications_tenant_created_idx ON public.zatca_provider_applications (tenant_id, created_at DESC);
+COMMENT ON TABLE public.zatca_provider_applications IS 'Each tenant may retain multiple provider applications; documents remain linked to their original application.';

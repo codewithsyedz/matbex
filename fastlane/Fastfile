@@ -1,0 +1,172 @@
+# Matbex OS - Android Fastlane configuration
+#
+# Lanes:
+#   bundle_release  Build a signed .aab from the current source.
+#   beta            Bump versionCode, build .aab, upload to Play Console "internal" track.
+#   alpha           Same as beta but uploads to "alpha" track.
+#   production      Same as beta but uploads to "production" track (rollout 10%).
+#   upload_assets   Upload only store listing assets (icon, feature graphic, screenshots) - no build.
+#
+# Required env vars (or fastlane/.env):
+#   SUPPLY_JSON_KEY_FILE        Path to the Google Play service-account JSON.
+#   ANDROID_KEYSTORE_FILE       Absolute path to the release keystore.
+#   ANDROID_KEYSTORE_PASSWORD   Keystore password.
+#   ANDROID_KEY_ALIAS           Key alias (default: matbex).
+#   ANDROID_KEY_PASSWORD        Key password.
+#
+# Release notes:
+#   Place plain-text files under fastlane/metadata/android/<locale>/changelogs/<versionCode>.txt
+#   (e.g. fastlane/metadata/android/en-US/changelogs/default.txt). `supply` picks them up
+#   automatically. If a changelog for the new versionCode is missing, `default.txt` is used.
+#
+# Store listing assets (uploaded when assets:true is passed, or via the upload_assets lane):
+#   fastlane/metadata/android/<locale>/images/icon.png              512x512 PNG, 32-bit
+#   fastlane/metadata/android/<locale>/images/featureGraphic.png    1024x500 PNG/JPEG
+#   fastlane/metadata/android/<locale>/images/promoGraphic.png      180x120  (optional, legacy)
+#   fastlane/metadata/android/<locale>/images/tvBanner.png          1280x720 (Android TV only)
+#   fastlane/metadata/android/<locale>/images/phoneScreenshots/*.png        2-8 images
+#   fastlane/metadata/android/<locale>/images/sevenInchScreenshots/*.png    optional
+#   fastlane/metadata/android/<locale>/images/tenInchScreenshots/*.png      optional
+#   fastlane/metadata/android/<locale>/images/wearScreenshots/*.png         optional
+#   fastlane/metadata/android/<locale>/images/tvScreenshots/*.png           optional
+
+default_platform(:android)
+
+ANDROID_DIR  = File.expand_path("../android", __dir__)
+PROJECT_ROOT = File.expand_path("..", __dir__)
+METADATA_DIR = File.expand_path("metadata/android", __dir__)
+
+platform :android do
+  before_all do
+    Dir.chdir(PROJECT_ROOT) do
+      sh("npm", "run", "build")
+      sh("npx", "cap", "sync", "android")
+      sh("bash", "scripts/apply-android-signing.sh")
+    end
+  end
+
+  desc "Build a signed Android App Bundle (no upload)"
+  lane :bundle_release do
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: ANDROID_DIR,
+      print_command: false,
+    )
+  end
+
+  desc "Bump versionCode/versionName, build signed AAB, upload to Play Console internal track"
+  lane :beta do |options|
+    bump_and_release(
+      track: "internal",
+      bump: options[:bump] || "patch",
+      assets: truthy?(options[:assets]),
+    )
+  end
+
+  desc "Bump versionCode/versionName, build signed AAB, upload to Play Console alpha track"
+  lane :alpha do |options|
+    bump_and_release(
+      track: "alpha",
+      bump: options[:bump] || "patch",
+      assets: truthy?(options[:assets]),
+    )
+  end
+
+  desc "Bump versionCode/versionName, build signed AAB, upload to production (10% rollout)"
+  lane :production do |options|
+    bump_and_release(
+      track: "production",
+      bump: options[:bump] || "patch",
+      rollout: options[:rollout] || "0.1",
+      # Production defaults assets:true so live store listing always tracks this repo.
+      assets: options.key?(:assets) ? truthy?(options[:assets]) : true,
+    )
+  end
+
+  desc "Upload only store listing assets (icon, feature graphic, screenshots) - no build, no version bump"
+  lane :upload_assets do |options|
+    track = options[:track] || "internal"
+    UI.user_error!("No metadata directory at #{METADATA_DIR}") unless Dir.exist?(METADATA_DIR)
+    log_assets_summary
+    upload_to_play_store(
+      track: track,
+      skip_upload_apk: true,
+      skip_upload_aab: true,
+      skip_upload_changelogs: true,
+      skip_upload_metadata: false,
+      skip_upload_images: false,
+      skip_upload_screenshots: false,
+      validate_only: ENV["FASTLANE_VALIDATE_ONLY"] == "1",
+    )
+  end
+
+  # ---- helpers ---------------------------------------------------------------
+
+  def bump_and_release(track:, bump:, rollout: nil, assets: false)
+    Dir.chdir(PROJECT_ROOT) do
+      sh("bash", "scripts/bump-android-version.sh", bump)
+      sh("bash", "scripts/generate-android-changelog.sh") unless ENV["MATBEX_SKIP_CHANGELOG"] == "1"
+    end
+
+    gradle(
+      task: "bundle",
+      build_type: "Release",
+      project_dir: ANDROID_DIR,
+      print_command: false,
+    )
+
+    aab_path = File.join(ANDROID_DIR, "app/build/outputs/bundle/release/app-release.aab")
+    UI.user_error!("AAB not found at #{aab_path}") unless File.exist?(aab_path)
+
+    log_assets_summary if assets
+
+    supply_args = {
+      track: track,
+      aab: aab_path,
+      release_status: track == "production" ? "inProgress" : "completed",
+      skip_upload_apk: true,
+      # Changelogs are always uploaded - they're auto-generated by scripts/generate-android-changelog.sh.
+      skip_upload_changelogs: false,
+      # Listing text/icon/feature graphic + screenshots: opt-in to avoid clobbering Play Console edits.
+      skip_upload_metadata: !assets,
+      skip_upload_images: !assets,
+      skip_upload_screenshots: !assets,
+      validate_only: ENV["FASTLANE_VALIDATE_ONLY"] == "1",
+    }
+    supply_args[:rollout] = rollout if rollout && track == "production"
+
+    upload_to_play_store(**supply_args)
+  end
+
+  def truthy?(value)
+    return false if value.nil?
+    %w[1 true yes on].include?(value.to_s.downcase)
+  end
+
+  # Print a quick inventory of what supply will push so a misnamed file is caught early.
+  def log_assets_summary
+    return unless Dir.exist?(METADATA_DIR)
+    UI.message("📦 Store listing assets discovered:")
+    Dir.children(METADATA_DIR).sort.each do |locale|
+      images_dir = File.join(METADATA_DIR, locale, "images")
+      next unless Dir.exist?(images_dir)
+      counts = {
+        icon: File.exist?(File.join(images_dir, "icon.png")) ? "✓" : "—",
+        feature: File.exist?(File.join(images_dir, "featureGraphic.png")) ? "✓" : "—",
+        promo: File.exist?(File.join(images_dir, "promoGraphic.png")) ? "✓" : "—",
+        phone: count_pngs(File.join(images_dir, "phoneScreenshots")),
+        seven: count_pngs(File.join(images_dir, "sevenInchScreenshots")),
+        ten: count_pngs(File.join(images_dir, "tenInchScreenshots")),
+        wear: count_pngs(File.join(images_dir, "wearScreenshots")),
+        tv: count_pngs(File.join(images_dir, "tvScreenshots")),
+      }
+      UI.message("  #{locale.ljust(8)} icon:#{counts[:icon]} feature:#{counts[:feature]} promo:#{counts[:promo]} phone:#{counts[:phone]} 7\":#{counts[:seven]} 10\":#{counts[:ten]} wear:#{counts[:wear]} tv:#{counts[:tv]}")
+    end
+  end
+
+  def count_pngs(dir)
+    return 0 unless Dir.exist?(dir)
+    Dir.glob(File.join(dir, "*.{png,jpg,jpeg}")).size
+  end
+end

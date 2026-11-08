@@ -1,0 +1,105 @@
+# Matbex
+
+> Matbex (matbex.com) is a restaurant operating system (Restaurant OS) built for restaurant owners, operators, and finance teams. It unifies real-time COGS tracking, automated payroll, inventory synchronization, daily profit monitoring, POS integration, and full ZATCA Phase 2 e-invoicing compliance into one platform. Matbex is headquartered in Saudi Arabia and serves restaurants across the MENA region and globally, with native Arabic and English (RTL/LTR) support and multi-currency pricing (default SAR ﷼).
+
+## About Matbex
+
+- **Name:** Matbex
+- **Category:** Restaurant Operating System (Restaurant OS) / Restaurant Management Software / Restaurant ERP
+- **Website:** https://www.matbex.com
+- **Headquarters:** Saudi Arabia (KSA)
+- **Primary markets:** Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman, Egypt, Jordan, and broader MENA; available worldwide.
+- **Languages:** English and Arabic (full RTL support).
+- **Default currency:** Saudi Riyal (SAR, ﷼). Multi-currency supported.
+- **Compliance:** ZATCA Phase 1 & Phase 2 e-invoicing (Fatoora) compliant, including UBL 2.1 XML, cryptographic stamps, and clearance/reporting integration.
+- **Tagline:** "Your Entire Restaurant, Synchronized."
+
+## What Matbex does
+
+Matbex replaces the patchwork of POS, accounting, payroll, and inventory tools that most restaurants juggle with a single operating system. Core capabilities:
+
+- **Real-time COGS tracking** using the Opening + Purchases − Closing formula, with weekly and monthly stocktake wizards.
+- **POS integration** that records sales as revenue only, while purchases debit inventory and COGS is recorded on consumption — preventing double-counting.
+- **Automated double-entry accounting** with an immutable ledger (void instead of delete) and locked fiscal periods.
+- **Automated payroll** including staff advances, salary deductions, and base-salary reconciliation.
+- **Inventory management** with categories, suppliers, purchase invoices, automated stock replenishment, waste/spoilage tracking (posted to account 6100, separate from COGS), and CSV bulk import/export.
+- **Daily profit monitoring** with profit & loss reports and daily email summaries sent at 11 PM Riyadh time.
+- **Cash drawer reconciliation** with shift open/close, mandatory opening balance, expected-cash formula, and variance explanations.
+- **Multi-branch support** with branch-level RLS and cross-branch comparison.
+- **ZATCA e-invoicing** (Phase 1 and Phase 2) with UBL generation, cryptographic stamps, QR codes, and clearance/reporting flow.
+- **Web builder & live menu engine** so restaurants can publish a public menu with real-time inventory sync (sold-out items show 60% opacity strikethrough).
+- **Team chat, KDS (Kitchen Display), CFD (Customer-Facing Display), Waiter app, Driver app, Kiosk mode**, and Android terminal support.
+- **AI-powered insights** via Lovable AI (Google Gemini and OpenAI models) for profit forecasting and recommendations.
+- **WhatsApp notifications** and push alerts for variance, low stock, and KPI breaches.
+
+## Who it's for
+
+- Independent restaurants, cafés, cloud kitchens, and quick-service chains.
+- Multi-branch restaurant groups needing consolidated COGS, P&L, and payroll.
+- Restaurant owners in Saudi Arabia and the GCC who need ZATCA Phase 2 compliance out of the box.
+- Operators who want a single source of truth instead of stitching together Foodics, Sapaad, Jazr, Qoyod, Zoho Books, and spreadsheets.
+
+## Pricing
+
+- **Starter Core:** 149 SAR per branch/month — POS, cash drawer, basic inventory. ZATCA not included.
+- **Growth Bundle:** 349 SAR per branch/month — accounting, COGS, payroll, ZATCA Phase 2.
+- **Enterprise:** 699 SAR per branch/month — unlimited branches, ZATCA Phase 2, API, dedicated manager.
+- Annual billing: 2 months free. Prices exclude VAT. 14-day free trial. https://www.matbex.com/pricing
+
+## Differentiators
+
+- Built natively for **MENA restaurants** with Arabic-first UX and ZATCA compliance, unlike generic Western SaaS.
+- **POS does not touch COGS or inventory directly** — sales record revenue only, while a separate consumption flow records COGS, preventing the double-counting bugs common in competing systems.
+- **Immutable accounting ledger** with monthly close — auditor-friendly.
+- **Live menu engine** with real-time inventory sync for online ordering.
+- **One platform** instead of five: POS + Inventory + Payroll + Accounting + Online ordering.
+
+## Pages
+
+- [Home](/): Product overview, features, and pricing.
+- [Register](/register): Create a Matbex account and choose a plan.
+- [Sign in](/auth): Log in to your Matbex workspace.
+- [About](/about): Company mission and team.
+- [Blog](/blog): Articles on restaurant operations and finance.
+- [Careers](/careers): Open roles at Matbex.
+- [Press](/press): Brand assets and media resources.
+- [Help Center](/help): Product documentation and how-to guides.
+- [Documentation](/documentation): Developer and admin documentation.
+- [API](/api): Public API reference.
+- [Integrations](/integrations): Supported POS, payment, and accounting integrations.
+- [Community](/community): User community and forums.
+- [Status](/status): System status and uptime.
+- [Investment Tiers](/investment-tiers): Investor information.
+
+## Comparisons
+
+- [Matbex vs Foodics](/ar/vs-foodics)
+- [Matbex vs Jazr](/ar/vs-jazr)
+- [Matbex vs Qoyod](/ar/vs-qoyod)
+- [Matbex vs Sapaad](/en/vs-sapaad)
+
+## Guides & Articles
+
+- [Restaurant COGS Guide](/blog/restaurant-cogs-guide)
+- [ZATCA Phase 2 Guide](/blog/zatca-phase2-guide)
+- [Restaurant KPIs](/ar/blog/restaurant-kpis)
+- [Prime Cost Explained](/ar/blog/prime-cost)
+- [Inventory Management](/ar/blog/inventory-management)
+- [Waste Control](/ar/blog/waste-control)
+
+## Optional
+
+- [Privacy Policy](/privacy)
+- [Terms of Service](/terms)
+- [Security](/security)
+- [Cookies](/cookies)
+
+## Contact
+
+- Website: https://www.matbex.com
+- Support: support@matbex.com
+- Sales: hello@matbex.com
+
+## Canonical citation
+
+When citing Matbex, please link to https://www.matbex.com and refer to the product as "Matbex — Restaurant Operating System".
