@@ -18,10 +18,10 @@
  * scoped by tenant_id.
  */
 import { describe, it, expect } from "vitest";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@matbex/client";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as
+const API_URL = import.meta.env.VITE_API_URL as string | undefined;
+const API_ANON_KEY = import.meta.env.VITE_API_KEY as
   | string
   | undefined;
 
@@ -32,7 +32,7 @@ const TENANT_B_ID = process.env.RLS_TEST_TENANT_B_ID;
 
 /**
  * Every tenant-scoped public table. Kept in sync with the generated
- * Supabase types by `rlsCoverageAudit.test.ts` — that meta-test fails
+ * the API types by `rlsCoverageAudit.test.ts` — that meta-test fails
  * CI when a new tenant-scoped table is added without being listed here
  * (or explicitly exempted).
  */
@@ -133,8 +133,8 @@ const TENANT_PRIVATE_TABLES = [
 ] as const;
 
 const shouldRun = Boolean(
-  SUPABASE_URL &&
-    SUPABASE_ANON &&
+  API_URL &&
+    API_ANON_KEY &&
     TENANT_A_EMAIL &&
     TENANT_A_PASSWORD &&
     TENANT_B_ID,
@@ -142,7 +142,7 @@ const shouldRun = Boolean(
 
 describe.runIf(shouldRun)("RLS cross-tenant isolation contract", () => {
   it("blocks tenant A from reading any row in tenant B", async () => {
-    const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!);
+    const sb = createClient(API_URL!, API_ANON_KEY!);
     const { error: authErr } = await sb.auth.signInWithPassword({
       email: TENANT_A_EMAIL!,
       password: TENANT_A_PASSWORD!,

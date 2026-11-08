@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { format, startOfMonth } from "date-fns";
@@ -69,7 +69,7 @@ export function CreateFineDialog() {
   const { data: staffList = [] } = useQuery({
     queryKey: ["staff-for-fines", restaurant?.id, activeBranchId],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("staff")
         .select("id,name,role,branch_id")
         .eq("restaurant_id", restaurant!.id)
@@ -176,7 +176,7 @@ export function CreateFineDialog() {
         setUploading(true);
         for (const f of files) {
           const { path, safeName } = await uploadFineEvidenceFile(restaurant!.id, f);
-          const { error } = await supabase.from("fine_evidence_attachments").insert({
+          const { error } = await db.from("fine_evidence_attachments").insert({
             restaurant_id: restaurant!.id,
             fine_id: fine.id,
             storage_path: path,

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
@@ -80,7 +80,7 @@ export function ZatcaClearanceStatus() {
     enabled: !!tenantId,
     refetchInterval: 30_000,
     queryFn: async (): Promise<SaleRow[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .select(
           "id, receipt_number, created_at, total_amount, zatca_device_id, zatca_clearance_status, zatca_clearance_response, zatca_cleared_at, zatca_uuid, zatca_invoice_hash, zatca_signed_xml_url",
@@ -98,7 +98,7 @@ export function ZatcaClearanceStatus() {
     enabled: !!tenantId,
     refetchInterval: 30_000,
     queryFn: async () => {
-      const { count, error } = await supabase
+      const { count, error } = await db
         .from("zatca_clearance_queue" as never)
         .select("id", { count: "exact", head: true });
       if (error) return 0;
@@ -134,7 +134,7 @@ export function ZatcaClearanceStatus() {
     }
     setRetrying(sale.id);
     try {
-      const { error } = await supabase.functions.invoke("zatca-submit-clearance", {
+      const { error } = await db.functions.invoke("zatca-submit-clearance", {
         body: { sales_transaction_id: sale.id },
       });
       if (error) throw error;

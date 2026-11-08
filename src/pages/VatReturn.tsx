@@ -19,7 +19,7 @@ import {
   ArrowRight, ArrowLeft,
 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -94,7 +94,7 @@ export default function VatReturn() {
     queryKey: ["vat-sales", restaurant?.id, startISO, endISO],
     enabled: !!restaurant?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .select("subtotal, tax, total")
         .eq("restaurant_id", restaurant!.id)
@@ -109,7 +109,7 @@ export default function VatReturn() {
     queryKey: ["vat-purchases", restaurant?.id, startISO, endISO],
     enabled: !!restaurant?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("purchase_invoices")
         .select("subtotal, tax_amount, total_amount")
         .eq("restaurant_id", restaurant!.id)
@@ -124,7 +124,7 @@ export default function VatReturn() {
     queryKey: ["vat-expenses", restaurant?.id, startISO, endISO],
     enabled: !!restaurant?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expenses")
         .select("amount")
         .eq("restaurant_id", restaurant!.id)
@@ -150,7 +150,7 @@ export default function VatReturn() {
     enabled: !!restaurant?.id,
     queryFn: async () => {
       const e = new Date(prevPeriod.end); e.setDate(e.getDate() + 1);
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .select("subtotal, tax, total")
         .eq("restaurant_id", restaurant!.id)
@@ -166,7 +166,7 @@ export default function VatReturn() {
     queryKey: ["vat-return-saved", restaurant?.id, startISO, endISO],
     enabled: !!restaurant?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("vat_returns")
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -182,7 +182,7 @@ export default function VatReturn() {
     queryKey: ["vat-adj-log", restaurant?.id, startISO, endISO],
     enabled: !!restaurant?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("vat_return_adjustments_log")
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -319,7 +319,7 @@ export default function VatReturn() {
         submitted_at: submittedAt ? new Date(submittedAt).toISOString() : null,
         ...adjustments,
       };
-      const { data: saved, error } = await supabase
+      const { data: saved, error } = await db
         .from("vat_returns")
         .upsert(payload, { onConflict: "restaurant_id,period_start,period_end" })
         .select()
@@ -345,7 +345,7 @@ export default function VatReturn() {
           reason: adjReason || notes || null,
           changed_by: user?.id ?? null,
         }));
-        await supabase.from("vat_return_adjustments_log").insert(rows);
+        await db.from("vat_return_adjustments_log").insert(rows);
       }
       lastSavedAdjRef.current = { ...adjustments };
       if (overrideStatus) setStatus(overrideStatus);

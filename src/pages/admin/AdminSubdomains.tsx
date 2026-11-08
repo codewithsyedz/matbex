@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,7 +59,7 @@ export default function AdminSubdomains() {
 
   const fetchRows = async () => {
     setLoading(true);
-    const { data, error } = await supabase.rpc("admin_list_subdomains");
+    const { data, error } = await db.rpc("admin_list_subdomains");
     if (error) {
       console.error(error);
       toast.error("Failed to load subdomains");
@@ -95,13 +95,13 @@ export default function AdminSubdomains() {
     setBusy(true);
     try {
       if (action === "suspend") {
-        const { error } = await supabase.rpc("admin_suspend_subdomain", {
+        const { error } = await db.rpc("admin_suspend_subdomain", {
           _tenant_id: target.tenant_id, _reason: reason || null,
         });
         if (error) throw error;
         toast.success("Subdomain suspended");
       } else if (action === "unsuspend") {
-        const { error } = await supabase.rpc("admin_unsuspend_subdomain", {
+        const { error } = await db.rpc("admin_unsuspend_subdomain", {
           _tenant_id: target.tenant_id,
         });
         if (error) throw error;
@@ -109,13 +109,13 @@ export default function AdminSubdomains() {
       } else if (action === "rename") {
         const clean = newSlug.trim().toLowerCase();
         if (!clean) { toast.error("Enter a new subdomain"); setBusy(false); return; }
-        const { data, error } = await supabase.rpc("admin_force_rename_subdomain", {
+        const { data, error } = await db.rpc("admin_force_rename_subdomain", {
           _tenant_id: target.tenant_id, _new_subdomain: clean, _reason: reason || null,
         });
         if (error) throw error;
         toast.success(`Renamed to ${data}.matbex.com (90-day redirect kept)`);
       } else if (action === "release") {
-        const { error } = await supabase.rpc("admin_release_subdomain", {
+        const { error } = await db.rpc("admin_release_subdomain", {
           _tenant_id: target.tenant_id, _reason: reason || null,
         });
         if (error) throw error;

@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type TableStatus = "free" | "seated" | "ordered" | "billing" | "dirty";
@@ -48,7 +48,7 @@ export function useFloorPlans() {
     queryKey: ["floor-plans", restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [] as FloorPlan[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_floor_plans")
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -63,7 +63,7 @@ export function useFloorPlans() {
   const createPlan = useMutation({
     mutationFn: async (input: { name: string; width?: number; height?: number; is_default?: boolean }) => {
       if (!restaurant?.id || !restaurant?.tenant_id) throw new Error("No restaurant");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_floor_plans")
         .insert({
           tenant_id: restaurant.tenant_id,
@@ -83,7 +83,7 @@ export function useFloorPlans() {
 
   const updatePlan = useMutation({
     mutationFn: async ({ id, ...patch }: { id: string } & Partial<FloorPlan>) => {
-      const { error } = await supabase.from("pos_floor_plans").update(patch).eq("id", id);
+      const { error } = await db.from("pos_floor_plans").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["floor-plans"] }),
@@ -91,7 +91,7 @@ export function useFloorPlans() {
 
   const deletePlan = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("pos_floor_plans")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", id);
@@ -112,7 +112,7 @@ export function useFloorTables(floorPlanId: string | null) {
     queryKey: ["floor-tables", restaurantId, floorPlanId],
     queryFn: async () => {
       if (!restaurantId) return [] as FloorTable[];
-      let q = supabase
+      let q = db
         .from("pos_tables")
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -130,7 +130,7 @@ export function useFloorTables(floorPlanId: string | null) {
   // Realtime subscription
   useEffect(() => {
     if (!restaurantId) return;
-    const ch = supabase
+    const ch = db
       .channel(`pos_tables_${restaurantId}`)
       .on(
         "postgres_changes",
@@ -139,14 +139,14 @@ export function useFloorTables(floorPlanId: string | null) {
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(ch);
+      db.removeChannel(ch);
     };
   }, [restaurantId, qc]);
 
   const createTable = useMutation({
     mutationFn: async (input: Partial<FloorTable> & { label: string; code: string }) => {
       if (!restaurant?.id || !restaurant?.tenant_id) throw new Error("No restaurant");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_tables")
         .insert({
           tenant_id: restaurant.tenant_id,
@@ -171,7 +171,7 @@ export function useFloorTables(floorPlanId: string | null) {
 
   const updateTable = useMutation({
     mutationFn: async ({ id, ...patch }: { id: string } & Partial<FloorTable>) => {
-      const { error } = await supabase.from("pos_tables").update(patch).eq("id", id);
+      const { error } = await db.from("pos_tables").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["floor-tables"] }),
@@ -188,7 +188,7 @@ export function useFloorTables(floorPlanId: string | null) {
         patch.guest_count = null;
         patch.server_id = null;
       }
-      const { error } = await supabase.from("pos_tables").update(patch).eq("id", id);
+      const { error } = await db.from("pos_tables").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["floor-tables"] }),
@@ -196,7 +196,7 @@ export function useFloorTables(floorPlanId: string | null) {
 
   const deleteTable = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("pos_tables")
         .update({ deleted_at: new Date().toISOString(), is_active: false })
         .eq("id", id);

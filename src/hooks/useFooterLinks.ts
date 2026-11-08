@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface FooterLink {
   id: string;
@@ -15,7 +15,7 @@ export function useFooterLinks() {
   return useQuery({
     queryKey: ["footer-links"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("footer_link_settings")
         .select("*")
         .order("category")
@@ -32,7 +32,7 @@ export function useEnabledFooterLinks() {
   return useQuery({
     queryKey: ["footer-links", "enabled"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("footer_link_settings")
         .select("*")
         .eq("is_enabled", true)
@@ -51,7 +51,7 @@ export function useToggleFooterLink() {
 
   return useMutation({
     mutationFn: async ({ id, is_enabled }: { id: string; is_enabled: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("footer_link_settings")
         .update({ is_enabled })
         .eq("id", id);
@@ -69,7 +69,7 @@ export function useUpdateFooterLink() {
 
   return useMutation({
     mutationFn: async ({ id, link_label, link_href }: { id: string; link_label: string; link_href: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("footer_link_settings")
         .update({ link_label, link_href })
         .eq("id", id);

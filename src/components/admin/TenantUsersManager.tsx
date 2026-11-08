@@ -33,7 +33,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { UserPlus, MoreHorizontal, Trash2, Shield, KeyRound, AlertTriangle, Crown } from "lucide-react";
 import { format } from "date-fns";
@@ -81,7 +81,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
       setLoading(true);
       
       // Fetch users with roles for this tenant
-      const { data: rolesData, error: rolesError } = await supabase
+      const { data: rolesData, error: rolesError } = await db
         .from("user_tenant_roles")
         .select("user_id, role, created_at")
         .eq("tenant_id", tenantId);
@@ -95,7 +95,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
 
       // Fetch profiles for users
       const userIds = rolesData.map((r) => r.user_id);
-      const { data: profiles } = await supabase
+      const { data: profiles } = await db
         .from("profiles")
         .select("id, full_name, avatar_url")
         .in("id", userIds);
@@ -128,7 +128,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
     setSubmitting(true);
     try {
       // Check tenant quota before adding user
-      const { data: quotaData, error: quotaError } = await supabase.rpc("check_quota", {
+      const { data: quotaData, error: quotaError } = await db.rpc("check_quota", {
         p_tenant_id: tenantId,
         p_quota_type: "users",
         p_increment: 1,
@@ -145,7 +145,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
       }
 
       // Also check role-specific quota
-      const { data: roleQuotaData, error: roleQuotaError } = await supabase.rpc("check_quota", {
+      const { data: roleQuotaData, error: roleQuotaError } = await db.rpc("check_quota", {
         p_tenant_id: tenantId,
         p_quota_type: newRole,
         p_increment: 1,
@@ -162,7 +162,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
       }
 
       // Create user directly using admin API (no email sent)
-      const { data, error } = await supabase.functions.invoke("create-tenant-user", {
+      const { data, error } = await db.functions.invoke("create-tenant-user", {
         body: {
           email: newEmail.trim(),
           role: newRole,
@@ -197,7 +197,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
 
     setSubmitting(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("user_tenant_roles")
         .update({ role: newRole as "owner" | "manager" | "cashier" | "accountant" })
         .eq("user_id", selectedUser.user_id)
@@ -226,7 +226,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
       return;
     }
     try {
-      const { data, error } = await (supabase as any).rpc("grant_tenant_ownership", {
+      const { data, error } = await (db as any).rpc("grant_tenant_ownership", {
         _tenant_id: tenantId,
         _target_user_id: user.user_id,
       });
@@ -246,7 +246,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
 
     try {
       // Remove from user_tenant_roles
-      const { error: roleError } = await supabase
+      const { error: roleError } = await db
         .from("user_tenant_roles")
         .delete()
         .eq("user_id", user.user_id)
@@ -255,14 +255,14 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
       if (roleError) throw roleError;
 
       // Also remove from user_roles for all restaurants in this tenant
-      const { data: restaurants } = await supabase
+      const { data: restaurants } = await db
         .from("restaurants")
         .select("id")
         .eq("tenant_id", tenantId);
 
       if (restaurants && restaurants.length > 0) {
         const restaurantIds = restaurants.map((r) => r.id);
-        await supabase
+        await db
           .from("user_roles")
           .delete()
           .eq("user_id", user.user_id)
@@ -270,7 +270,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
       }
 
       // Update profile to remove tenant association
-      await supabase
+      await db
         .from("profiles")
         .update({ tenant_id: null, restaurant_id: null })
         .eq("id", user.user_id)
@@ -311,7 +311,7 @@ export function TenantUsersManager({ tenantId, onUserAdded }: TenantUsersManager
 
     setSubmitting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-reset-password", {
+      const { data, error } = await db.functions.invoke("admin-reset-password", {
         body: {
           user_id: selectedUser.user_id,
           new_password: newPassword,

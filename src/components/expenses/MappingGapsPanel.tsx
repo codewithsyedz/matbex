@@ -5,7 +5,7 @@ import { AlertTriangle, ArrowRight, CheckCircle2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface GapEvent {
@@ -44,7 +44,7 @@ export function MappingGapsPanel() {
     queryKey: ["expense-categories-mapping", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as ExpenseCategoryRow[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_categories")
         .select("id, name, color, account_id")
         .eq("restaurant_id", restaurant.id);
@@ -58,7 +58,7 @@ export function MappingGapsPanel() {
     queryKey: ["expense-mapping-gaps", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as GapEvent[];
-      const sb = supabase as any;
+      const sb = db as any;
       const { data, error } = await sb
         .from("expense_category_mapping_gaps")
         .select("category_id, created_at")

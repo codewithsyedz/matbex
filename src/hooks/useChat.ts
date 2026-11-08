@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -83,7 +83,7 @@ export function useChat() {
     queryKey: ["chat-channels", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chat_channels")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -102,7 +102,7 @@ export function useChat() {
     queryFn: async () => {
       if (!restaurant?.id || !user?.id) return [];
       
-      const { data: convData, error: convError } = await supabase
+      const { data: convData, error: convError } = await db
         .from("chat_conversations")
         .select(`
           *,
@@ -124,7 +124,7 @@ export function useChat() {
       const enrichedConversations = await Promise.all(
         userConversations.map(async (conv) => {
           const participantIds = conv.chat_conversation_participants.map((p: any) => p.user_id);
-          const { data: profiles } = await supabase
+          const { data: profiles } = await db
             .from("profiles")
             .select("id, full_name, avatar_url")
             .in("id", participantIds);
@@ -149,7 +149,7 @@ export function useChat() {
     queryFn: async () => {
       if (!activeChannelId && !activeConversationId) return [];
       
-      let query = supabase
+      let query = db
         .from("chat_messages")
         .select("*")
         .order("created_at", { ascending: true });
@@ -165,14 +165,14 @@ export function useChat() {
       
       // Fetch sender profiles
       const senderIds = [...new Set(data.map(m => m.sender_id))];
-      const { data: profiles } = await supabase
+      const { data: profiles } = await db
         .from("profiles")
         .select("id, full_name, avatar_url")
         .in("id", senderIds);
       
       // Fetch read receipts
       const messageIds = data.map(m => m.id);
-      const { data: receipts } = await supabase
+      const { data: receipts } = await db
         .from("chat_read_receipts")
         .select("*")
         .in("message_id", messageIds);
@@ -192,7 +192,7 @@ export function useChat() {
     queryFn: async () => {
       if (!restaurant?.tenant_id) return [];
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("user_tenant_roles")
         .select(`
           id,
@@ -219,7 +219,7 @@ export function useChat() {
     mutationFn: async ({ name, description }: { name: string; description?: string }) => {
       if (!restaurant?.id || !user?.id) throw new Error("Not authenticated");
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chat_channels")
         .insert({
           restaurant_id: restaurant.id,
@@ -233,7 +233,7 @@ export function useChat() {
       if (error) throw error;
       
       // Auto-join creator to channel
-      await supabase.from("chat_channel_members").insert({
+      await db.from("chat_channel_members").insert({
         channel_id: data.id,
         user_id: user.id,
       });
@@ -254,7 +254,7 @@ export function useChat() {
     mutationFn: async (channelId: string) => {
       if (!user?.id) throw new Error("Not authenticated");
       
-      const { error } = await supabase
+      const { error } = await db
         .from("chat_channel_members")
         .insert({ channel_id: channelId, user_id: user.id });
       
@@ -271,7 +271,7 @@ export function useChat() {
       if (!restaurant?.id || !user?.id) throw new Error("Not authenticated");
       
       // Check if conversation already exists
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("chat_conversations")
         .select(`
           id,
@@ -291,7 +291,7 @@ export function useChat() {
       }
       
       // Create new conversation
-      const { data: newConv, error: convError } = await supabase
+      const { data: newConv, error: convError } = await db
         .from("chat_conversations")
         .insert({ restaurant_id: restaurant.id })
         .select()
@@ -300,7 +300,7 @@ export function useChat() {
       if (convError) throw convError;
       
       // Add both participants
-      await supabase.from("chat_conversation_participants").insert([
+      await db.from("chat_conversation_participants").insert([
         { conversation_id: newConv.id, user_id: user.id },
         { conversation_id: newConv.id, user_id: otherUserId },
       ]);
@@ -330,7 +330,7 @@ export function useChat() {
       if (!restaurant?.id || !user?.id) throw new Error("Not authenticated");
       if (!activeChannelId && !activeConversationId) throw new Error("No active chat");
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chat_messages")
         .insert({
           restaurant_id: restaurant.id,
@@ -359,7 +359,7 @@ export function useChat() {
   // Edit message mutation
   const editMessage = useMutation({
     mutationFn: async ({ messageId, content }: { messageId: string; content: string }) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chat_messages")
         .update({ content, is_edited: true })
         .eq("id", messageId)
@@ -381,7 +381,7 @@ export function useChat() {
   // Delete message mutation
   const deleteMessage = useMutation({
     mutationFn: async (messageId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("chat_messages")
         .delete()
         .eq("id", messageId);
@@ -401,7 +401,7 @@ export function useChat() {
   const markAsRead = useCallback(async (messageId: string) => {
     if (!user?.id) return;
     
-    await supabase
+    await db
       .from("chat_read_receipts")
       .upsert({ message_id: messageId, user_id: user.id }, { onConflict: "message_id,user_id" });
   }, [user?.id]);
@@ -413,14 +413,14 @@ export function useChat() {
     const fileExt = file.name.split('.').pop();
     const fileName = `${user.id}/${Date.now()}.${fileExt}`;
     
-    const { data, error } = await supabase.storage
+    const { data, error } = await db.storage
       .from("chat-attachments")
       .upload(fileName, file);
 
     if (error) throw error;
 
     // Bucket is private; generate a long-lived signed URL (1 year) for sharing in chat.
-    const { data: signed, error: signErr } = await supabase.storage
+    const { data: signed, error: signErr } = await db.storage
       .from("chat-attachments")
       .createSignedUrl(data.path, 60 * 60 * 24 * 365);
 
@@ -437,7 +437,7 @@ export function useChat() {
   useEffect(() => {
     if (!restaurant?.id) return;
     
-    const channel = supabase
+    const channel = db
       .channel("chat-messages-realtime")
       .on(
         "postgres_changes",
@@ -455,7 +455,7 @@ export function useChat() {
       .subscribe();
     
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [restaurant?.id, queryClient]);
 

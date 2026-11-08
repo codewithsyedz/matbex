@@ -12,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Loader2, Link2, Unlink, RefreshCw, CheckCircle2, AlertCircle, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 const ZOHO_REGIONS = [
@@ -79,7 +79,7 @@ export function AccountingIntegrationSettings() {
   const { data: tenantId } = useQuery({
     queryKey: ["my-tenant-id", user?.id],
     queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("tenant_id").eq("id", user!.id).maybeSingle();
+      const { data } = await db.from("profiles").select("tenant_id").eq("id", user!.id).maybeSingle();
       return data?.tenant_id as string | null;
     },
     enabled: !!user,
@@ -88,7 +88,7 @@ export function AccountingIntegrationSettings() {
   const { data: integration, isLoading } = useQuery({
     queryKey: ["accounting-integration", tenantId, "zoho_books"],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("accounting_integrations")
         .select("id, region, organization_id, organization_name, status, auto_sync_enabled, sync_frequency, last_sync_at, last_error, client_id, client_secret")
         .eq("tenant_id", tenantId!).eq("provider", "zoho_books").maybeSingle();
@@ -108,7 +108,7 @@ export function AccountingIntegrationSettings() {
   const { data: logs } = useQuery({
     queryKey: ["accounting-sync-log", integration?.id],
     queryFn: async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("accounting_sync_log")
         .select("id, entity_type, direction, status, error_message, synced_at")
         .eq("integration_id", integration!.id).order("synced_at", { ascending: false }).limit(20);
@@ -123,13 +123,13 @@ export function AccountingIntegrationSettings() {
       if (!tenantId) throw new Error("Tenant not found");
 
       if (integration) {
-        const { error } = await supabase.from("accounting_integrations")
+        const { error } = await db.from("accounting_integrations")
           .update({ client_id: clientId.trim(), client_secret: clientSecret.trim(), region })
           .eq("id", integration.id);
         if (error) throw error;
         return integration.id;
       } else {
-        const { data, error } = await supabase.from("accounting_integrations")
+        const { data, error } = await db.from("accounting_integrations")
           .insert({
             tenant_id: tenantId, provider: "zoho_books", region,
             client_id: clientId.trim(), client_secret: clientSecret.trim(),
@@ -149,7 +149,7 @@ export function AccountingIntegrationSettings() {
   const disconnect = useMutation({
     mutationFn: async () => {
       if (!integration) return;
-      const { error } = await supabase.from("accounting_integrations")
+      const { error } = await db.from("accounting_integrations")
         .update({ access_token: null, refresh_token: null, token_expires_at: null, status: "disconnected", organization_id: null, organization_name: null })
         .eq("id", integration.id);
       if (error) throw error;
@@ -164,7 +164,7 @@ export function AccountingIntegrationSettings() {
   const testConn = useMutation({
     mutationFn: async () => {
       if (!integration) throw new Error("No integration");
-      const { data, error } = await supabase.functions.invoke("zoho-sync", {
+      const { data, error } = await db.functions.invoke("zoho-sync", {
         body: { action: "test", integration_id: integration.id },
       });
       if (error) throw error;
@@ -302,7 +302,7 @@ export function AccountingIntegrationSettings() {
               <Switch
                 checked={!!integration?.auto_sync_enabled}
                 onCheckedChange={async (v) => {
-                  await supabase.from("accounting_integrations").update({ auto_sync_enabled: v }).eq("id", integration!.id);
+                  await db.from("accounting_integrations").update({ auto_sync_enabled: v }).eq("id", integration!.id);
                   qc.invalidateQueries({ queryKey: ["accounting-integration"] });
                 }}
               />

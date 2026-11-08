@@ -39,7 +39,7 @@ import { BranchReconciliationView } from "@/components/shifts/BranchReconciliati
 import { useShiftsData, Shift } from "@/hooks/useShiftsData";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
 import {
   Plus,
@@ -227,10 +227,10 @@ export default function Shifts() {
   const handleDeleteShift = async (shiftId: string) => {
     try {
       // Delete related cash events first
-      await supabase.from("cash_events").delete().eq("shift_id", shiftId);
+      await db.from("cash_events").delete().eq("shift_id", shiftId);
       
       // Delete the shift
-      const { error } = await supabase.from("shifts").delete().eq("id", shiftId);
+      const { error } = await db.from("shifts").delete().eq("id", shiftId);
       if (error) throw error;
       
       toast({ title: "Shift deleted successfully" });
@@ -360,7 +360,7 @@ export default function Shifts() {
         }
       }
 
-      const { error } = await supabase
+      const { error } = await db
         .from("shifts")
         .update(updateData)
         .eq("id", editingShift.id);
@@ -369,7 +369,7 @@ export default function Shifts() {
 
       // Log timestamp override to audit log
       if (timestampChanges && Object.keys(timestampChanges).length > 0) {
-        await supabase.rpc('log_audit', {
+        await db.rpc('log_audit', {
           _action: 'SHIFT_TIMESTAMP_OVERRIDE',
           _entity_type: 'shift',
           _entity_id: editingShift.id,

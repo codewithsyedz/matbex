@@ -24,10 +24,14 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@matbex/client": [
+        "./packages/client/src/index.ts"
       ]
     }
   },
   "include": [
-    "src"
+    "src",
+    "packages/client/src"
   ]
 }

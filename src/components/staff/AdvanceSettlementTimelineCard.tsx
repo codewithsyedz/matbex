@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -75,7 +75,7 @@ export function AdvanceSettlementTimelineCard({
   const { data: fetchedAdvance } = useQuery({
     queryKey: ["advance-timeline-advance", advanceId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_advances")
         .select(
           "id, amount, status, created_at, updated_at, advance_date, deducted_at, ledger_reversed, ledger_reversed_at, ledger_reversal_reason, staff:staff_id(name)",
@@ -91,7 +91,7 @@ export function AdvanceSettlementTimelineCard({
   const { data: repayments = [], isLoading: loadingRepayments } = useQuery({
     queryKey: ["advance-timeline-repayments", advanceId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_advance_repayments")
         .select("id, amount, repayment_date, source, notes, created_at, ledger_transaction_id")
         .eq("advance_id", advanceId!)
@@ -105,7 +105,7 @@ export function AdvanceSettlementTimelineCard({
   const { data: fetchedLegs = [] } = useQuery({
     queryKey: ["advance-timeline-legs", advanceId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("account_transactions")
         .select("id, created_at, reference_type, debit, credit, is_voided")
         .in("reference_type", [
@@ -125,7 +125,7 @@ export function AdvanceSettlementTimelineCard({
   const { data: auditLogs = [] } = useQuery({
     queryKey: ["advance-timeline-audit", advanceId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("audit_logs")
         .select("id, action, created_at, new_data")
         .eq("entity_id", advanceId!)

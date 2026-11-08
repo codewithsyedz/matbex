@@ -52,7 +52,7 @@ import {
   resolveCapexHandoff,
   type CapexHandoff,
 } from "@/lib/capexHandoff";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export default function FixedAssets() {
   const navigate = useNavigate();
@@ -68,7 +68,7 @@ export default function FixedAssets() {
   const { data: assetInvoices = {} } = useQuery({
     queryKey: ["installment-asset-invoices"],
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("installment_plans")
         .select("asset_id, invoice_url, description")
         .not("asset_id", "is", null)

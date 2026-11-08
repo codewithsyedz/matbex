@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/query/queryKeys";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface FiscalSettings {
@@ -25,7 +25,7 @@ export function useFiscalSettings() {
     queryFn: async () => {
       if (!restaurant?.id) return null;
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("fiscal_settings")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -42,7 +42,7 @@ export function useFiscalSettings() {
       if (!restaurant?.id) throw new Error("No restaurant");
 
       // Upsert the setting
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("fiscal_settings")
         .upsert({
           restaurant_id: restaurant.id,
@@ -75,7 +75,7 @@ export function useFiscalSettings() {
     }) => {
       if (!restaurant?.id) throw new Error("No restaurant");
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("fiscal_settings")
         .upsert({
           restaurant_id: restaurant.id,

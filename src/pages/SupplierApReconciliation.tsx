@@ -19,7 +19,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
 import { useSupplierApReconciliation } from "@/hooks/useSupplierApReconciliation";
@@ -40,7 +40,7 @@ export default function SupplierApReconciliation() {
   const handleRemap = async (supplierId: string | null, label: string) => {
     setRemapping(supplierId ?? "all");
     try {
-      const { data, error } = await supabase.rpc("remap_expenses_to_supplier_ap_head", {
+      const { data, error } = await db.rpc("remap_expenses_to_supplier_ap_head", {
         p_supplier_id: supplierId,
         p_branch_id: branchId && branchId !== "all" ? branchId : null,
       });

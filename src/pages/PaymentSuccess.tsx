@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { MatbexLogo } from "@/components/brand/MatbexLogo";
 import { Check, AlertCircle, CreditCard } from "lucide-react";
@@ -31,13 +31,13 @@ export default function PaymentSuccess() {
     setStatus("verifying");
     async function verify() {
       try {
-        const { data: auth } = await supabase.auth.getSession();
+        const { data: auth } = await db.auth.getSession();
         const fn = subscription || auth.session ? "verify-subscription-payment" : "complete-registration-payment";
-        let result = await supabase.functions.invoke(fn, { body: { session_id: sessionId }, headers: auth.session ? { Authorization: `Bearer ${auth.session.access_token}` } : undefined });
+        let result = await db.functions.invoke(fn, { body: { session_id: sessionId }, headers: auth.session ? { Authorization: `Bearer ${auth.session.access_token}` } : undefined });
         let isRegistration = fn === "complete-registration-payment";
         if (result.data?.registration) {
           isRegistration = true;
-          result = await supabase.functions.invoke("complete-registration-payment", { body: { session_id: sessionId } });
+          result = await db.functions.invoke("complete-registration-payment", { body: { session_id: sessionId } });
         }
         if (result.error || !result.data?.success) {
           let message = result.data?.error;

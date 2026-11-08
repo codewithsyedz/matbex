@@ -29,7 +29,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Webhook, Plus, MoreHorizontal, Trash2, Edit, CheckCircle, XCircle, Play } from "lucide-react";
 import { format } from "date-fns";
@@ -82,11 +82,11 @@ export default function AdminWebhooks() {
   const fetchData = async () => {
     try {
       const [{ data: webhooksData }, { data: deliveriesData }] = await Promise.all([
-        supabase
+        db
           .from("webhook_configs")
           .select("*")
           .order("created_at", { ascending: false }),
-        supabase
+        db
           .from("webhook_deliveries")
           .select("*")
           .order("delivered_at", { ascending: false })
@@ -143,7 +143,7 @@ export default function AdminWebhooks() {
 
     try {
       if (editingWebhook) {
-        const { error } = await supabase
+        const { error } = await db
           .from("webhook_configs")
           .update({
             name: formData.name,
@@ -158,7 +158,7 @@ export default function AdminWebhooks() {
         if (error) throw error;
         toast.success("Webhook updated");
       } else {
-        const { error } = await supabase.from("webhook_configs").insert({
+        const { error } = await db.from("webhook_configs").insert({
           name: formData.name,
           url: formData.url,
           secret: formData.secret || null,
@@ -182,7 +182,7 @@ export default function AdminWebhooks() {
 
   const handleDelete = async (webhook: WebhookConfig) => {
     try {
-      const { error } = await supabase.from("webhook_configs").delete().eq("id", webhook.id);
+      const { error } = await db.from("webhook_configs").delete().eq("id", webhook.id);
       if (error) throw error;
       toast.success("Webhook deleted");
       fetchData();
@@ -194,7 +194,7 @@ export default function AdminWebhooks() {
 
   const handleToggle = async (webhook: WebhookConfig) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("webhook_configs")
         .update({ is_active: !webhook.is_active })
         .eq("id", webhook.id);
@@ -210,7 +210,7 @@ export default function AdminWebhooks() {
 
   const handleTestWebhook = async () => {
     try {
-      const response = await supabase.functions.invoke("send-webhook-notifications");
+      const response = await db.functions.invoke("send-webhook-notifications");
       if (response.error) throw response.error;
       toast.success("Webhook check triggered");
       setTimeout(fetchData, 2000);

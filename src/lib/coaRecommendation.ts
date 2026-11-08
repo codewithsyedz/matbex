@@ -2,7 +2,7 @@
  * Pure CoA recommendation rules.
  *
  * These rules map an expense category name (and optional description) to a
- * recommended Chart-of-Accounts code. They are PURE - no React, no Supabase -
+ * recommended Chart-of-Accounts code. They are PURE - no React, no the API -
  * so the same logic powers the Mapping Audit screen, the CSV import wizard,
  * and the automated test suite.
  *

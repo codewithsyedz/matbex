@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useZatcaSettings } from "@/hooks/useZatcaSettings";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -40,15 +40,15 @@ export function ZatcaDevices() {
   const onOnboard = async (deviceId: string) => {
     setOnboardingId(deviceId);
     try {
-      const { data: sess } = await supabase.auth.getSession();
+      const { data: sess } = await db.auth.getSession();
       const token = sess.session?.access_token;
-      const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/zatca-onboard-device`;
+      const url = `${import.meta.env.VITE_API_URL}/functions/v1/zatca-onboard-device`;
       const res = await fetch(url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token ?? ""}`,
-          apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+          apikey: import.meta.env.VITE_API_KEY,
         },
         body: JSON.stringify({ device_id: deviceId }),
       });

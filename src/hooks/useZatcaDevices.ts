@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface ZatcaDevice {
@@ -42,7 +42,7 @@ export function useZatcaDevices() {
     queryKey: [...QK, restaurantId],
     enabled: !!restaurantId,
     queryFn: async (): Promise<ZatcaDevice[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("zatca_devices" as never)
         .select("*")
         .eq("restaurant_id", restaurantId!)
@@ -55,7 +55,7 @@ export function useZatcaDevices() {
   const create = useMutation({
     mutationFn: async (input: ZatcaDeviceInput) => {
       if (!tenantId || !restaurantId) throw new Error("Missing tenant/restaurant context");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("zatca_devices" as never)
         .insert(({
           tenant_id: tenantId,
@@ -75,7 +75,7 @@ export function useZatcaDevices() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("zatca_devices" as never).delete().eq("id", id);
+      const { error } = await db.from("zatca_devices" as never).delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: [...QK, restaurantId] }),
@@ -83,7 +83,7 @@ export function useZatcaDevices() {
 
   const revoke = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("zatca_devices" as never)
         .update(({ registration_status: "REVOKED", revoked_at: new Date().toISOString() }) as never)
         .eq("id", id);

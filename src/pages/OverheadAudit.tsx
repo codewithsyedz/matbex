@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, subMonths } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -66,14 +66,14 @@ export default function OverheadAudit() {
       const monthKey = selectedMonth.key;
       const branchFilter = branchId ? `branch_id.eq.${branchId},branch_id.is.null` : null;
 
-      let allocQ = supabase
+      let allocQ = db
         .from("overhead_allocation")
         .select("id, name, monthly_amount, is_active, branch_id")
         .eq("restaurant_id", rid)
         .eq("is_active", true);
       if (branchFilter) allocQ = allocQ.or(branchFilter);
 
-      let payQ = supabase
+      let payQ = db
         .from("overhead_payments")
         .select("overhead_allocation_id, amount_paid, payment_date, payment_method, ledger_posted, branch_id")
         .eq("restaurant_id", rid)

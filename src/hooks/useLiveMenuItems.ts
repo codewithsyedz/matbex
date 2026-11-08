@@ -1,7 +1,7 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { toCdnUrl } from "@/lib/imageCdn";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 
@@ -51,7 +51,7 @@ export function useLiveMenuItems(restaurantId?: string, branchIdArg?: string | n
       if (!resolvedRestaurantId) return [];
       
       // Fetch menu items
-      const { data: items, error: itemsError } = await supabase
+      const { data: items, error: itemsError } = await db
         .from("menu_items")
         .select(`
           id, name, description, category, selling_price, 
@@ -66,7 +66,7 @@ export function useLiveMenuItems(restaurantId?: string, branchIdArg?: string | n
       if (itemsError) throw itemsError;
 
       // Fetch availability from view
-      const { data: availability, error: availError } = await supabase
+      const { data: availability, error: availError } = await db
         .from("menu_item_availability")
         .select("menu_item_id, is_available, missing_ingredients")
         .eq("restaurant_id", resolvedRestaurantId);
@@ -84,7 +84,7 @@ export function useLiveMenuItems(restaurantId?: string, branchIdArg?: string | n
       // for the active branch.
       let branchHidden = new Set<string>();
       if (resolvedBranchId) {
-        const { data: bAvail } = await supabase
+        const { data: bAvail } = await db
           .from("menu_item_branch_availability" as any)
           .select("menu_item_id, is_available")
           .eq("branch_id", resolvedBranchId);
@@ -111,7 +111,7 @@ export function useLiveMenuItems(restaurantId?: string, branchIdArg?: string | n
   useEffect(() => {
     if (!resolvedRestaurantId) return;
 
-    const channel = supabase
+    const channel = db
       .channel(`live-menu-${resolvedRestaurantId}`)
       .on(
         'postgres_changes',
@@ -142,7 +142,7 @@ export function useLiveMenuItems(restaurantId?: string, branchIdArg?: string | n
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [resolvedRestaurantId, refetch]);
 

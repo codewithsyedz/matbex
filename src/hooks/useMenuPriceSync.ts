@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatZonedYMD } from "@/lib/timezone";
 
@@ -59,7 +59,7 @@ export function useMenuPriceSync(branchId: string | null | undefined): MenuPrice
       if (!restaurantId || !branchId) return;
       setSyncing(true);
       try {
-        const { data } = await supabase
+        const { data } = await db
           .from("pos_entity_versions")
           .select("version")
           .eq("restaurant_id", restaurantId)
@@ -84,7 +84,7 @@ export function useMenuPriceSync(branchId: string | null | undefined): MenuPrice
   // 1. Realtime push on the version counter (covers menu items + branch prices).
   useEffect(() => {
     if (!restaurantId || !branchId) return;
-    const channel = supabase
+    const channel = db
       .channel(`menu-price-sync-${branchId}`)
       .on(
         "postgres_changes",
@@ -102,7 +102,7 @@ export function useMenuPriceSync(branchId: string | null | undefined): MenuPrice
         },
       )
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => { void db.removeChannel(channel); };
   }, [restaurantId, branchId, checkVersion]);
 
   // 2. Poll every 60s + initial read.

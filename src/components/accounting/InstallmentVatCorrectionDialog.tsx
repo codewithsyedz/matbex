@@ -26,7 +26,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 interface CorrectionLine {
   account_id: string;
@@ -93,7 +93,7 @@ export function InstallmentVatCorrectionDialog({
     queryKey: ["installment-vat-correction-plan", planId],
     enabled: open && !!planId,
     queryFn: async (): Promise<InstallmentVatCorrection> => {
-      const { data, error } = await (supabase as any).rpc("suggest_installment_vat_correction", {
+      const { data, error } = await (db as any).rpc("suggest_installment_vat_correction", {
         p_plan_id: planId,
       });
       if (error) throw error;
@@ -103,7 +103,7 @@ export function InstallmentVatCorrectionDialog({
 
   const apply = useMutation({
     mutationFn: async () => {
-      const { data, error } = await (supabase as any).rpc("apply_installment_vat_correction", {
+      const { data, error } = await (db as any).rpc("apply_installment_vat_correction", {
         p_plan_id: planId,
         p_note: note.trim() || null,
       });

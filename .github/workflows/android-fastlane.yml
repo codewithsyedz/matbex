@@ -55,6 +55,8 @@ jobs:
       FASTLANE_HIDE_CHANGELOG: "1"
       FASTLANE_DISABLE_COLORS: "1"
       FASTLANE_VALIDATE_ONLY: ${{ github.event.inputs.validate_only == 'true' && '1' || '' }}
+      VITE_API_URL: ${{ vars.VITE_API_URL }}
+      VITE_API_KEY: ${{ vars.VITE_API_KEY }}
 
     steps:
       - name: Checkout

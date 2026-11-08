@@ -9,7 +9,7 @@ import {
   type CFDIdleSettings,
   type CFDPromo,
 } from "@/hooks/useCFD";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 // ---------------------------------------------------------------------
 // Customer-Facing Display
@@ -45,7 +45,7 @@ function PairPrompt({ onPair }: { onPair: (rid: string, code: string) => void })
     setBusy(true);
     try {
       // Look up via SECURITY DEFINER RPC (anon SELECT on cfd_sessions is closed).
-      const { data, error: e2 }: any = await (supabase as any).rpc("cfd_get_session", {
+      const { data, error: e2 }: any = await (db as any).rpc("cfd_get_session", {
         p_restaurant_id: rid.trim() || null,
         p_pair_code: code.trim().toUpperCase(),
       });
@@ -298,7 +298,7 @@ export default function CFD() {
   useEffect(() => {
     if (!paired?.rid) return;
     void (async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("restaurant_branding")
         .select("logo_url, business_display_name, tagline, primary_color")
         .eq("restaurant_id", paired.rid)

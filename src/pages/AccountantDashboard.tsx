@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { RecordExpenseDialog } from "@/components/expenses/RecordExpenseDialog";
 import { QuickAddInventoryItemDialog } from "@/components/expenses/QuickAddInventoryItemDialog";
 import { RouteSeo } from "@/components/seo/RouteSeo";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export default function AccountantDashboard() {
   const { i18n } = useTranslation(); const ar = i18n.language.startsWith("ar");
@@ -38,7 +38,7 @@ export default function AccountantDashboard() {
   useEffect(() => {
     if (!query.dataUpdatedAt || restaurant?.id !== "fe1a4d9e-1595-43ba-a47a-37575a9a55b9") return;
     let cancelled = false;
-    supabase.functions.invoke("accountant-pending-alerts", { body: {} }).then(({data,error}) => {
+    db.functions.invoke("accountant-pending-alerts", { body: {} }).then(({data,error}) => {
       if (!cancelled) setEmailStatus(error ? "error" : data?.status || null);
     });
     return () => { cancelled = true; };

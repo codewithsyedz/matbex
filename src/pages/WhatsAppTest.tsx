@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -32,7 +32,7 @@ export default function WhatsAppTest() {
           return;
         }
       }
-      const { data, error } = await supabase.functions.invoke("send-whatsapp", {
+      const { data, error } = await db.functions.invoke("send-whatsapp", {
         body: { to, from, mode, body, contentSid, contentVariables },
       });
       if (error) throw error;

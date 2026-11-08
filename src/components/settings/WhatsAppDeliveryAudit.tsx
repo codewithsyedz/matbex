@@ -5,7 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Loader2, RefreshCcw, Check, X, MessageSquare, Activity } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface AuditRow {
@@ -36,7 +36,7 @@ export function WhatsAppDeliveryAudit() {
   const load = useCallback(async () => {
     if (!tenant?.id) return;
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("audit_logs")
       .select("id, created_at, action, entity_id, new_data")
       .eq("tenant_id", tenant.id)

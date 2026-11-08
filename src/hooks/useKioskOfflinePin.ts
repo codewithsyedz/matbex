@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   KIOSK_PIN_ITERATIONS,
@@ -29,7 +29,7 @@ export function useKioskOfflinePin() {
     enabled: !!restaurantId,
     staleTime: 5 * 60 * 1000,
     queryFn: async (): Promise<KioskPinMaterial | null> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("kiosk_offline_pins" as never)
         .select("pin_hash, pin_salt, iterations, rotated_at")
         .eq("restaurant_id", restaurantId!)
@@ -49,7 +49,7 @@ export function useKioskOfflinePin() {
     if (!restaurantId) return;
     const pending = takeQueuedUnlockEvents().filter((e) => e.restaurant_id === restaurantId);
     if (pending.length === 0) return;
-    void supabase.from("kiosk_offline_unlock_events" as never).insert(pending as never);
+    void db.from("kiosk_offline_unlock_events" as never).insert(pending as never);
   }, [restaurantId]);
 
   const setPin = useMutation({
@@ -68,7 +68,7 @@ export function useKioskOfflinePin() {
         updated_by_user_id: user?.id ?? null,
         rotated_at: new Date().toISOString(),
       };
-      const { error } = await supabase
+      const { error } = await db
         .from("kiosk_offline_pins" as never)
         .upsert(payload as never, { onConflict: "restaurant_id" });
       if (error) throw error;

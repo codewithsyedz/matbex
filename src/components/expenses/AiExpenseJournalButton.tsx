@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 interface AiExpenseJournalButtonProps {
   expenseId: string;
@@ -20,7 +20,7 @@ export function AiExpenseJournalButton({ expenseId, disabled }: AiExpenseJournal
   const postJournal = async () => {
     setPosting(true);
     try {
-      const { data, error } = await supabase.functions.invoke("generate-expense-journal", {
+      const { data, error } = await db.functions.invoke("generate-expense-journal", {
         body: { expense_id: expenseId },
       });
       if (error) {

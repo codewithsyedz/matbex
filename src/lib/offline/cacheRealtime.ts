@@ -7,7 +7,7 @@
 // realtime disconnects.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { STORES, put, remove, type StoreName } from "./db";
 
 type Handle = { unsubscribe: () => void };
@@ -19,7 +19,7 @@ function wireTable(opts: {
   filter: string;
   toRow: (row: any) => { id: string; updated_at: string; data: unknown } | null;
 }): Handle {
-  const channel = supabase
+  const channel = db
     .channel(opts.channelId)
     .on(
       "postgres_changes" as any,
@@ -36,7 +36,7 @@ function wireTable(opts: {
       },
     )
     .subscribe();
-  return { unsubscribe: () => void supabase.removeChannel(channel) };
+  return { unsubscribe: () => void db.removeChannel(channel) };
 }
 
 export interface RealtimeOpts {

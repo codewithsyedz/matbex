@@ -58,7 +58,7 @@ import { KioskWifiDialog } from "@/components/pos/KioskWifiDialog";
 import { recordOfflineSale } from "@/lib/offline/posService";
 import { isOnline } from "@/lib/offline/connectivity";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { prefetchImages, getCachedImageSrc, rememberImage } from "@/lib/offline/imageCache";
 import { PendingSyncBadge } from "@/components/pos/PendingSyncBadge";
 import { RecordExpenseDialog } from "@/components/expenses/RecordExpenseDialog";
@@ -241,7 +241,7 @@ export default function RecordSaleMobile() {
     queryKey: ["pos-tablet-menu", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as MenuItem[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select(
           "id, name, category, selling_price, quarter_price, half_price, full_price, image_url, is_chefs_special",
@@ -275,7 +275,7 @@ export default function RecordSaleMobile() {
     queryKey: ["pos-tablet-shifts", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id")
         .eq("restaurant_id", restaurant.id)
@@ -287,14 +287,14 @@ export default function RecordSaleMobile() {
     enabled: !!restaurant?.id,
   });
 
-  const { data: topSellingData = [] } = useQuery({
+  const { data: topSellingData = [] } = useQuery<{ menuItemId: string; totalSold: number }[]>({
     queryKey: ["top-selling-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_items")
         .select("menu_item_id, quantity")
         .eq("restaurant_id", restaurant.id)
@@ -305,7 +305,7 @@ export default function RecordSaleMobile() {
       const aggregated = (data || []).reduce((acc, item) => {
         acc[item.menu_item_id] = (acc[item.menu_item_id] || 0) + item.quantity;
         return acc;
-      }, {} as Record<string, number>);
+      }, {} as Record<string, number>) as Record<string, number>;
 
       const ranked = Object.entries(aggregated)
         .sort(([, a], [, b]) => b - a)
@@ -323,7 +323,7 @@ export default function RecordSaleMobile() {
     queryKey: ["pos-tablet-customers", restaurant?.id, customerBranchId ?? "all"],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Customer[];
-      let qb = supabase
+      let qb = db
         .from("customers")
         .select("id, name, phone, credit_limit, current_balance, credit_status")
         .eq("restaurant_id", restaurant.id)
@@ -666,7 +666,7 @@ export default function RecordSaleMobile() {
       // Trust `navigator.onLine === false` as the primary signal - the
       // connectivity watcher's cached state can lag behind reality,
       // which would otherwise leave the Pay button hanging on a stuck
-      // Supabase fetch with no timeout.
+      // the API fetch with no timeout.
       const browserOffline =
         typeof navigator !== "undefined" && navigator.onLine === false;
       if (browserOffline || !isOnline()) {
@@ -683,7 +683,7 @@ export default function RecordSaleMobile() {
       let txErr;
       try {
         const response = await withOnlineWriteTimeout(
-          supabase
+          db
           .from("sales_transactions")
           .insert({
             restaurant_id: restaurant.id,
@@ -727,14 +727,14 @@ export default function RecordSaleMobile() {
         total_price: l.price * l.qty,
       }));
       const { error: itemsErr } = await withOnlineWriteTimeout(
-        supabase.from("sales_items").insert(items),
+        db.from("sales_items").insert(items),
         "Saving sale items",
       );
       if (itemsErr) throw itemsErr;
 
       if (activeShift?.id && !unpaid) {
         await withOnlineWriteTimeout(
-          supabase.from("cash_events").insert([
+          db.from("cash_events").insert([
             {
               shift_id: activeShift.id,
               restaurant_id: restaurant.id,

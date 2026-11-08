@@ -134,7 +134,7 @@ describe("asset cost matches the ledger debit for every installment count", () =
 });
 
 describe("SQL contract: the DB capitalises the stored net price", () => {
-  const dir = join(process.cwd(), "supabase", "migrations");
+  const dir = join(process.cwd(), "db", "migrations");
   const sql = readdirSync(dir)
     .filter((f) => f.endsWith(".sql"))
     .sort()

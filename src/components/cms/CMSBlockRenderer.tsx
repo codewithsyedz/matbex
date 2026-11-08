@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/accordion";
 import { Link } from "react-router-dom";
 import { useSearchParams, useNavigate, useLocation } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { 
   Star, Zap, Shield, Users, Clock, TrendingUp, 
@@ -956,7 +956,7 @@ function BrandAssetsBlock({ config }: { config: Record<string, any> }) {
 
   const getDownloadUrl = (asset: any) => {
     if (asset.storagePath) {
-      return `${import.meta.env.VITE_SUPABASE_URL}/storage/v1/object/public/press-assets/${asset.storagePath}`;
+      return `${import.meta.env.VITE_API_URL}/storage/v1/object/public/press-assets/${asset.storagePath}`;
     }
     return asset.link || "#";
   };
@@ -1217,7 +1217,7 @@ function BlogNewsletterBlock({ config }: { config: Record<string, any> }) {
       return;
     }
     setSubmitting(true);
-    const { error } = await supabase
+    const { error } = await db
       .from("newsletter_subscriptions")
       .insert({ email: trimmed, source: "blog" });
     setSubmitting(false);

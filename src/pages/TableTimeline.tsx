@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, startOfDay, endOfDay, differenceInMinutes } from "date-fns";
 import { Calendar as CalendarIcon, Clock, Users, ArrowRight, LayoutGrid } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -71,7 +71,7 @@ export default function TableTimeline() {
     queryKey: ["pos_tables_for_timeline", tenantId],
     enabled: !!tenantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_tables")
         .select("id, label, capacity, floor_plan_id")
         .eq("tenant_id", tenantId!);
@@ -96,7 +96,7 @@ export default function TableTimeline() {
     queryKey: ["pos_table_status_events", tenantId, from.toISOString(), to.toISOString()],
     enabled: !!tenantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_table_status_events")
         .select("id, table_id, from_status, to_status, guest_count, occurred_at")
         .eq("tenant_id", tenantId!)

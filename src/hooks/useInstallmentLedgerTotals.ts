@@ -1,10 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import type { LedgerTotals } from "@/lib/installmentIntegrity";
-
-const db = supabase as any;
-
 const r2 = (n: number) => Math.round((Number(n) + Number.EPSILON) * 100) / 100;
 
 /**

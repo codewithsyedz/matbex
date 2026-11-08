@@ -28,3 +28,12 @@ fastlane/.env
 fastlane/play-store-key.json
 fastlane/report.xml
 fastlane/README.md
+
+# Environment & local data
+.env
+.env.*
+!.env.example
+server/.env
+server/dist
+.data
+.transfer

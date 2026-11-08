@@ -61,7 +61,7 @@ import { useBranch } from "@/contexts/BranchContext";
 import { BranchSwitcher } from "@/components/layout/BranchSwitcher";
 import { useBranchUnpaidBalances } from "@/hooks/useBranchUnpaidBalances";
 import { BranchOutstandingSummary } from "@/components/settlements/BranchOutstandingSummary";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrency } from "@/hooks/useCurrency";
 import { format, startOfMonth, endOfMonth } from "date-fns";
@@ -128,7 +128,7 @@ export default function Settlements() {
     queryKey: ["all-settlement-invoices", restaurant?.id, dateRange],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("settlement_invoices")
         .select("*, customers(name, email, phone)")
         .eq("restaurant_id", restaurant.id)
@@ -146,7 +146,7 @@ export default function Settlements() {
     queryKey: ["customers-with-balance", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -176,7 +176,7 @@ export default function Settlements() {
   // Edit mutation
   const editMutation = useMutation({
     mutationFn: async (invoiceId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("settlement_invoices")
         .update({
           billing_period_start: editForm.billing_period_start,
@@ -192,7 +192,7 @@ export default function Settlements() {
 
       // Log audit
       if (restaurant?.id && user?.id && selectedInvoice) {
-        await supabase.from("settlement_audit_logs").insert({
+        await db.from("settlement_audit_logs").insert({
           restaurant_id: restaurant.id,
           settlement_invoice_id: invoiceId,
           customer_id: selectedInvoice.customer_id,
@@ -219,7 +219,7 @@ export default function Settlements() {
   const deleteMutation = useMutation({
     mutationFn: async (invoice: SettlementInvoice) => {
       // First, unlink all transactions from this invoice
-      const { error: unlinkError } = await supabase
+      const { error: unlinkError } = await db
         .from("sales_transactions")
         .update({ settlement_invoice_id: null })
         .eq("settlement_invoice_id", invoice.id);
@@ -227,7 +227,7 @@ export default function Settlements() {
       if (unlinkError) throw unlinkError;
 
       // Delete related payments
-      const { error: paymentsError } = await supabase
+      const { error: paymentsError } = await db
         .from("settlement_payments")
         .delete()
         .eq("settlement_invoice_id", invoice.id);
@@ -235,7 +235,7 @@ export default function Settlements() {
       if (paymentsError) throw paymentsError;
 
       // Delete audit logs for this invoice
-      const { error: auditError } = await supabase
+      const { error: auditError } = await db
         .from("settlement_audit_logs")
         .delete()
         .eq("settlement_invoice_id", invoice.id);
@@ -243,7 +243,7 @@ export default function Settlements() {
       if (auditError) throw auditError;
 
       // Delete the invoice itself
-      const { error: invoiceError } = await supabase
+      const { error: invoiceError } = await db
         .from("settlement_invoices")
         .delete()
         .eq("id", invoice.id);

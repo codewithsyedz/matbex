@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { formatMoneyAmount, roundMoney } from "@/lib/vatInclusive";
 
@@ -38,7 +38,7 @@ export function useCurrency() {
   const { data: dbCurrencies } = useQuery({
     queryKey: ["platform-currencies", "enabled"],
     queryFn: async (): Promise<CurrencyInfo[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("platform_currencies" as any)
         .select("code,name,symbol")
         .eq("enabled", true)
@@ -57,7 +57,7 @@ export function useCurrency() {
   const { data: exchangeRates, isLoading: ratesLoading } = useQuery({
     queryKey: ["exchange-rates", baseCurrency],
     queryFn: async (): Promise<ExchangeRates> => {
-      const { data, error } = await supabase.functions.invoke("get-exchange-rates", {
+      const { data, error } = await db.functions.invoke("get-exchange-rates", {
         body: { baseCurrency },
       });
       if (error) throw error;
@@ -71,7 +71,7 @@ export function useCurrency() {
   const updateCurrencyMutation = useMutation({
     mutationFn: async (newCurrency: string) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { error } = await supabase
+      const { error } = await db
         .from("restaurants")
         .update({ currency: newCurrency })
         .eq("id", restaurant.id);

@@ -3,7 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { format } from "date-fns";
 
 export interface DlqTraceRow {
@@ -73,7 +73,7 @@ export function DlqItemTraceDialog({
     queryKey: ["dlq-attempts", row?.id],
     enabled: !!row?.id,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("failed_sync_attempts")
         .select("*")
         .eq("failed_sync_item_id", row!.id)

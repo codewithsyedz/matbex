@@ -1,4 +1,4 @@
-name: Lint
+name: CI
 
 on:
   pull_request:
@@ -10,50 +10,96 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - name: Install dependencies
-        run: bun install --frozen-lockfile
-
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
       - name: ESLint
-        run: bun run lint
-
+        run: npm run lint
       - name: Module boundaries (warn-only baseline)
-        run: bun run lint:boundaries || true
-
+        run: npm run lint:boundaries || true
       - name: Heading hierarchy
-        run: bun run lint:headings
-
-      - name: Edge-function auth allowlist
-        run: bun run lint:edge-auth
-
-      - name: Supabase types drift
-        env:
-          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-          SUPABASE_PROJECT_ID: tlkyubkbbqwmzjaogavb
-        # Self-skips when SUPABASE_ACCESS_TOKEN is unset (e.g. fork PRs).
-        run: bun run lint:types-drift
+        run: npm run lint:headings
+      - name: Public server-function auth allowlist
+        run: npm run lint:edge-auth
+      - name: Typecheck web
+        run: npx tsc -p tsconfig.app.json --noEmit
 
   bundle-budget:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
       - name: Build (production)
-        run: bun run build
+        run: npm run build
+        env:
+          VITE_API_URL: https://api.example.test
+          VITE_API_KEY: ci
       - name: Enforce bundle budget (size-limit)
-        run: bun run lint:bundle
+        run: npm run lint:bundle
 
   tests:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: latest
-      - run: bun install --frozen-lockfile
-      - run: bunx vitest run
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npx vitest run
+
+  # Applies every migration to a clean Postgres, checks generated types, and runs
+  # the end-to-end smoke test (auth, data/RLS, rpc, storage, functions, realtime, MFA, MCP).
+  backend:
+    runs-on: ubuntu-latest
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/matbex
+      AUTHENTICATOR_PASSWORD: ci-authenticator
+      JWT_SECRET: ci-jwt-secret-ci-jwt-secret-ci-jwt-secret-0123
+      API_URL: http://localhost:8000
+      SITE_URL: http://localhost:8080
+      POSTGREST_URL: http://localhost:3000
+      AUTH_AUTOCONFIRM: "true"
+      STORAGE_DRIVER: fs
+      STORAGE_FS_ROOT: /tmp/matbex-storage
+      JOBS_ENABLED: "false"
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: matbex }
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci --no-audit --no-fund
+      - run: npm --prefix server ci --no-audit --no-fund
+      - name: Typecheck API
+        run: npm --prefix server run typecheck
+      - name: Function unit tests
+        run: npm --prefix server test
+      - name: Apply migrations to a clean database
+        run: node db/migrate.mjs
+      - name: Generated DB types are up to date
+        run: node scripts/generate-db-types.mjs --check
+      - name: Keys for CI
+        run: npm --prefix server run keys | grep -E '^(ANON_KEY|SERVICE_ROLE_KEY)=' >> "$GITHUB_ENV"
+        env: { JWT_SECRET: ci-jwt-secret-ci-jwt-secret-ci-jwt-secret-0123 }
+      - name: Start PostgREST
+        run: |
+          docker run -d --name postgrest --network host \
+            -e PGRST_DB_URI=postgres://authenticator:ci-authenticator@localhost:5432/matbex \
+            -e PGRST_DB_SCHEMAS=public -e PGRST_DB_ANON_ROLE=anon \
+            -e PGRST_DB_EXTRA_SEARCH_PATH="public, extensions" \
+            -e PGRST_JWT_SECRET=$JWT_SECRET postgrest/postgrest:v12.2.3
+      - name: Build + start API
+        run: |
+          npm --prefix server run build
+          (node server/dist/index.mjs > api.log 2>&1 &)
+          for i in $(seq 1 30); do curl -sf localhost:8000/health && break; sleep 1; done
+      - name: Smoke test
+        run: cd server && npx tsx scripts/smoke-test.ts
+      - if: failure()
+        run: cat api.log

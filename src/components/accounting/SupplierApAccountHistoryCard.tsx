@@ -4,7 +4,7 @@ import { format, startOfDay, endOfDay } from "date-fns";
 import { CalendarIcon, Download, History, Loader2, RotateCcw } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -86,7 +86,7 @@ export function SupplierApAccountHistoryCard({ supplierId }: { supplierId?: stri
     enabled: !!tenant?.id,
     staleTime: 60_000,
     queryFn: async () => {
-      let query = supabase
+      let query = db
         .from("supplier_ap_account_audit")
         .select(
           "id, supplier_id, supplier_name, account_code, account_name, action, changed_fields, performed_by, created_at",
@@ -111,7 +111,7 @@ export function SupplierApAccountHistoryCard({ supplierId }: { supplierId?: stri
     enabled: actorIds.length > 0,
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("profiles")
         .select("id, full_name")
         .in("id", actorIds);

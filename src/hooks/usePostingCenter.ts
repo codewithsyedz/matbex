@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -45,7 +45,7 @@ export function useUnpostedExpenses(branchId: string | null) {
     queryKey: ["unposted-expenses", tenantId, branchId],
     enabled: !!tenantId,
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("expenses")
         .select(
           `id, expense_date, amount, description, branch_id, account_id,
@@ -65,7 +65,7 @@ export function useUnpostedExpenses(branchId: string | null) {
       // Classify in parallel
       const classified = await Promise.all(
         rows.map(async (r) => {
-          const { data: cls } = await (supabase as any).rpc("classify_unposted_expense", {
+          const { data: cls } = await (db as any).rpc("classify_unposted_expense", {
             p_expense_id: r.id,
           });
           return { ...r, classification: cls } as UnpostedExpense;
@@ -97,7 +97,7 @@ export function useImbalancedExpenses(branchId: string | null) {
     queryKey: ["imbalanced-expenses", tenantId, branchId],
     enabled: !!tenantId,
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("expenses")
         .select(
           `id, expense_date, amount, description, branch_id, status,
@@ -113,7 +113,7 @@ export function useImbalancedExpenses(branchId: string | null) {
       if (error) throw error;
       const ids = (rows ?? []).map((r: any) => r.id);
       if (ids.length === 0) return [];
-      const { data: txns, error: txErr } = await (supabase as any)
+      const { data: txns, error: txErr } = await (db as any)
         .from("account_transactions")
         .select("reference_id, debit, credit, is_voided")
         .eq("reference_type", "expense")
@@ -165,7 +165,7 @@ export function usePostingAudit(branchId: string | null, limit = 100) {
     queryKey: ["posting-audit", tenantId, branchId, limit],
     enabled: !!tenantId,
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("expense_posting_audit")
         .select(
           `id, expense_id, branch_id, action, outcome, reason_code, reason_detail,
@@ -181,7 +181,7 @@ export function usePostingAudit(branchId: string | null, limit = 100) {
       const { data, error } = await q;
       if (error) {
         // Fallback without foreign-key embeds (FK may not be declared explicitly)
-        let q2 = (supabase as any)
+        let q2 = (db as any)
           .from("expense_posting_audit")
           .select(
             `id, expense_id, branch_id, action, outcome, reason_code, reason_detail,
@@ -208,7 +208,7 @@ export function useBulkPostExpenses() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (vars: { branchId: string | null; expenseIds?: string[] }) => {
-      const { data, error } = await (supabase as any).rpc("bulk_post_expenses", {
+      const { data, error } = await (db as any).rpc("bulk_post_expenses", {
         p_tenant_id: tenantId,
         p_branch_id: vars.branchId,
         p_expense_ids: vars.expenseIds ?? null,
@@ -242,7 +242,7 @@ export function useAutoReconcileImbalanced() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: async (branchId: string | null) => {
-      const { data, error } = await (supabase as any).rpc(
+      const { data, error } = await (db as any).rpc(
         "auto_reconcile_imbalanced_expenses",
         { p_tenant_id: tenantId, p_branch_id: branchId }
       );
@@ -267,7 +267,7 @@ export function useAutoReconcileImbalanced() {
 
 /** Post a single expense (used for live progress + retry). */
 export async function postSingleExpense(expenseId: string) {
-  const { data, error } = await (supabase as any).rpc("post_single_expense", {
+  const { data, error } = await (db as any).rpc("post_single_expense", {
     p_expense_id: expenseId,
   });
   if (error) {
@@ -286,7 +286,7 @@ export async function postSingleExpense(expenseId: string) {
 
 /** Auto-reconcile a single imbalanced expense (used for live progress). */
 export async function autoReconcileSingleExpense(expenseId: string) {
-  const { data, error } = await (supabase as any).rpc(
+  const { data, error } = await (db as any).rpc(
     "auto_reconcile_single_expense",
     { p_expense_id: expenseId }
   );
@@ -312,7 +312,7 @@ export function useLatestPostingErrors(expenseIds: string[]) {
     queryKey: ["posting-last-errors", expenseIds.sort().join(",")],
     enabled: expenseIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("expense_posting_audit")
         .select("expense_id, reason_code, reason_detail, outcome, created_at")
         .in("expense_id", expenseIds)
@@ -383,7 +383,7 @@ export function useExplainImbalance(expenseId: string | null) {
     queryKey: ["explain-imbalance", expenseId],
     enabled: !!expenseId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("explain_imbalance", {
+      const { data, error } = await (db as any).rpc("explain_imbalance", {
         p_expense_id: expenseId,
       });
       if (error) throw error;

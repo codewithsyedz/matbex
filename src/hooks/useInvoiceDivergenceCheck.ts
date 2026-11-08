@@ -1,7 +1,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface InvoiceDuplicateGroup {
   description: string;
@@ -44,7 +44,7 @@ export interface InvoiceDivergenceParams {
 export function useInvoiceDivergenceCheck() {
   return useMutation({
     mutationFn: async (params: InvoiceDivergenceParams): Promise<InvoiceDivergenceRow[]> => {
-      const { data, error } = await (supabase as any).rpc("detect_invoice_ledger_divergence", {
+      const { data, error } = await (db as any).rpc("detect_invoice_ledger_divergence", {
         p_branch_id: params.branchId && params.branchId !== "all" ? params.branchId : null,
         p_from: params.from || null,
         p_to: params.to || null,
@@ -102,7 +102,7 @@ export interface BulkInvoiceFixParams {
 export function useBulkInvoiceFix() {
   return useMutation({
     mutationFn: async ({ invoiceIds, dryRun }: BulkInvoiceFixParams): Promise<InvoiceBulkFixRow[]> => {
-      const { data, error } = await (supabase as any).rpc("bulk_fix_invoice_divergence", {
+      const { data, error } = await (db as any).rpc("bulk_fix_invoice_divergence", {
         p_invoice_ids: invoiceIds,
         p_dry_run: dryRun,
       });

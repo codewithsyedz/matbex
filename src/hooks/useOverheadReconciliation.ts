@@ -1,10 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /** Untyped client helper for the daily-overhead / ledger tables. */
-const db = supabase as any;
-
 export type ReconStatus = "matched" | "unposted" | "missing_gl" | "amount_mismatch" | "unbalanced" | "voided";
 
 export interface ReconLine {

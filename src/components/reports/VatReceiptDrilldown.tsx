@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 
@@ -56,13 +56,13 @@ export function VatReceiptDrilldown({ row, fmt, onReconcile }: Props) {
 
   const reassign = useMutation({
     mutationFn: async (nextBranchId: string | null) => {
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from("sales_transactions")
         .update({ branch_id: nextBranchId })
         .eq("id", row.id);
       if (error) throw error;
 
-      await (supabase as any).from("audit_logs").insert({
+      await (db as any).from("audit_logs").insert({
         user_id: user?.id ?? null,
         tenant_id: tenant?.id ?? null,
         action: "sale_branch_reassign",
@@ -88,7 +88,7 @@ export function VatReceiptDrilldown({ row, fmt, onReconcile }: Props) {
     queryKey: ["vat-audit-items", row.id],
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("sales_items")
         .select("id, item_name, quantity, unit_price, total_price")
         .eq("transaction_id", row.id);
@@ -101,7 +101,7 @@ export function VatReceiptDrilldown({ row, fmt, onReconcile }: Props) {
     queryKey: ["vat-audit-trail", row.id],
     staleTime: 30_000,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("audit_logs")
         .select("id, action, created_at, old_data, new_data")
         .eq("entity_id", row.id)

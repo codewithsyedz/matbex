@@ -13,7 +13,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useSuperAdmin } from "@/contexts/SuperAdminContext";
 import { toast } from "sonner";
 import {
@@ -120,7 +120,7 @@ export default function AdminTenantDetails() {
 
     try {
       // Fetch tenant
-      const { data: tenantData, error: tenantError } = await supabase
+      const { data: tenantData, error: tenantError } = await db
         .from("tenants")
         .select("*")
         .eq("id", id)
@@ -131,7 +131,7 @@ export default function AdminTenantDetails() {
       // Fetch plan
       let planData = null;
       if (tenantData.plan_id) {
-        const { data } = await supabase
+        const { data } = await db
           .from("plans")
           .select("id, name, price")
           .eq("id", tenantData.plan_id)
@@ -142,7 +142,7 @@ export default function AdminTenantDetails() {
       setTenant({ ...tenantData, plan: planData, settings: tenantData.settings as Record<string, unknown> || {} });
 
       // Fetch restaurants
-      const { data: restaurantsData } = await supabase
+      const { data: restaurantsData } = await db
         .from("restaurants")
         .select("id, name, status, created_at")
         .eq("tenant_id", id)
@@ -151,7 +151,7 @@ export default function AdminTenantDetails() {
       setRestaurants(restaurantsData || []);
 
       // Fetch users with roles
-      const { data: usersData } = await supabase
+      const { data: usersData } = await db
         .from("user_tenant_roles")
         .select("user_id, role")
         .eq("tenant_id", id);
@@ -159,7 +159,7 @@ export default function AdminTenantDetails() {
       // Fetch profiles for users
       if (usersData && usersData.length > 0) {
         const userIds = usersData.map((u) => u.user_id);
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds);
@@ -172,7 +172,7 @@ export default function AdminTenantDetails() {
       }
 
       // Fetch activity logs
-      const { data: logsData } = await supabase
+      const { data: logsData } = await db
         .from("tenant_activity_logs")
         .select("*")
         .eq("tenant_id", id)
@@ -190,21 +190,21 @@ export default function AdminTenantDetails() {
 
       if (restaurantIds.length > 0) {
         // Total shifts
-        const { count: shiftsCount } = await supabase
+        const { count: shiftsCount } = await db
           .from("shifts")
           .select("*", { count: "exact", head: true })
           .in("restaurant_id", restaurantIds)
           .gte("created_at", thirtyDaysAgo);
 
         // Total sales transactions
-        const { count: transactionsCount } = await supabase
+        const { count: transactionsCount } = await db
           .from("sales_transactions")
           .select("*", { count: "exact", head: true })
           .in("restaurant_id", restaurantIds)
           .gte("created_at", thirtyDaysAgo);
 
         // Total sales value
-        const { data: salesData } = await supabase
+        const { data: salesData } = await db
           .from("sales_transactions")
           .select("total")
           .in("restaurant_id", restaurantIds)
@@ -325,7 +325,7 @@ export default function AdminTenantDetails() {
                 ) return;
                 setResendingCreds(true);
                 try {
-                  const { data, error } = await supabase.functions.invoke(
+                  const { data, error } = await db.functions.invoke(
                     "admin-resend-trial-credentials",
                     { body: { tenant_id: tenant.id } },
                   );

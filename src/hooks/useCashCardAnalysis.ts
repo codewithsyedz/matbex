@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 const num = (value: unknown) => Number(value ?? 0) || 0;
 
@@ -106,7 +106,7 @@ export function useCashCardAnalysis(fromDate: string, toDate: string, branchId: 
     enabled: !!tenant?.id && !!fromDate && !!toDate,
     staleTime: 2 * 60 * 1000,
     queryFn: async (): Promise<CashCardAnalysis> => {
-      const { data, error } = await supabase.rpc("get_cash_card_analysis", {
+      const { data, error } = await db.rpc("get_cash_card_analysis", {
         p_tenant_id: tenant!.id,
         p_from_date: fromDate,
         p_to_date: toDate,

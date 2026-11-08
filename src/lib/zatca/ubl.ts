@@ -598,19 +598,19 @@ export function validateUblXml(xml: string): UblValidationResult {
 export async function uploadZatcaXml(
   args: UploadUblArgs,
 ): Promise<string | null> {
-  const { supabase } = await import("@/integrations/supabase/client");
+  const { db } = await import("@/integrations/db/client");
   try {
     const safe = args.receiptNumber.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${args.restaurantId}/${new Date().getFullYear()}/${safe}.xml`;
     const blob = new Blob([args.xml], { type: "application/xml" });
-    const { error } = await supabase.storage
+    const { error } = await db.storage
       .from("zatca-xml")
       .upload(path, blob, { contentType: "application/xml", upsert: true });
     if (error) {
       console.warn("[zatca] XML upload failed:", error.message);
       return null;
     }
-    const { data: signed } = await supabase.storage
+    const { data: signed } = await db.storage
       .from("zatca-xml")
       .createSignedUrl(path, 60 * 60 * 24 * 365);
     return signed?.signedUrl ?? null;
@@ -624,8 +624,8 @@ export async function writeXmlUrlToSale(args: {
   salesTransactionId: string;
   xmlUrl: string;
 }): Promise<void> {
-  const { supabase } = await import("@/integrations/supabase/client");
-  const { error } = await supabase
+  const { db } = await import("@/integrations/db/client");
+  const { error } = await db
     .from("sales_transactions")
     .update({ zatca_xml_url: args.xmlUrl } as never)
     .eq("id", args.salesTransactionId);

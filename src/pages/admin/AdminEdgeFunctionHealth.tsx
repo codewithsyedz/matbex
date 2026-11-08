@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Activity, AlertTriangle, RefreshCw, Snowflake } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
@@ -41,7 +41,7 @@ export default function AdminEdgeFunctionHealth() {
   const fetchHealth = async () => {
     setLoading(true);
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("edge_function_health_24h")
         .select("*");
       if (error) throw error;
@@ -174,7 +174,7 @@ export default function AdminEdgeFunctionHealth() {
         <CardContent className="text-sm text-muted-foreground space-y-2">
           <p>
             Each instrumented edge function calls <code>withMetrics(name, handler)</code> from
-            <code> supabase/functions/_shared/metrics.ts</code>. The wrapper records duration,
+            <code> server/functions/_shared/metrics.ts</code>. The wrapper records duration,
             status code, cold-start flag, and any thrown error, then writes one row to
             <code> public.edge_function_metrics</code> via the service role — fire-and-forget,
             so the user response is never delayed.

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Bell } from "lucide-react";
 import { Label } from "@/components/ui/label";
@@ -26,7 +26,7 @@ export function ToastPositionSettings() {
     
     setIsUpdating(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("restaurants")
         .update({ toast_position: selectedPosition })
         .eq("id", restaurant.id);

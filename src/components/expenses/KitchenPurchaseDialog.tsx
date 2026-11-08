@@ -9,7 +9,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Loader2, ChefHat, Plus, Trash2, AlertCircle } from "lucide-react";
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useExpenseApproval, PaymentMethod } from "@/hooks/useExpenseApproval";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -56,7 +56,7 @@ export function KitchenPurchaseDialog({ open, onOpenChange }: KitchenPurchaseDia
     queryKey: ['kitchen-purchase-inventory', restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Array<{ id: string; name: string; unit: string | null; unit_cost: number | null; default_cogs_account_id: string | null; current_stock: number | null; units_per_pack: number | null; stock_unit: string | null }>;
-      const sb = supabase as any;
+      const sb = db as any;
       const result = await sb
         .from('inventory_items')
         .select('id, name, unit, unit_cost, default_cogs_account_id, current_stock, units_per_pack, stock_unit')
@@ -73,7 +73,7 @@ export function KitchenPurchaseDialog({ open, onOpenChange }: KitchenPurchaseDia
     queryKey: ['kitchen-purchase-suppliers', restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Array<{ id: string; name: string }>;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('suppliers')
         .select('id, name')
         .eq('restaurant_id', restaurant.id)

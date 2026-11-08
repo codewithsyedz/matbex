@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { parseLedgerValidationError } from "@/lib/ledgerValidationError";
@@ -112,14 +112,14 @@ async function approveAndPostExpenseWithAi(
   // A paid expense cannot post without a funding account (Cash in Hand,
   // Cash in Bank, Petty Cash…). The approver picks it at approval time.
   if (paymentAccountId) {
-    const { error: fundingError } = await supabase
+    const { error: fundingError } = await db
       .from('expenses')
       .update({ payment_account_id: paymentAccountId, funding_source: 'company' })
       .eq('id', expenseId);
     if (fundingError) throw fundingError;
   }
 
-  const { data: approval, error: approvalError } = await supabase.rpc(
+  const { data: approval, error: approvalError } = await db.rpc(
     'approve_expense_for_ai_posting',
     { p_expense_id: expenseId },
   );
@@ -133,7 +133,7 @@ async function approveAndPostExpenseWithAi(
     return { expenseId, posted: true, alreadyPosted: true };
   }
 
-  const { data, error } = await supabase.functions.invoke('generate-expense-journal', {
+  const { data, error } = await db.functions.invoke('generate-expense-journal', {
     body: { expense_id: expenseId },
   });
   if (error) {
@@ -195,7 +195,7 @@ export async function mirrorExpenseToInvoice(params: {
   if (!params.supplierId) return;
   try {
     const invoiceNumber = `EXP-${params.expenseId.slice(0, 8).toUpperCase()}`;
-    const { data: invoice, error } = await supabase
+    const { data: invoice, error } = await db
       .from('purchase_invoices')
       .insert({
         restaurant_id: params.restaurantId,
@@ -219,7 +219,7 @@ export async function mirrorExpenseToInvoice(params: {
       return;
     }
     if (invoice?.id) {
-      await supabase
+      await db
         .from('expenses')
         .update({ purchase_invoice_id: invoice.id })
         .eq('id', params.expenseId);
@@ -236,7 +236,7 @@ export async function mirrorExpenseToInvoice(params: {
           unit_price: li.unit_cost,
           auto_create_purchase: false,
         }));
-        const { error: itemsErr } = await (supabase as any).rpc('replace_invoice_items', {
+        const { error: itemsErr } = await (db as any).rpc('replace_invoice_items', {
           p_invoice_id: invoice.id,
           p_items: rows,
           p_auto_create_purchase: false,
@@ -263,7 +263,7 @@ export function useExpenseApproval() {
     queryFn: async () => {
       if (!tenantId) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('expenses')
         .select(`
           *,
@@ -287,7 +287,7 @@ export function useExpenseApproval() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('expenses')
         .select(`
           *,
@@ -332,7 +332,7 @@ export function useExpenseApproval() {
         }
 
         // Pre-fetch each inventory item once for stock + units_per_pack
-        const sb = supabase as any;
+        const sb = db as any;
         const itemIds = Array.from(new Set(lineItems.map(li => li.inventory_item_id)));
         const { data: items, error: itemsErr } = await sb
           .from('inventory_items')
@@ -357,7 +357,7 @@ export function useExpenseApproval() {
         // 1) Create expense (no inventory_item_id at the header - line items hold the link)
         const effectiveStatus = isCashierOnly ? 'unpaid' : data.status;
 
-        const { data: expenseRow, error: expenseErr } = await supabase
+        const { data: expenseRow, error: expenseErr } = await db
           .from('expenses')
           .insert({
             restaurant_id: restaurant.id,
@@ -387,7 +387,7 @@ export function useExpenseApproval() {
         if (expenseErr) throw expenseErr;
 
         // 2) Post to ledger first so accounting reflects the total
-        const { error: ledgerError } = await supabase.rpc('post_expense_to_ledger', {
+        const { error: ledgerError } = await db.rpc('post_expense_to_ledger', {
           p_expense_id: expenseRow.id,
           p_account_id: data.account_id,
         });
@@ -417,7 +417,7 @@ export function useExpenseApproval() {
             const stockAfter = stockBefore + signedDelta;
 
             // Atomic per-line update + insert
-            const { error: stockError } = await supabase
+            const { error: stockError } = await db
               .from('inventory_items')
               .update({ current_stock: stockAfter, updated_at: new Date().toISOString() })
               .eq('id', item.id);
@@ -468,13 +468,13 @@ export function useExpenseApproval() {
             // Reset to the originally fetched value
             const original = (items || []).find((x: any) => x.id === id);
             if (original) {
-              await supabase
+              await db
                 .from('inventory_items')
                 .update({ current_stock: Number(original.current_stock) || 0, updated_at: new Date().toISOString() })
                 .eq('id', id);
             }
           }
-          await supabase.from('expenses').delete().eq('id', expenseRow.id);
+          await db.from('expenses').delete().eq('id', expenseRow.id);
           throw new Error(`Itemized invoice failed: ${lineErr.message || 'one line item could not be saved'}`);
         }
 
@@ -517,7 +517,7 @@ export function useExpenseApproval() {
       // Create expense with auto-approved status
       const effectiveStatus = isCashierOnly ? 'unpaid' : data.status;
 
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from('expenses')
         .insert({
           restaurant_id: restaurant.id,
@@ -555,7 +555,7 @@ export function useExpenseApproval() {
       if (error) throw error;
 
       // Auto-post to ledger
-      const { error: ledgerError } = await supabase
+      const { error: ledgerError } = await db
         .rpc('post_expense_to_ledger', {
           p_expense_id: result.id,
           p_account_id: data.account_id,
@@ -573,7 +573,7 @@ export function useExpenseApproval() {
 
       // Adjust inventory stock if expense is linked to an inventory item
       if (data.inventory_item_id && data.quantity && data.quantity > 0) {
-        const sb = supabase as any;
+        const sb = db as any;
         const { data: item, error: fetchItemError } = await sb
           .from('inventory_items')
           .select('name, current_stock, units_per_pack')
@@ -591,7 +591,7 @@ export function useExpenseApproval() {
           const stockBefore = Number(item.current_stock);
           const stockAfter = stockBefore + signedDelta;
 
-          const { error: stockError } = await supabase
+          const { error: stockError } = await db
             .from('inventory_items')
             .update({ current_stock: stockAfter, updated_at: new Date().toISOString() })
             .eq('id', data.inventory_item_id);
@@ -752,7 +752,7 @@ export function useExpenseApproval() {
       if (!isManager && !isOwner) throw new Error('Manager or Owner role required');
       if (!reason.trim()) throw new Error('Rejection reason is mandatory');
 
-      const { error } = await supabase
+      const { error } = await db
         .from('expenses')
         .update({
           approval_status: 'rejected',

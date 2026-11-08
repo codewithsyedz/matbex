@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { qk } from "@/lib/query/queryKeys";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useBranch } from "@/contexts/BranchContext";
@@ -91,7 +91,7 @@ export function SalesRecorder() {
     queryKey: ["menu-items-for-sale", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -122,7 +122,7 @@ export function SalesRecorder() {
     queryKey: ["active-shifts-for-sale", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id, opened_at, drawer_id")
         .eq("restaurant_id", restaurant.id)
@@ -152,7 +152,7 @@ export function SalesRecorder() {
       const receiptNumber = `RCP-${Date.now()}`;
 
       // ── Offline guardrail ────────────────────────────────────────────
-      // If the device is offline, do NOT attempt direct Supabase inserts
+      // If the device is offline, do NOT attempt direct the API inserts
       // - fetch() has no timeout in most browsers and the Pay button
       // would spin forever. Queue the sale to IndexedDB instead; the
       // sync engine drains it when connectivity returns.
@@ -188,7 +188,7 @@ export function SalesRecorder() {
 
       if (paymentMethod === "card" && posSettings?.hala_enabled) {
         toast.info("Sending amount to Hala terminal...", { id: "hala-charge" });
-        const { data, error } = await supabase.functions.invoke("charge-hala-card", {
+        const { data, error } = await db.functions.invoke("charge-hala-card", {
           body: {
             amount: total,
             currency: "SAR",
@@ -242,7 +242,7 @@ export function SalesRecorder() {
         txPayload.hala_charged_at = new Date().toISOString();
       }
 
-      const { data: transaction, error: txError } = await supabase
+      const { data: transaction, error: txError } = await db
         .from("sales_transactions")
         .insert([txPayload as never])
         .select()
@@ -260,7 +260,7 @@ export function SalesRecorder() {
         restaurant_id: restaurant.id,
       }));
 
-      const { error: itemsError } = await supabase.from("sales_items").insert(salesItems);
+      const { error: itemsError } = await db.from("sales_items").insert(salesItems);
 
       if (itemsError) throw itemsError;
       // Note: result type is widened by the offline branch above; the
@@ -269,7 +269,7 @@ export function SalesRecorder() {
 
       // Create cash_event for shift tracking (all payment methods)
       if (shiftId) {
-        await supabase.from("cash_events").insert({
+        await db.from("cash_events").insert({
           shift_id: shiftId,
           restaurant_id: restaurant.id,
           event_type: "sale",
@@ -283,7 +283,7 @@ export function SalesRecorder() {
       // Auto-deduct inventory based on recipe ingredients
       const menuItemIds = cart.map((item) => item.menuItemId);
       
-      const { data: recipeIngredients, error: recipeError } = await supabase
+      const { data: recipeIngredients, error: recipeError } = await db
         .from("recipe_ingredients")
         .select("menu_item_id, inventory_item_id, quantity_required")
         .eq("restaurant_id", restaurant.id)
@@ -309,7 +309,7 @@ export function SalesRecorder() {
 
         const inventoryIds = Array.from(usageMap.keys());
         if (inventoryIds.length > 0) {
-          const { data: inventoryItems, error: invError } = await supabase
+          const { data: inventoryItems, error: invError } = await db
             .from("inventory_items")
             .select("id, name, current_stock, unit_cost, reorder_level")
             .in("id", inventoryIds);
@@ -367,7 +367,7 @@ export function SalesRecorder() {
             }
 
             if (usageRecords.length > 0) {
-              const { error: usageError } = await supabase
+              const { error: usageError } = await db
                 .from("inventory_usage")
                 .insert(usageRecords);
               if (usageError) {
@@ -376,7 +376,7 @@ export function SalesRecorder() {
             }
 
             for (const update of stockUpdates) {
-              await supabase
+              await db
                 .from("inventory_items")
                 .update({ current_stock: update.newStock })
                 .eq("id", update.id);
@@ -384,7 +384,7 @@ export function SalesRecorder() {
 
             if (reorderRequests.length > 0) {
               for (const request of reorderRequests) {
-                const { data: existingRequest } = await supabase
+                const { data: existingRequest } = await db
                   .from("reorder_requests")
                   .select("id")
                   .eq("inventory_item_id", request.inventory_item_id)
@@ -392,7 +392,7 @@ export function SalesRecorder() {
                   .maybeSingle();
 
                 if (!existingRequest) {
-                  await supabase.from("reorder_requests").insert(request);
+                  await db.from("reorder_requests").insert(request);
                 }
               }
             }

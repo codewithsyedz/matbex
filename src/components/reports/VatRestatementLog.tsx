@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { BranchBadge } from "@/components/branch/BranchBadge";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import { roundMoney } from "@/lib/vatInclusive";
 
@@ -64,7 +64,7 @@ export function VatRestatementLog({ tenantId, branchId, from, to, branchNameById
     queryKey: ["vat-restatement-log", tenantId, branchId, from?.toISOString(), to?.toISOString()],
     enabled: !!tenantId,
     queryFn: async (): Promise<RestatementRow[]> => {
-      let batchQ = supabase
+      let batchQ = db
         .from("journal_entry_batches")
         .select("id, batch_date, description, branch_id, created_at, entry_type, is_posted")
         .eq("tenant_id", tenantId as string)
@@ -79,7 +79,7 @@ export function VatRestatementLog({ tenantId, branchId, from, to, branchNameById
       if (!batches || batches.length === 0) return [];
 
       const batchIds = batches.map((b: any) => b.id);
-      const { data: lines, error: lineErr } = await supabase
+      const { data: lines, error: lineErr } = await db
         .from("account_transactions")
         .select("batch_id, debit, credit, account_id, chart_of_accounts(account_code, account_name)")
         .in("batch_id", batchIds)
@@ -88,7 +88,7 @@ export function VatRestatementLog({ tenantId, branchId, from, to, branchNameById
 
       // Original daily-sales / night-shift postings on the same date + branch.
       const dates = Array.from(new Set(batches.map((b: any) => b.batch_date)));
-      let origQ = supabase
+      let origQ = db
         .from("journal_entry_batches")
         .select("id, batch_date, branch_id, description, entry_type, is_posted")
         .eq("tenant_id", tenantId as string)
@@ -101,7 +101,7 @@ export function VatRestatementLog({ tenantId, branchId, from, to, branchNameById
       const origIds = (origBatches ?? []).map((b: any) => b.id);
       let origLines: any[] = [];
       if (origIds.length > 0) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("account_transactions")
           .select("batch_id, debit, credit, chart_of_accounts(account_code, account_name)")
           .in("batch_id", origIds)

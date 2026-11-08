@@ -7,7 +7,7 @@ import { FileText, Users, ArrowRight, AlertTriangle } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 
@@ -38,7 +38,7 @@ export function PendingSettlementsCard() {
       }
 
       // Server-side aggregation: 1 row instead of 3 unbounded list queries.
-      const { data, error } = await (supabase as any).rpc("dashboard_settlements_summary", {
+      const { data, error } = await (db as any).rpc("dashboard_settlements_summary", {
         p_restaurant_id: restaurant.id,
         p_branch_id: activeBranchId,
       });

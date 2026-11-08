@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useToast } from "@/hooks/use-toast";
 
 export interface CMSPage {
@@ -35,7 +35,7 @@ export function useCMSPages() {
   return useQuery({
     queryKey: ["cms-pages"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cms_pages")
         .select("*")
         .order("title");
@@ -50,7 +50,7 @@ export function useCMSPage(slug: string) {
   return useQuery({
     queryKey: ["cms-page", slug],
     queryFn: async () => {
-      const { data: page, error: pageError } = await supabase
+      const { data: page, error: pageError } = await db
         .from("cms_pages")
         .select("*")
         .eq("slug", slug)
@@ -59,7 +59,7 @@ export function useCMSPage(slug: string) {
       if (pageError) throw pageError;
       if (!page) return null;
 
-      const { data: blocks, error: blocksError } = await supabase
+      const { data: blocks, error: blocksError } = await db
         .from("cms_page_blocks")
         .select("*")
         .eq("page_id", page.id)
@@ -81,7 +81,7 @@ export function useCMSPageBlocks(pageId: string) {
   return useQuery({
     queryKey: ["cms-page-blocks", pageId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cms_page_blocks")
         .select("*")
         .eq("page_id", pageId)
@@ -100,7 +100,7 @@ export function useUpdateCMSPage() {
 
   return useMutation({
     mutationFn: async ({ id, ...updates }: Partial<CMSPage> & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("cms_pages")
         .update(updates)
         .eq("id", id);
@@ -124,7 +124,7 @@ export function useCreateCMSBlock() {
 
   return useMutation({
     mutationFn: async (block: Omit<CMSPageBlock, "id" | "created_at" | "updated_at">) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cms_page_blocks")
         .insert(block)
         .select()
@@ -150,7 +150,7 @@ export function useUpdateCMSBlock() {
 
   return useMutation({
     mutationFn: async ({ id, page_id, ...updates }: Partial<CMSPageBlock> & { id: string; page_id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("cms_page_blocks")
         .update(updates)
         .eq("id", id);
@@ -175,7 +175,7 @@ export function useDeleteCMSBlock() {
 
   return useMutation({
     mutationFn: async ({ id, page_id }: { id: string; page_id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("cms_page_blocks")
         .delete()
         .eq("id", id);
@@ -200,7 +200,7 @@ export function useReorderCMSBlocks() {
   return useMutation({
     mutationFn: async ({ blocks, page_id }: { blocks: { id: string; sort_order: number }[]; page_id: string }) => {
       const updates = blocks.map(({ id, sort_order }) =>
-        supabase
+        db
           .from("cms_page_blocks")
           .update({ sort_order })
           .eq("id", id)

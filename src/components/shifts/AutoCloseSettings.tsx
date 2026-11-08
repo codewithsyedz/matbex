@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -45,7 +45,7 @@ export function AutoCloseSettings() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shift_templates")
         .select("id, name, start_time, end_time, auto_close_enabled, auto_close_time, default_closing_amount")
         .eq("restaurant_id", restaurant.id)
@@ -70,7 +70,7 @@ export function AutoCloseSettings() {
   const handleToggle = async (templateId: string, enabled: boolean) => {
     setSaving(templateId);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("shift_templates")
         .update({ auto_close_enabled: enabled })
         .eq("id", templateId);
@@ -91,7 +91,7 @@ export function AutoCloseSettings() {
   const handleUpdate = async (template: ShiftTemplate) => {
     setSaving(template.id);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("shift_templates")
         .update({
           auto_close_time: template.auto_close_time + ":00",

@@ -98,8 +98,8 @@ function CodeBlock({ code, language = "bash" }: { code: string; language?: strin
 export default function AdminKsaSetupGuide() {
   const navigate = useNavigate();
 
-  const envSnippet = `VITE_SUPABASE_KSA_URL=https://<ksa-project-ref>.supabase.co
-VITE_SUPABASE_KSA_PUBLISHABLE_KEY=<ksa-anon-key>`;
+  const envSnippet = `VITE_API_URL_KSA=https://api.sa.matbex.com
+VITE_API_KEY_KSA=<ksa-deployment-anon-key>`;
 
   const schemaCheckSql = `SELECT column_name, data_type
 FROM information_schema.columns
@@ -149,93 +149,50 @@ WHERE table_name = 'tenants'
         </Alert>
 
         <div className="space-y-5">
-          <StepCard number={1} title="Create the KSA Supabase project" icon={Server}>
+          <StepCard number={1} title="Provision the KSA deployment" icon={Server}>
             <ol className="space-y-3 text-sm text-muted-foreground list-decimal list-inside">
               <li>
-                Open your Supabase dashboard and click{" "}
-                <strong className="text-foreground">New Project</strong>.
-              </li>
-              <li>
-                Select your KSA-based organization (or create one) and choose the
-                region{" "}
+                Create a PostgreSQL 16 instance and a VM/container host in a Saudi region (e.g.{" "}
                 <Badge variant="secondary" className="text-[10px] font-mono">
-                  Middle East (me-central2)
-                </Badge>
-                — this is the Riyadh region.
+                  me-central2
+                </Badge>{" "}
+                Riyadh, or an in-Kingdom provider).
               </li>
               <li>
-                Give the project a clear name, e.g.{" "}
-                <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">
-                  matbex-ksa-prod
-                </code>
-                , set a strong database password, and create it.
+                Deploy the Matbex stack there with{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">docker compose up -d</code>{" "}
+                (API, PostgREST, object storage) using its own <code className="text-xs font-mono">.env</code>.
               </li>
-              <li>
-                Wait for provisioning to finish (usually 1–2 minutes).
-              </li>
+              <li>Point a hostname such as <code className="text-xs font-mono">api.sa.matbex.com</code> at it.</li>
             </ol>
             <div className="mt-3 flex items-center gap-2 rounded-lg bg-muted/50 p-3">
               <MapPin className="h-4 w-4 text-emerald-600" />
               <span className="text-xs text-muted-foreground">
-                Project location must be{" "}
-                <strong className="text-foreground">me-central2</strong> (Riyadh)
-                for full KSA data-residency compliance.
+                Database, object storage and backups must all stay in-Kingdom for full KSA data-residency compliance.
               </span>
             </div>
           </StepCard>
 
           <StepCard number={2} title="Apply the same schema" icon={Terminal}>
             <p className="text-sm text-muted-foreground">
-              The KSA project must share the same database schema as the global
-              project so tenants can migrate seamlessly. You have two options:
+              The KSA database uses the exact same migrations as the global one. Run the migration runner against it:
             </p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-lg border border-border/40 p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span className="text-sm font-medium">Option A — Migrations</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Run the same migration files you ran on the global project, in
-                  order, on the new KSA project.
-                </p>
-              </div>
-              <div className="rounded-lg border border-border/40 p-3">
-                <div className="flex items-center gap-2 mb-2">
-                  <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                  <span className="text-sm font-medium">Option B — pg_dump</span>
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Dump the global DB schema (no data) and restore it into the KSA
-                  project, then run any post-migration seeders.
-                </p>
-              </div>
-            </div>
             <CodeBlock
               language="bash"
-              code={`# Quick schema-only dump example
-pg_dump --schema-only --no-owner --no-privileges \\
-  "postgresql://user:pass@global-db:5432/postgres" > schema.sql
-
-# Restore into KSA project
-psql "postgresql://user:pass@ksa-db:5432/postgres" -f schema.sql`}
+              code={`DATABASE_URL="postgresql://user:pass@ksa-db:5432/matbex" \\
+AUTHENTICATOR_PASSWORD=... npm run db:migrate`}
             />
           </StepCard>
 
-          <StepCard number={3} title="Collect KSA project credentials" icon={KeyRound}>
+          <StepCard number={3} title="Collect KSA deployment credentials" icon={KeyRound}>
             <ol className="space-y-3 text-sm text-muted-foreground list-decimal list-inside">
               <li>
-                In the KSA project, go to{" "}
-                <strong className="text-foreground">Settings → API</strong>.
+                Generate keys for the KSA deployment with{" "}
+                <code className="rounded bg-muted px-1 py-0.5 text-xs font-mono">npm --prefix server run keys</code>.
               </li>
               <li>
-                Copy the{" "}
-                <strong className="text-foreground">Project URL</strong> and the{" "}
-                <strong className="text-foreground">anon public</strong> API
-                key.
-              </li>
-              <li>
-                Keep them in a secure place — you will need them in the next step.
+                Note the public <strong className="text-foreground">API URL</strong> and the{" "}
+                <strong className="text-foreground">ANON_KEY</strong>.
               </li>
             </ol>
             <div className="mt-3 rounded-lg border border-border/40 p-3">
@@ -245,7 +202,7 @@ psql "postgresql://user:pass@ksa-db:5432/postgres" -f schema.sql`}
               <div className="space-y-1.5 font-mono text-xs">
                 <div className="flex items-center justify-between rounded bg-muted px-2 py-1">
                   <span className="text-muted-foreground">URL</span>
-                  <span className="text-foreground">https://&lt;ref&gt;.supabase.co</span>
+                  <span className="text-foreground">https://api.sa.matbex.com</span>
                 </div>
                 <div className="flex items-center justify-between rounded bg-muted px-2 py-1">
                   <span className="text-muted-foreground">anon key</span>
@@ -266,7 +223,7 @@ psql "postgresql://user:pass@ksa-db:5432/postgres" -f schema.sql`}
               <ShieldCheck className="h-4 w-4 text-emerald-600 mt-0.5 shrink-0" />
               <div className="text-xs text-muted-foreground space-y-1">
                 <p>
-                  <strong className="text-foreground">Lovable Cloud tip:</strong>{" "}
+                  <strong className="text-foreground">Deployment tip:</strong>{" "}
                   These are build-time variables. Add them in your deployment
                   dashboard (e.g., Vercel → Project Settings → Environment
                   Variables), then redeploy.

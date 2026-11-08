@@ -12,7 +12,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Scale, RefreshCw, Download, TriangleAlert, CheckCircle2 } from "lucide-react";
 import { useTranslation } from "react-i18next";
@@ -71,7 +71,7 @@ export default function DailyReconciliationReport() {
     queryKey: ["daily-reconciliation", restaurant?.id, from, to],
     enabled: !!restaurant?.id && canView,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("daily_reconciliation_reports")
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -85,7 +85,7 @@ export default function DailyReconciliationReport() {
 
   const rerun = useMutation({
     mutationFn: async () => {
-      const { data, error } = await (supabase as any).rpc("rerun_daily_reconciliation_range", {
+      const { data, error } = await (db as any).rpc("rerun_daily_reconciliation_range", {
         p_restaurant_id: restaurant!.id,
         p_from: from,
         p_to: to,

@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   normaliseMonitorStats,
@@ -47,7 +47,7 @@ export function useSalePostingMonitor({ from, to, branchId }: Params) {
     enabled: !!restaurantId,
     refetchInterval: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("sale_posting_monitor" as never, {
+      const { data, error } = await db.rpc("sale_posting_monitor" as never, {
         _restaurant_id: restaurantId,
         _from: from,
         _to: to,
@@ -62,7 +62,7 @@ export function useSalePostingMonitor({ from, to, branchId }: Params) {
     queryKey: ["sale-posting-failures", restaurantId, from, to, branchId ?? null],
     enabled: !!restaurantId,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("sale_posting_failures" as never)
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -81,7 +81,7 @@ export function useSalePostingMonitor({ from, to, branchId }: Params) {
     queryKey: ["sale-posting-replays", restaurantId, from, to],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_idempotency_keys")
         .select("idempotency_key, terminal_uid, entity_type, shift_id, replay_count, last_replay_at, created_at" as never)
         .eq("restaurant_id", restaurantId)
@@ -97,7 +97,7 @@ export function useSalePostingMonitor({ from, to, branchId }: Params) {
 
   const resolve = useMutation({
     mutationFn: async (failureId: string) => {
-      const { error } = await supabase.rpc("resolve_sale_posting_failure" as never, {
+      const { error } = await db.rpc("resolve_sale_posting_failure" as never, {
         _failure_id: failureId,
       } as never);
       if (error) throw error;

@@ -8,7 +8,7 @@
  * to this tenant - preventing a user from one workspace accidentally signing
  * in on a device paired to another.
  */
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 const STORAGE_KEY = "apk_device_tenant_v1";
 
@@ -50,7 +50,7 @@ export async function resolveTenantCode(code: string): Promise<DeviceTenant> {
   const slug = code.trim().toLowerCase();
   if (!slug) throw new Error("Enter a tenant code");
 
-  const { data, error } = await supabase.functions.invoke("resolve-tenant-code", {
+  const { data, error } = await db.functions.invoke("resolve-tenant-code", {
     body: { code: slug },
   });
 

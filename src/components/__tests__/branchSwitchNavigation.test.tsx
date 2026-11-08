@@ -26,7 +26,7 @@ vi.mock("@/contexts/AuthContext", () => ({
   }),
 }));
 
-vi.mock("@/integrations/supabase/client", () => {
+vi.mock("@/integrations/db/client", () => {
   const branches = [
     {
       id: "branch-existing",
@@ -54,7 +54,7 @@ vi.mock("@/integrations/supabase/client", () => {
       Promise.resolve({ data: branches, error: null }).then(resolve),
   };
   return {
-    supabase: { from: () => chain },
+    db: { from: () => chain },
   };
 });
 

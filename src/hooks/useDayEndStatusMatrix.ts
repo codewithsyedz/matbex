@@ -2,11 +2,8 @@ import { useEffect, useRef } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { endOfMonth, format, startOfMonth } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
-
-const db = supabase as any;
-
 export type DayEndStatus =
   | "open"
   | "draft"
@@ -155,7 +152,7 @@ export function useDayEndStatusMatrix({ month, branchIds }: Args) {
       timer = setTimeout(() => invalidateRef.current(), 600);
     };
 
-    const channel = supabase.channel(`day-end-status-${tenantId}`);
+    const channel = db.channel(`day-end-status-${tenantId}`);
     ["daily_sales_summary", "day_end_adjustments", "daily_overhead_closures", "journal_entry_batches"].forEach(
       (table) => {
         channel.on(
@@ -169,7 +166,7 @@ export function useDayEndStatusMatrix({ month, branchIds }: Args) {
 
     return () => {
       if (timer) clearTimeout(timer);
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [tenantId]);
 

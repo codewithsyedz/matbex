@@ -14,7 +14,7 @@
  *   to itself cause a render error.
  * - Per-fingerprint cooldown (60s) prevents a tight loop from flooding.
  */
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 type Severity = "warning" | "error" | "fatal";
 
@@ -59,10 +59,10 @@ function safeRoute(): string | null {
 
 async function currentUserAndTenant() {
   try {
-    const { data } = await supabase.auth.getSession();
+    const { data } = await db.auth.getSession();
     const userId = data.session?.user?.id ?? null;
     if (!userId) return { userId: null, tenantId: null };
-    const { data: profile } = await supabase
+    const { data: profile } = await db
       .from("profiles")
       .select("tenant_id")
       .eq("id", userId)
@@ -100,8 +100,7 @@ export async function reportClientError(
       context: opts.context ?? null,
       severity: opts.severity ?? "error",
     };
-    // @ts-expect-error - generated Database types lag the new table by one regen
-    await supabase.from("client_errors").insert(payload);
+    await db.from("client_errors").insert(payload);
   } catch {
     /* never let the reporter itself throw */
   }
@@ -110,7 +109,7 @@ export async function reportClientError(
 /** Wire window-level handlers exactly once. Safe to call multiple times. */
 let installed = false;
 
-const CHUNK_RELOAD_FLAG = "lovable:chunk-reload-at";
+const CHUNK_RELOAD_FLAG = "matbex:chunk-reload-at";
 const CHUNK_RELOAD_COOLDOWN_MS = 30_000;
 
 function isChunkLoadError(err: Error): boolean {

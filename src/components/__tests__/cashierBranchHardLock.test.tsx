@@ -35,7 +35,7 @@ vi.mock("@/contexts/AuthContext", async () => {
   };
 });
 
-vi.mock("@/integrations/supabase/client", () => {
+vi.mock("@/integrations/db/client", () => {
   const branches = [
     {
       id: "branch-A",
@@ -84,7 +84,7 @@ vi.mock("@/integrations/supabase/client", () => {
   }
 
   return {
-    supabase: {
+    db: {
       from: (table: string) => {
         if (table === "branches") return makeBranchesChain();
         if (table === "staff") return makeStaffChain();

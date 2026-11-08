@@ -8,7 +8,7 @@
  * below for legitimate exceptions like internal queue/staging tables).
  *
  * The "list of tenant-scoped public tables" comes from the generated
- * `src/integrations/supabase/types.ts`, so it stays current with the
+ * `src/integrations/db/types.ts`, so it stays current with the
  * schema automatically — no manual list to maintain.
  */
 import { describe, it, expect } from "vitest";
@@ -16,7 +16,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 
 const REPO_ROOT = process.cwd();
-const TYPES_PATH = join(REPO_ROOT, "src/integrations/supabase/types.ts");
+const TYPES_PATH = join(REPO_ROOT, "src/integrations/db/types.ts");
 const TENANT_TEST_PATH = join(
   REPO_ROOT,
   "src/lib/__tests__/rlsTenantIsolation.contract.test.ts",

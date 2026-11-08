@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
 import { CalendarClock, Send } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { leadAttributionPayload, trackAdLead } from "@/lib/adConsent";
 import { Input } from "@/components/ui/input";
@@ -76,7 +76,7 @@ export default function BookDemo() {
     setSubmitting(true);
     const params = new URLSearchParams(window.location.search);
     try {
-    const { data, error } = await supabase.functions.invoke("send-contact-enquiry", {
+    const { data, error } = await db.functions.invoke("send-contact-enquiry", {
       body: {
         ...parsed.data,
         kind: "demo",

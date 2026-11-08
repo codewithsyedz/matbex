@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Search, Shield, User, Building2, Settings2, Users } from "lucide-react";
 import { format } from "date-fns";
@@ -53,7 +53,7 @@ export default function AdminAuditLogs() {
 
   const fetchLogs = async () => {
     try {
-      const { data: logsData, error } = await supabase
+      const { data: logsData, error } = await db
         .from("audit_logs")
         .select("*")
         .order("created_at", { ascending: false })
@@ -67,10 +67,10 @@ export default function AdminAuditLogs() {
 
       const [{ data: profiles }, { data: tenants }] = await Promise.all([
         userIds.length > 0
-          ? supabase.from("profiles").select("id, full_name").in("id", userIds)
+          ? db.from("profiles").select("id, full_name").in("id", userIds)
           : { data: [] },
         tenantIds.length > 0
-          ? supabase.from("tenants").select("id, name").in("id", tenantIds)
+          ? db.from("tenants").select("id, name").in("id", tenantIds)
           : { data: [] },
       ]);
 

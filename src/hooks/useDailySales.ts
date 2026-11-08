@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -135,7 +135,7 @@ export function useDailySales(date?: string) {
     queryFn: async (): Promise<DailySalesSummary | null> => {
       if (!restaurant?.id || !date) return null;
 
-      let q = supabase
+      let q = db
         .from('daily_sales_summary')
         .select('*')
         .eq('restaurant_id', restaurant.id)
@@ -156,7 +156,7 @@ export function useDailySales(date?: string) {
       if (!restaurant?.id || !date) return 0;
 
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(`${date}T12:00:00Z`), tz);
-      let q = supabase
+      let q = db
         .from('sales_transactions')
         .select('total')
         .eq('restaurant_id', restaurant.id)
@@ -195,7 +195,7 @@ export function useDailySales(date?: string) {
       if (!restaurant?.id || !date) return empty;
 
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(`${date}T12:00:00Z`), tz);
-      let q = supabase
+      let q = db
         .from('sales_transactions')
         .select('id,receipt_number,total,payment_method,created_at')
         .eq('restaurant_id', restaurant.id)
@@ -249,7 +249,7 @@ export function useDailySales(date?: string) {
 
       // Calculate system total
       const { start: cStart, endExclusive: cEnd } = getRestaurantDayBoundsUTC(new Date(`${data.sales_date}T12:00:00Z`), tz);
-      let txQ = supabase
+      let txQ = db
         .from('sales_transactions')
         .select('total')
         .eq('restaurant_id', restaurant.id)
@@ -260,7 +260,7 @@ export function useDailySales(date?: string) {
       
       const systemCalcTotal = txData?.reduce((sum, t) => sum + (Number(t.total) || 0), 0) || 0;
 
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from('daily_sales_summary')
         .insert({
           tenant_id: tenant.id,
@@ -283,7 +283,7 @@ export function useDailySales(date?: string) {
 
       // Create delivery breakdown if provided
       if (data.delivery_breakdown && data.delivery_breakdown.length > 0) {
-        const { error: breakdownError } = await supabase
+        const { error: breakdownError } = await db
           .from('daily_delivery_breakdown')
           .insert(
             data.delivery_breakdown.map(b => ({
@@ -324,7 +324,7 @@ export function useDailySales(date?: string) {
       // variance shown on the day-end screen is computed against stale data.
       let systemCalcTotal: number | undefined;
       if (restaurant?.id) {
-        const { data: existing } = await supabase
+        const { data: existing } = await db
           .from('daily_sales_summary')
           .select('sales_date, branch_id')
           .eq('id', id)
@@ -334,7 +334,7 @@ export function useDailySales(date?: string) {
             new Date(`${existing.sales_date}T12:00:00Z`),
             tz,
           );
-          let sysQ = supabase
+          let sysQ = db
             .from('sales_transactions')
             .select('total')
             .eq('restaurant_id', restaurant.id)
@@ -347,7 +347,7 @@ export function useDailySales(date?: string) {
         }
       }
 
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from('daily_sales_summary')
         .update({
           ...updateData,
@@ -387,7 +387,7 @@ export function useDailySales(date?: string) {
         updatePayload.variance_status = 'resolved';
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('daily_sales_summary')
         .update(updatePayload)
         .eq('id', id)
@@ -428,7 +428,7 @@ export function useDeliveryBreakdown(dailySalesId?: string) {
     queryFn: async () => {
       if (!dailySalesId) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('daily_delivery_breakdown')
         .select('*')
         .eq('daily_sales_id', dailySalesId)

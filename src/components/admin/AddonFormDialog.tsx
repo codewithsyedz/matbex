@@ -21,7 +21,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
 import type { Addon, AddonBillingType } from "@/hooks/useAddons";
@@ -138,8 +138,8 @@ export function AddonFormDialog({ open, onOpenChange, addon, onSaved }: Props) {
       };
 
       const { error } = addon
-        ? await supabase.from("addons" as any).update(payload).eq("id", addon.id)
-        : await supabase.from("addons" as any).insert(payload);
+        ? await db.from("addons" as any).update(payload).eq("id", addon.id)
+        : await db.from("addons" as any).insert(payload);
 
       if (error) throw error;
       toast.success(addon ? "Addon updated" : "Addon created");

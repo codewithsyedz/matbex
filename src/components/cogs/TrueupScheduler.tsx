@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export function TrueupScheduler() {
     queryKey: ["cogs-trueup-schedules", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cogs_trueup_schedules" as any)
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -50,7 +50,7 @@ export function TrueupScheduler() {
 
   const create = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.from("cogs_trueup_schedules" as any).insert({
+      const { error } = await db.from("cogs_trueup_schedules" as any).insert({
         tenant_id: tenantId,
         restaurant_id: restaurantId,
         frequency: draft.frequency,
@@ -72,7 +72,7 @@ export function TrueupScheduler() {
 
   const toggle = useMutation({
     mutationFn: async ({ id, enabled }: { id: string; enabled: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("cogs_trueup_schedules" as any).update({ enabled }).eq("id", id);
       if (error) throw error;
     },
@@ -81,7 +81,7 @@ export function TrueupScheduler() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("cogs_trueup_schedules" as any).delete().eq("id", id);
       if (error) throw error;
     },

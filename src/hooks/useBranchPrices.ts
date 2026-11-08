@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { STORES, getAll, put } from "@/lib/offline/db";
 import { isOnline } from "@/lib/offline/connectivity";
 import { useAuth } from "@/contexts/AuthContext";
@@ -57,7 +57,7 @@ export function useBranchPrices(branchId: string | null | undefined, date?: stri
 
       if (!isOnline()) return fromCache();
 
-      const { data, error } = await supabase.rpc("get_branch_menu_prices", {
+      const { data, error } = await db.rpc("get_branch_menu_prices", {
         _branch_id: branchId,
         _at: day,
       });
@@ -84,7 +84,7 @@ export function useBranchPrices(branchId: string | null | undefined, date?: stri
   // refreshes the Menu/POS price map without a manual reload.
   useEffect(() => {
     if (!branchId) return;
-    const channel = supabase
+    const channel = db
       .channel(`branch-prices-${branchId}`)
       .on(
         "postgres_changes",
@@ -99,7 +99,7 @@ export function useBranchPrices(branchId: string | null | undefined, date?: stri
         },
       )
       .subscribe();
-    return () => { void supabase.removeChannel(channel); };
+    return () => { void db.removeChannel(channel); };
   }, [branchId, qc]);
 
   return { priceMap: query.data || {}, isLoading: query.isLoading, refetch: query.refetch };

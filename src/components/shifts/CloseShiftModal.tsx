@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   Dialog,
   DialogContent,
@@ -157,7 +157,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
     
     setLoadingData(true);
     try {
-      const { data: eventsData } = await supabase
+      const { data: eventsData } = await db
         .from("cash_events")
         .select("*")
         .eq("shift_id", shift.id);
@@ -167,7 +167,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
       // Load inventory-linked expenses created during this shift window
       // (uses created_at between shift open and now)
       try {
-        const sb = supabase as any;
+        const sb = db as any;
         const shiftEndIso = new Date().toISOString();
         const { data: movs } = await sb
           .from('stock_movements')
@@ -183,7 +183,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
           .map((m: any) => m.reference_id);
         let expenseAmounts: Record<string, number> = {};
         if (expenseIds.length > 0) {
-          const { data: exps } = await supabase
+          const { data: exps } = await db
             .from('expenses')
             .select('id, amount')
             .in('id', expenseIds);
@@ -228,7 +228,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
     setLoading(true);
     try {
       // Close the shift with variance explanation
-      const { error } = await supabase
+      const { error } = await db
         .from("shifts")
         .update({
           status: "closed",

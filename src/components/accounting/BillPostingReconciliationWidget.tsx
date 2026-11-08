@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { Link } from "react-router-dom";
 import { AlertTriangle, CheckCircle2, FileWarning, Scale, ShieldAlert } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,7 @@ export function BillPostingReconciliationWidget({ from, to, branchId }: Props) {
   const { data, isLoading } = useQuery({
     queryKey: ["bill-posting-reconciliation", fromStr, toStr, branchId ?? "all"],
     queryFn: async (): Promise<Flagged[]> => {
-      let expenseQuery = supabase
+      let expenseQuery = db
         .from("expenses")
         .select("id, description, amount, expense_date, status, branch_id, deleted_at")
         .gte("expense_date", fromStr)
@@ -77,12 +77,12 @@ export function BillPostingReconciliationWidget({ from, to, branchId }: Props) {
 
       for (const part of chunk(ids, 200)) {
         const [legRes, auditRes] = await Promise.all([
-          supabase
+          db
             .from("account_transactions")
             .select("reference_id, debit, credit, is_voided")
             .eq("reference_type", "expense")
             .in("reference_id", part),
-          supabase
+          db
             .from("expense_posting_audit")
             .select("expense_id, outcome, reason_code, reason_detail, created_at")
             .in("expense_id", part),

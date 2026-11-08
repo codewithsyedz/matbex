@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /**
@@ -25,7 +25,7 @@ export function useAccountOpeningBalance(
       let debit = 0;
       let credit = 0;
       while (true) {
-        let q = supabase
+        let q = db
           .from("account_transactions")
           .select("debit, credit")
           .eq("tenant_id", tenantId!)

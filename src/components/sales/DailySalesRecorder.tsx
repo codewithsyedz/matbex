@@ -47,7 +47,7 @@ import {
   ArrowRight,
   RotateCcw
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { DayEndAdjustmentDialog } from "@/components/dayend/DayEndAdjustmentDialog";
 import { DayEndAdjustedBadge } from "@/components/dayend/DayEndAdjustedBadge";
@@ -126,7 +126,7 @@ export function DailySalesRecorder() {
     enabled: !!dailySales?.id,
     staleTime: 30_000,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("day_end_adjustments")
         .select("id, amount, reason, notes, created_at, reversed_at, reversal_of_id, ledger_posted, branch_id")
         .eq("scope", "daily_sales")
@@ -441,7 +441,7 @@ export function DailySalesRecorder() {
         onClick: async () => {
           try {
             // 1) Reverse the day-end adjustment (immutable ledger - voids via reversal)
-            const { error: revErr } = await supabase.rpc(
+            const { error: revErr } = await db.rpc(
               "reverse_day_end_adjustment" as never,
               {
                 p_adjustment_id: adjustmentId,
@@ -451,7 +451,7 @@ export function DailySalesRecorder() {
             if (revErr) throw revErr;
 
             // 2) Reopen the day so the user can re-edit
-            const { error: reopenErr } = await supabase
+            const { error: reopenErr } = await db
               .from("daily_sales_summary")
               .update({
                 status: "draft",
@@ -546,7 +546,7 @@ export function DailySalesRecorder() {
 
   const reverseMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
-      const { data, error } = await supabase.rpc(
+      const { data, error } = await db.rpc(
         "reverse_day_end_adjustment" as never,
         { p_adjustment_id: id, p_reason: reason } as never,
       );

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type ChannelKey = "direct" | "hungerstation" | "jahez" | "mrsool" | "talabat" | "qr" | "waiter";
@@ -37,7 +37,7 @@ export function useChannelProfitability(from: Date, to: Date) {
     enabled: !!tenantId,
     staleTime: 2 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("v_channel_profitability" as never)
         .select("*")
         .eq("tenant_id", tenantId!)
@@ -54,7 +54,7 @@ export function useChannelProfitability(from: Date, to: Date) {
     enabled: !!tenantId,
     staleTime: 2 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("online_orders")
         .select("channel, payment_status, created_at")
         .eq("payment_status", "paid")

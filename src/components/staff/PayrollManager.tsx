@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { PayrollDeductionsPanel } from "@/components/staff/fines/PayrollDeductionsPanel";
 import { parseFineComplianceError } from "@/hooks/useEmployeeFines";
 import { DeductionAllocationDialog } from "@/components/staff/fines/DeductionAllocationDialog";
@@ -156,7 +156,7 @@ export function PayrollManager() {
     queryKey: ["staff-active", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff")
         .select("id, name, role, payment_type, hourly_rate, monthly_salary, assigned_branch_id")
         .eq("restaurant_id", restaurant.id)
@@ -176,7 +176,7 @@ export function PayrollManager() {
     queryKey: ["payroll", "v2", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("payroll_records")
         .select("*, staff:staff_id(id, name, role, assigned_branch_id, is_active)")
         .eq("restaurant_id", restaurant.id)
@@ -194,7 +194,7 @@ export function PayrollManager() {
     queryKey: ["pending-advances", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_advances")
         .select("id, staff_id, amount, advance_date, repaid_amount, status, ledger_reversed")
         .eq("restaurant_id", restaurant.id)
@@ -234,7 +234,7 @@ export function PayrollManager() {
       if (!restaurant?.id || !user?.id) throw new Error("No restaurant or user");
       const gross = parseFloat(data.amount) || 0;
       const recovered = Math.min(parseFloat(data.advance_recovered) || 0, gross);
-      const { data: inserted, error } = await supabase.from("payroll_records").insert({
+      const { data: inserted, error } = await db.from("payroll_records").insert({
         restaurant_id: restaurant.id,
         staff_id: data.staff_id,
         amount: gross,
@@ -252,7 +252,7 @@ export function PayrollManager() {
 
       // Pull approved fines for this period into the payroll record.
       // The database enforces the maximum wage-deduction percentage.
-      const { error: fineError } = await supabase.rpc("apply_fines_to_payroll", {
+      const { error: fineError } = await db.rpc("apply_fines_to_payroll", {
         p_payroll_id: inserted.id,
       });
       if (fineError) {
@@ -267,7 +267,7 @@ export function PayrollManager() {
       let remaining = recovered;
       for (const adv of advancesForStaff(data.staff_id)) {
         if (remaining < Number(adv.amount)) break;
-        const { error: advError } = await supabase.rpc("deduct_advance_from_payroll", {
+        const { error: advError } = await db.rpc("deduct_advance_from_payroll", {
           p_advance_id: adv.id,
           p_payroll_id: inserted.id,
         });
@@ -306,7 +306,7 @@ export function PayrollManager() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: typeof formData & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("payroll_records")
         .update({
           staff_id: data.staff_id,
@@ -338,7 +338,7 @@ export function PayrollManager() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("payroll_records").delete().eq("id", id);
+      const { error } = await db.from("payroll_records").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -466,7 +466,7 @@ export function PayrollManager() {
     queryKey: ["payroll-period-locks", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("payroll_period_locks" as any)
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -501,7 +501,7 @@ export function PayrollManager() {
     mutationFn: async () => {
       if (!restaurant?.id || !user?.id) throw new Error("No restaurant or user");
       if (!periodStart || !periodEnd) throw new Error("Select a pay period first");
-      const { error } = await supabase.from("payroll_period_locks" as any).insert({
+      const { error } = await db.from("payroll_period_locks" as any).insert({
         restaurant_id: restaurant.id,
         branch_id: lockBranchId,
         period_start: periodStart,
@@ -523,7 +523,7 @@ export function PayrollManager() {
 
   const unlockPeriodMutation = useMutation({
     mutationFn: async (lockId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("payroll_period_locks" as any)
         .delete()
         .eq("id", lockId);

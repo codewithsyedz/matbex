@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Mail, Loader2, CheckCircle2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 export function TestConfirmationEmailCard() {
@@ -13,7 +13,7 @@ export function TestConfirmationEmailCard() {
   const [lastResult, setLastResult] = useState<{ from: string; fromName: string; recipient: string } | null>(null);
 
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    db.auth.getUser().then(({ data }) => {
       if (data.user?.email) setRecipient(data.user.email);
     });
   }, []);
@@ -26,7 +26,7 @@ export function TestConfirmationEmailCard() {
     setSending(true);
     setLastResult(null);
     try {
-      const { data, error } = await supabase.functions.invoke("send-test-confirmation", {
+      const { data, error } = await db.functions.invoke("send-test-confirmation", {
         body: { recipient },
       });
       if (error) throw error;

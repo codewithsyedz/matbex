@@ -2,7 +2,7 @@
  * Pure planner that maps a tenant's EXISTING chart of accounts onto the
  * standard Matbex restaurant structure.
  *
- * Nothing here touches Supabase - the screen renders the plan, the user
+ * Nothing here touches the API - the screen renders the plan, the user
  * confirms, and only then does the caller apply the actions.
  */
 import type { AccountType, ChartOfAccount } from "@/hooks/useChartOfAccounts";

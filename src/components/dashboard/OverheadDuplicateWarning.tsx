@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -48,7 +48,7 @@ export function OverheadDuplicateWarning() {
     queryKey: ["overhead-duplicate-check", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Row[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("overhead_allocation")
         .select("id, name, monthly_amount, branch_id, is_active, created_at")
         .eq("restaurant_id", restaurant.id)

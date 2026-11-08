@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Plus, Pencil, Archive, Star, Search, Power, PowerOff, Settings2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDemoTrial } from "@/hooks/useDemoTrial";
 import { useFunnelTracker } from "@/hooks/useFunnelTracker";
@@ -86,7 +86,7 @@ export function BranchManager() {
     queryKey: ["branches", restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [] as Branch[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branches" as any)
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -158,14 +158,14 @@ export function BranchManager() {
         prices_vat_inclusive: form.pricesVatInclusive,
       };
       if (editing) {
-        const { error } = await supabase
+        const { error } = await db
           .from("branches" as any)
           .update(payload)
           .eq("id", editing.id);
         if (error) throw error;
         toast.success("Branch updated");
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("branches" as any)
           .insert({ ...payload, restaurant_id: restaurantId });
         if (error) throw error;
@@ -192,7 +192,7 @@ export function BranchManager() {
     if (!archiveTarget) return;
     setArchiving(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("branches" as any)
         .update({ deleted_at: new Date().toISOString(), is_active: false })
         .eq("id", archiveTarget.id);
@@ -212,7 +212,7 @@ export function BranchManager() {
       toast.error("The primary branch cannot be deactivated");
       return;
     }
-    const { error } = await supabase
+    const { error } = await db
       .from("branches" as any)
       .update({ is_active: !b.is_active })
       .eq("id", b.id);

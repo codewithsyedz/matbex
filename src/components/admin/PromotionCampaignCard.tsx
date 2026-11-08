@@ -8,7 +8,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Sparkles, Save, Plus, X } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 interface Campaign {
@@ -38,7 +38,7 @@ export const PromotionCampaignCard = () => {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("promotion_campaigns")
       .select("*")
       .order("created_at", { ascending: false })
@@ -61,7 +61,7 @@ export const PromotionCampaignCard = () => {
   const save = async () => {
     if (!campaign) return;
     setSaving(true);
-    const { error } = await supabase
+    const { error } = await db
       .from("promotion_campaigns")
       .update({
         name: campaign.name,

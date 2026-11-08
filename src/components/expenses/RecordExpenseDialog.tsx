@@ -62,7 +62,7 @@ import {
 import { format } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useExpenseApproval, PaymentMethod } from "@/hooks/useExpenseApproval";
@@ -235,7 +235,7 @@ export function RecordExpenseDialog({
     queryKey: ["expense-categories", restaurant?.id, effectiveBranchId],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_categories")
         .select(
           "id, name, color, account_id, branch_id, default_inventory_item_id"
@@ -271,7 +271,7 @@ export function RecordExpenseDialog({
     queryKey: ["suppliers-active", restaurant?.id, effectiveBranchId],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Array<{ id: string; name: string }>;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("suppliers")
         .select("id, name, is_active, branch_id")
         .eq("restaurant_id", restaurant.id)
@@ -305,7 +305,7 @@ export function RecordExpenseDialog({
     queryKey: ["expense-accounts", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenantId)
@@ -427,8 +427,8 @@ export function RecordExpenseDialog({
           units_per_pack: number | null;
           stock_unit: string | null;
         }>;
-      // Use any to avoid deep type instantiation issues with complex Supabase schema
-      const sb = supabase as any;
+      // Use any to avoid deep type instantiation issues with complex the API schema
+      const sb = db as any;
       const result = await sb
         .from("inventory_items")
         .select(
@@ -458,7 +458,7 @@ export function RecordExpenseDialog({
     queryKey: ["payment-accounts", tenantId],
     queryFn: async () => {
       if (!tenantId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, is_active")
         .eq("tenant_id", tenantId)
@@ -696,7 +696,7 @@ export function RecordExpenseDialog({
         // Fire-and-forget tracking so admins can prioritize which categories
         // most need a default mapping.
         if (restaurant?.id) {
-          (supabase as any)
+          (db as any)
             .from("expense_category_mapping_gaps")
             .insert({
               restaurant_id: restaurant.id,

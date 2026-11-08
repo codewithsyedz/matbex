@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff, Loader2, MessageSquare, RefreshCw, Save, ArrowRight } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
@@ -41,7 +41,7 @@ export function CustomerLoginSettingsCard() {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("platform_settings" as any)
       .select("key, value")
       .in("key", [KEY_FROM, KEY_JWT, KEY_PROVIDER, KEY_UNIFONIC, KEY_TWILIO]);
@@ -76,8 +76,8 @@ export function CustomerLoginSettingsCard() {
   }, []);
 
   const upsert = async (key: string, value: object, is_secret = false) => {
-    const { data: u } = await supabase.auth.getUser();
-    return supabase
+    const { data: u } = await db.auth.getUser();
+    return db
       .from("platform_settings" as any)
       .upsert(
         { key, value, is_secret, updated_by: u.user?.id ?? null },

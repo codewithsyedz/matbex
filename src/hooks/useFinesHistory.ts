@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { FineStatus } from "@/hooks/useEmployeeFines";
 
@@ -53,7 +53,7 @@ export function useFinesHistory(filters: FineHistoryFilters) {
   return useQuery({
     queryKey: ["fines-history", restaurant?.id, filters],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("employee_fines")
         .select(
           "*, staff:staff_id(id,name,role,branch_id), violation_type:violation_type_id(id,name_en)"
@@ -95,11 +95,11 @@ export function useFinesHistory(filters: FineHistoryFilters) {
         )
       );
       if (ids.length) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", ids);
-        const map = new Map((profiles ?? []).map((p) => [p.id, p.full_name ?? "—"]));
+        const map = new Map<string, string>((profiles ?? []).map((p: any) => [p.id, p.full_name ?? "—"]));
         rows = rows.map((r) => ({
           ...r,
           createdByName: map.get(r.created_by) ?? "—",

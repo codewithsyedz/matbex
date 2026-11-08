@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Laptop, Loader2, RefreshCw, Search, ShieldOff, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -55,15 +55,15 @@ export default function AdminDevices() {
     queryKey: ["admin-devices"],
     queryFn: async () => {
       const [devicesRes, restaurantsRes, seatsRes] = await Promise.all([
-        supabase
+        db
           .from("device_licenses" as never)
           .select(
             "id, restaurant_id, tenant_id, terminal_id, device_label, platform, user_agent, claimed_at, last_seen_at, device_fingerprint",
           )
           .is("revoked_at", null)
           .order("last_seen_at", { ascending: false }),
-        supabase.from("restaurants").select("id, name, tenant_id"),
-        supabase.from("branch_license_seats" as never).select("restaurant_id, seat_count"),
+        db.from("restaurants").select("id, name, tenant_id"),
+        db.from("branch_license_seats" as never).select("restaurant_id, seat_count"),
       ]);
       if (devicesRes.error) throw devicesRes.error;
       if (restaurantsRes.error) throw restaurantsRes.error;
@@ -119,7 +119,7 @@ export default function AdminDevices() {
   }, [groups]);
 
   async function callAdminAction(payload: Record<string, unknown>, successMsg: string) {
-    const { data, error } = await supabase.functions.invoke("admin-device-actions", {
+    const { data, error } = await db.functions.invoke("admin-device-actions", {
       body: payload,
     });
     if (error) {

@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
 import { RouteSeo } from "@/components/seo/RouteSeo";
 import { DotLottiePlayer } from "@dotlottie/react-player";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { z } from "zod";
 import {
@@ -129,7 +129,7 @@ function RegisterContent() {
       const email = searchParams.get("email");
       if (!email) return;
 
-      const { data } = await supabase
+      const { data } = await db
         .from("tenant_applications")
         .select("*")
         .eq("email", email)
@@ -170,7 +170,7 @@ function RegisterContent() {
         return;
       }
 
-      const { data } = await supabase
+      const { data } = await db
         .from("plans")
         .select("price, name")
         .eq("id", selectedPlanId)
@@ -227,7 +227,7 @@ function RegisterContent() {
       return;
     }
 
-    const { data: existingApp } = await supabase
+    const { data: existingApp } = await db
       .from("tenant_applications")
       .select("id, status")
       .eq("email", contactInfo.email)
@@ -269,7 +269,7 @@ function RegisterContent() {
     setLoading(true);
 
     try {
-      const { data: rpcResult, error } = await (supabase as any).rpc("submit_tenant_application", {
+      const { data: rpcResult, error } = await (db as any).rpc("submit_tenant_application", {
         payload: {
           full_name: contactInfo.fullName,
           email: contactInfo.email,

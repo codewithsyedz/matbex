@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { getRestaurantDayBoundsUTC } from "@/lib/timezone";
@@ -123,7 +123,7 @@ export function SalesBreakdown() {
       const all: SalesItem[] = [];
 
       for (let page = 0; ; page += 1) {
-        let query = supabase
+        let query = db
           .from("sales_items")
           .select(`
             id,
@@ -162,7 +162,7 @@ export function SalesBreakdown() {
   const updateMutation = useMutation({
     mutationFn: async ({ id, quantity, unitPrice }: { id: string; quantity: number; unitPrice: number }) => {
       const totalPrice = quantity * unitPrice;
-      const { error } = await supabase
+      const { error } = await db
         .from("sales_items")
         .update({ quantity, unit_price: unitPrice, total_price: totalPrice })
         .eq("id", id);
@@ -183,7 +183,7 @@ export function SalesBreakdown() {
   // Delete sales item mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("sales_items")
         .delete()
         .eq("id", id);

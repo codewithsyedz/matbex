@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { postSalesWithAi } from "@/lib/aiIncomeJournal";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatZonedYMD } from "@/lib/timezone";
@@ -40,8 +40,6 @@ export function useDailyLedgerPosting(date: Date, branchId: string | null) {
     enabled: !!restaurant?.id,
     staleTime: 15_000,
     queryFn: async () => {
-      const db = supabase as any;
-
       let salesQ = db
         .from("daily_sales_summary")
         .select("id, sales_date, total_sales, status, ledger_posted, branch_id")
@@ -138,7 +136,6 @@ export function useDailyLedgerPosting(date: Date, branchId: string | null) {
 }
 
 async function postItem(item: DailyPostingItem, tenantId?: string | null, branchId?: string | null) {
-  const db = supabase as any;
   if (item.kind === "sales") {
     await postSalesWithAi(item.id);
   } else if (item.kind === "adjustment") {

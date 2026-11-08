@@ -65,8 +65,8 @@ export default function SalaryCalendar() {
     queryKey: ["salary-calendar-staff", restaurant?.id, branchId],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { supabase } = await import("@/integrations/supabase/client");
-      let q = supabase
+      const { db } = await import("@/integrations/db/client");
+      let q = db
         .from("staff")
         .select(
           "id, name, role, payment_type, monthly_salary, assigned_branch_id, joined_date, termination_date"
@@ -90,8 +90,8 @@ export default function SalaryCalendar() {
     ],
     queryFn: async () => {
       if (!restaurant?.id || !rangeStart || !rangeEnd) return [];
-      const { supabase } = await import("@/integrations/supabase/client");
-      const { data, error } = await supabase
+      const { db } = await import("@/integrations/db/client");
+      const { data, error } = await db
         .from("payroll_records")
         .select("id, staff_id, amount, period_start, period_end, payment_date")
         .eq("restaurant_id", restaurant.id)

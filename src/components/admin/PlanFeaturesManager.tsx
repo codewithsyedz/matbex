@@ -4,7 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Crown, Zap, Building2, Save, Loader2 } from "lucide-react";
 
@@ -49,7 +49,7 @@ export function PlanFeaturesManager() {
 
   const fetchPlans = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("plans")
         .select("*")
         .eq("is_active", true)
@@ -93,7 +93,7 @@ export function PlanFeaturesManager() {
   const handleSavePlan = async (planId: string) => {
     setSaving(planId);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("plans")
         .update({ default_feature_flags: editedFlags[planId] })
         .eq("id", planId);

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -77,7 +77,7 @@ export default function AdminTraffic() {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["admin-page-views", range],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("page_views")
         .select("path, referrer, device, session_id, created_at")
         .gte("created_at", since)

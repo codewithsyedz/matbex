@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Dialog,
@@ -101,7 +101,7 @@ export function BulkStockAdjustmentDialog({
       }
 
       // Pull active items for validation
-      const sb = supabase as any;
+      const sb = db as any;
       const { data: items, error } = await sb
         .from("inventory_items")
         .select("id, name, current_stock, unit, stock_unit")
@@ -147,7 +147,7 @@ export function BulkStockAdjustmentDialog({
         const signed = row.direction === "add" ? row.quantity : -row.quantity;
 
         // Re-read current_stock right before update for atomic correctness
-        const { data: liveItem, error: readErr } = await supabase
+        const { data: liveItem, error: readErr } = await db
           .from("inventory_items")
           .select("id, current_stock, unit, stock_unit")
           .eq("id", row.itemId!)
@@ -159,7 +159,7 @@ export function BulkStockAdjustmentDialog({
         const stockUnit =
           (liveItem as any)?.stock_unit || liveItem?.unit || row.stockUnit || "unit";
 
-        const { error: updErr } = await supabase
+        const { error: updErr } = await db
           .from("inventory_items")
           .update({
             current_stock: stockAfter,
@@ -176,7 +176,7 @@ export function BulkStockAdjustmentDialog({
           .filter(Boolean)
           .join(" - ");
 
-        const sb = supabase as any;
+        const sb = db as any;
         const { error: movErr } = await sb.from("stock_movements").insert({
           tenant_id: profile.tenant_id,
           restaurant_id: restaurant.id,

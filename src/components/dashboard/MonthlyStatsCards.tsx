@@ -2,7 +2,7 @@ import { useState } from "react";
 import { dashboardQueryOptions } from "@/lib/query/queryPolicy";
 import { qk } from "@/lib/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -96,7 +96,7 @@ export function MonthlyStatsCards({ dateRange, preset }: MonthlyStatsCardsProps)
       // Get shift templates and shifts with their templates
       // Outstanding balances must come from branch-taggable sales, never the
       // tenant-wide customers.current_balance column.
-      let outstandingQuery = supabase
+      let outstandingQuery = db
         .from("sales_transactions")
         .select("customer_id, total")
         .eq("restaurant_id", restaurant.id)
@@ -104,15 +104,15 @@ export function MonthlyStatsCards({ dateRange, preset }: MonthlyStatsCardsProps)
         .not("customer_id", "is", null);
       if (activeBranchId) outstandingQuery = outstandingQuery.eq("branch_id", activeBranchId);
 
-      let branchSalesQuery = supabase.from("sales_transactions").select("total, created_at, settlement_status, shift_id")
+      let branchSalesQuery = db.from("sales_transactions").select("total, created_at, settlement_status, shift_id")
         .eq("restaurant_id", restaurant.id)
         .gte("created_at", effectiveFiscalStart.toISOString())
         .lte("created_at", cutoffISO);
       if (activeBranchId) branchSalesQuery = branchSalesQuery.eq("branch_id", activeBranchId);
 
       const [templatesRes, shiftsRes, salesRes, outstandingRes, reconciledCurrent, reconciledPrev] = await Promise.all([
-        supabase.from("shift_templates").select("id, name").eq("restaurant_id", restaurant.id),
-        supabase.from("shifts").select("id, template_id").eq("restaurant_id", restaurant.id),
+        db.from("shift_templates").select("id, name").eq("restaurant_id", restaurant.id),
+        db.from("shifts").select("id, template_id").eq("restaurant_id", restaurant.id),
         branchSalesQuery,
         outstandingQuery,
         fetchReconciledSalesByDay({
@@ -195,9 +195,9 @@ export function MonthlyStatsCards({ dateRange, preset }: MonthlyStatsCardsProps)
       
       const chartCutoffStr = format(chartCutoffDate, "yyyy-MM-dd");
       
-      let currentQuery = supabase.from("expenses").select("amount, expense_date, status").eq("restaurant_id", restaurant.id)
+      let currentQuery = db.from("expenses").select("amount, expense_date, status").eq("restaurant_id", restaurant.id)
         .is("deleted_at", null).gte("expense_date", format(effectiveFiscalStart, "yyyy-MM-dd")).lte("expense_date", chartCutoffStr);
-      let previousQuery = supabase.from("expenses").select("amount").eq("restaurant_id", restaurant.id)
+      let previousQuery = db.from("expenses").select("amount").eq("restaurant_id", restaurant.id)
         .is("deleted_at", null).gte("expense_date", format(effectiveComparisonStart, "yyyy-MM-dd")).lte("expense_date", format(comparisonEnd, "yyyy-MM-dd"));
       if (activeBranchId) {
         currentQuery = currentQuery.eq("branch_id", activeBranchId);

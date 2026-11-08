@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Shield, Users, Lock, FileDown, AlertTriangle, CheckCircle, XCircle, RefreshCw, Unlock } from "lucide-react";
 import { format } from "date-fns";
 import { toast } from "sonner";
@@ -67,13 +67,13 @@ export default function AdminSecurityDashboard() {
         { data: locksData },
         { data: attemptsData },
       ] = await Promise.all([
-        supabase.from("tenants").select("*", { count: "exact", head: true }),
-        supabase.from("user_sessions").select("*", { count: "exact", head: true }).eq("is_active", true),
-        supabase.from("export_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
-        supabase.from("export_requests").select("*", { count: "exact", head: true }).eq("status", "approved"),
-        supabase.from("export_requests").select("*", { count: "exact", head: true }).eq("status", "rejected"),
-        supabase.from("account_locks").select("*").is("unlocked_at", null).order("locked_at", { ascending: false }),
-        supabase.from("login_attempts").select("*").order("created_at", { ascending: false }).limit(100),
+        db.from("tenants").select("*", { count: "exact", head: true }),
+        db.from("user_sessions").select("*", { count: "exact", head: true }).eq("is_active", true),
+        db.from("export_requests").select("*", { count: "exact", head: true }).eq("status", "pending"),
+        db.from("export_requests").select("*", { count: "exact", head: true }).eq("status", "approved"),
+        db.from("export_requests").select("*", { count: "exact", head: true }).eq("status", "rejected"),
+        db.from("account_locks").select("*").is("unlocked_at", null).order("locked_at", { ascending: false }),
+        db.from("login_attempts").select("*").order("created_at", { ascending: false }).limit(100),
       ]);
 
       // Calculate failed logins in last 24 hours
@@ -110,7 +110,7 @@ export default function AdminSecurityDashboard() {
 
   const handleUnlockAccount = async (lockId: string, email: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("account_locks")
         .update({ unlocked_at: new Date().toISOString() })
         .eq("id", lockId);

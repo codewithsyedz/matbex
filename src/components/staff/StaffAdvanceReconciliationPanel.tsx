@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import {
   reconcileStaffAdvances,
@@ -26,7 +26,7 @@ export function StaffAdvanceReconciliationPanel({ advances, isLoading }: Props) 
     queryKey: ["staff-advance-reconciliation", advanceIds.length, advanceIds[0] ?? null],
     queryFn: async () => {
       if (advanceIds.length === 0) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("account_transactions")
         .select(
           "reference_id, reference_type, debit, credit, is_voided, chart_of_accounts:account_id(account_code)"

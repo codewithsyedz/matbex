@@ -82,7 +82,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useImpersonationGuard } from "@/hooks/useImpersonationGuard";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -192,7 +192,7 @@ export default function RecordSale() {
     if (!tableIdFromUrl || !restaurant?.id) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("pos_tables")
         .select("id,label")
         .eq("id", tableIdFromUrl)
@@ -525,7 +525,7 @@ export default function RecordSale() {
     queryKey: ["menu-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -547,7 +547,7 @@ export default function RecordSale() {
     queryKey: ["active-shifts", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -563,7 +563,7 @@ export default function RecordSale() {
     queryKey: ["expense-categories", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_categories")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -579,7 +579,7 @@ export default function RecordSale() {
     queryKey: ["combo-packages", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("combo_packages")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -596,7 +596,7 @@ export default function RecordSale() {
     queryKey: ["customers", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select("id, name, phone, credit_limit, current_balance, credit_status")
         .eq("restaurant_id", restaurant.id)
@@ -609,14 +609,14 @@ export default function RecordSale() {
   });
 
   // Fetch top selling items (last 30 days)
-  const { data: topSellingData = [] } = useQuery({
+  const { data: topSellingData = [] } = useQuery<{ menuItemId: string; totalSold: number }[]>({
     queryKey: ["top-selling-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_items")
         .select("menu_item_id, quantity")
         .eq("restaurant_id", restaurant.id)
@@ -628,7 +628,7 @@ export default function RecordSale() {
       const aggregated = (data || []).reduce((acc, item) => {
         acc[item.menu_item_id] = (acc[item.menu_item_id] || 0) + item.quantity;
         return acc;
-      }, {} as Record<string, number>);
+      }, {} as Record<string, number>) as Record<string, number>;
       
       // Sort by quantity and get top 10
       const ranked = Object.entries(aggregated)
@@ -1234,7 +1234,7 @@ export default function RecordSale() {
       }
 
       // ── Offline guardrail ────────────────────────────────────────────
-      // The desktop ZATCA path issues many sequential Supabase calls
+      // The desktop ZATCA path issues many sequential the API calls
       // (insert, ZATCA hash, PDF, ledger) that have no fetch timeout.
       // When offline, queue a simple cash/card sale to IndexedDB and
       // return immediately so the Pay button never hangs. ZATCA-only
@@ -1306,7 +1306,7 @@ export default function RecordSale() {
       let txError;
       try {
         const response = await withOnlineWriteTimeout(
-          supabase
+          db
           .from("sales_transactions")
           .insert({
             restaurant_id: restaurant.id,
@@ -1356,7 +1356,7 @@ export default function RecordSale() {
         total_price: item.price * item.quantity,
       }));
 
-      const { error: itemsError } = await supabase
+      const { error: itemsError } = await db
         .from("sales_items")
         .insert(salesItems);
 
@@ -1364,7 +1364,7 @@ export default function RecordSale() {
 
       // Create cash_event for shift tracking (all payment methods)
       if (activeShift?.id) {
-        await supabase.from("cash_events").insert({
+        await db.from("cash_events").insert({
           shift_id: activeShift.id,
           restaurant_id: restaurant.id,
           event_type: "sale",
@@ -1377,7 +1377,7 @@ export default function RecordSale() {
 
       // Deduct inventory based on recipes
       for (const cartItem of cart) {
-        const { data: recipes } = await supabase
+        const { data: recipes } = await db
           .from("recipe_ingredients")
           .select("*, inventory_items(*)")
           .eq("menu_item_id", cartItem.menuItemId)
@@ -1390,7 +1390,7 @@ export default function RecordSale() {
 
             if (inventoryItem) {
               // Record usage
-              await supabase.from("inventory_usage").insert({
+              await db.from("inventory_usage").insert({
                 restaurant_id: restaurant.id,
                 inventory_item_id: recipe.inventory_item_id,
                 quantity_used: totalUsage,
@@ -1403,7 +1403,7 @@ export default function RecordSale() {
 
               // Update stock
               const newStock = Math.max(0, inventoryItem.current_stock - totalUsage);
-              await supabase
+              await db
                 .from("inventory_items")
                 .update({ current_stock: newStock })
                 .eq("id", recipe.inventory_item_id);
@@ -1413,7 +1413,7 @@ export default function RecordSale() {
                 inventoryItem.reorder_level &&
                 newStock <= inventoryItem.reorder_level
               ) {
-                const { data: existingRequest } = await supabase
+                const { data: existingRequest } = await db
                   .from("reorder_requests")
                   .select("id")
                   .eq("inventory_item_id", recipe.inventory_item_id)
@@ -1421,7 +1421,7 @@ export default function RecordSale() {
                   .single();
 
                 if (!existingRequest) {
-                  await supabase.from("reorder_requests").insert({
+                  await db.from("reorder_requests").insert({
                     restaurant_id: restaurant.id,
                     inventory_item_id: recipe.inventory_item_id,
                     current_stock: newStock,
@@ -1804,7 +1804,7 @@ export default function RecordSale() {
                   // XAdES sign the unsigned UBL using the device key
                   // (server-side - private key never leaves the backend).
                   try {
-                    await supabase.functions.invoke("zatca-sign-invoice", {
+                    await db.functions.invoke("zatca-sign-invoice", {
                       body: {
                         device_id: activeDeviceId,
                         sales_transaction_id: txnId,
@@ -1817,7 +1817,7 @@ export default function RecordSale() {
                     // reporting. Runs in simulation mode unless the
                     // ZATCA_BASE_URL secret is configured.
                     try {
-                      await supabase.functions.invoke("zatca-submit-clearance", {
+                      await db.functions.invoke("zatca-submit-clearance", {
                         body: { sales_transaction_id: txnId },
                       });
                     } catch (subErr) {
@@ -2027,7 +2027,7 @@ export default function RecordSale() {
       trackFunnel("first_order", { unpaid: isUnpaidSale });
       // Flip linked table to "ordered" once a sale is successfully recorded
       if (linkedTable?.id) {
-        void supabase
+        void db
           .from("pos_tables")
           .update({ status: "ordered" } as never)
           .eq("id", linkedTable.id);
@@ -2096,7 +2096,7 @@ export default function RecordSale() {
       if (!restaurant?.id || !user?.id) throw new Error("Missing context");
       // Auto-assign default category if none selected
       const finalCategoryId = expenseCategoryId || getDefaultExpenseCategoryId();
-      const { error } = await supabase.from("expenses").insert({
+      const { error } = await db.from("expenses").insert({
         restaurant_id: restaurant.id,
         created_by: user.id,
         amount: parseFloat(expenseAmount),

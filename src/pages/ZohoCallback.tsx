@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export default function ZohoCallback() {
   const [params] = useSearchParams();
@@ -41,7 +41,7 @@ export default function ZohoCallback() {
     // Must match exactly what was registered in Zoho and used at /authorize.
     const redirect_uri = "https://www.matbex.com/zoho/callback";
 
-    supabase.functions
+    db.functions
       .invoke("zoho-oauth-exchange", {
         body: { code, state, location, accounts_server, redirect_uri },
       })

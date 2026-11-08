@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Loader2, TrendingUp, TrendingDown, Minus, Calculator } from "lucide-react";
@@ -65,7 +65,7 @@ export function ShiftSummary({ shift, endAtOverride, compact = false, className 
       if (!shift || !restaurantId) return [];
 
       // 1. Pull this shift's expenses (joined to chart_of_accounts)
-      const { data: shiftExpenses, error: e1 } = await supabase
+      const { data: shiftExpenses, error: e1 } = await db
         .from("expenses")
         .select(
           `
@@ -88,7 +88,7 @@ export function ShiftSummary({ shift, endAtOverride, compact = false, className 
       // 2. Pull last N closed shifts of the same template (excluding this one) for baseline
       let historicalExpensesByAccount: Record<string, { total: number; shiftIds: Set<string> }> = {};
 
-      let histShiftQuery = supabase
+      let histShiftQuery = db
         .from("shifts")
         .select("id, opened_at, closed_at, template_id")
         .eq("restaurant_id", restaurantId)
@@ -107,7 +107,7 @@ export function ShiftSummary({ shift, endAtOverride, compact = false, className 
       const histShiftIds = (histShifts || []).map((s) => s.id);
 
       if (histShiftIds.length > 0) {
-        const { data: histExpenses } = await supabase
+        const { data: histExpenses } = await db
           .from("expenses")
           .select("amount, account_id, shift_id")
           .eq("restaurant_id", restaurantId)
@@ -157,7 +157,7 @@ export function ShiftSummary({ shift, endAtOverride, compact = false, className 
       // Fetch metadata for any historical-only accounts
       const missingMetaIds = Array.from(allAccountIds).filter((id) => !actualsByAccount[id]);
       if (missingMetaIds.length > 0) {
-        const { data: metaRows } = await supabase
+        const { data: metaRows } = await db
           .from("chart_of_accounts")
           .select("id, account_code, account_name, account_type")
           .in("id", missingMetaIds);

@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { normalizePhone, formatPhoneDisplay } from "@/lib/phoneUtils";
 import { useAuth } from "@/contexts/AuthContext";
@@ -15,8 +15,8 @@ import { useAuth } from "@/contexts/AuthContext";
 type StatusResp = {
   ok: true;
   env: {
-    lovable_api_key_present: boolean;
-    twilio_connector_present: boolean;
+    twilio_account_sid_present: boolean;
+    twilio_auth_present: boolean;
     whatsapp_from_present: boolean;
     whatsapp_from_masked: string;
     using_sandbox_default: boolean;
@@ -40,7 +40,7 @@ export function TwilioSettings() {
         throw new Error("No active session. Please sign in again.");
       }
 
-      const { data, error } = await supabase.functions.invoke("twilio-config-check", {
+      const { data, error } = await db.functions.invoke("twilio-config-check", {
         body: { action: "status" },
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -59,7 +59,7 @@ export function TwilioSettings() {
         throw new Error("No active session. Please sign in again.");
       }
 
-      const { data, error } = await supabase.functions.invoke("twilio-config-check", {
+      const { data, error } = await db.functions.invoke("twilio-config-check", {
         body: { action: "test", to },
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -78,7 +78,7 @@ export function TwilioSettings() {
 
   const env = status.data?.env;
   const ping = status.data?.ping;
-  const allHealthy = env?.twilio_connector_present && ping?.ok;
+  const allHealthy = env?.twilio_auth_present && ping?.ok;
   const phone = normalizePhone(testTo, "SA");
   const validTo = phone.error === null;
 
@@ -111,19 +111,19 @@ export function TwilioSettings() {
         <div className="rounded-md border p-3 space-y-2">
           <div className="flex items-center justify-between">
             <div>
-              <p className="text-sm font-medium">Twilio connector (API Key)</p>
+              <p className="text-sm font-medium">Twilio credentials (Account SID + Auth Token)</p>
               <p className="text-xs text-muted-foreground">
                 Managed in <span className="font-medium">Workspace → Connectors → Twilio</span>
               </p>
             </div>
-            <StatusPill ok={!!env?.twilio_connector_present} label={env?.twilio_connector_present ? "Linked" : "Missing"} />
+            <StatusPill ok={!!env?.twilio_auth_present} label={env?.twilio_auth_present ? "Linked" : "Missing"} />
           </div>
           {ping?.account_sid_last4 && (
             <p className="text-xs text-muted-foreground">
               Account SID ends in <span className="font-mono">…{ping.account_sid_last4}</span>
             </p>
           )}
-          {ping && !ping.ok && env?.twilio_connector_present && (
+          {ping && !ping.ok && env?.twilio_auth_present && (
             <p className="text-xs text-destructive break-all">Ping failed: {ping.error}</p>
           )}
         </div>
@@ -216,7 +216,7 @@ export function TwilioSettings() {
           <div className="flex gap-2 items-center">
             <Input
               readOnly
-              value={`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio-status-webhook`}
+              value={`${import.meta.env.VITE_API_URL}/functions/v1/twilio-status-webhook`}
               className="font-mono text-xs"
               onFocus={(e) => e.currentTarget.select()}
             />
@@ -224,7 +224,7 @@ export function TwilioSettings() {
               variant="outline"
               size="sm"
               onClick={() => {
-                const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/twilio-status-webhook`;
+                const url = `${import.meta.env.VITE_API_URL}/functions/v1/twilio-status-webhook`;
                 navigator.clipboard.writeText(url);
                 toast.success("Webhook URL copied");
               }}

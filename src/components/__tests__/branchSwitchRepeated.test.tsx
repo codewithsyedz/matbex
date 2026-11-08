@@ -19,7 +19,7 @@ vi.mock("@/contexts/AuthContext", () => ({
   }),
 }));
 
-vi.mock("@/integrations/supabase/client", () => {
+vi.mock("@/integrations/db/client", () => {
   const branches = [
     { id: "branch-a", restaurant_id: "restaurant-1", name: "Alpha", code: "A", is_primary: true, is_active: true },
     { id: "branch-b", restaurant_id: "restaurant-1", name: "Bravo", code: "B", is_primary: false, is_active: true },
@@ -34,7 +34,7 @@ vi.mock("@/integrations/supabase/client", () => {
     return chain;
   };
   return {
-    supabase: {
+    db: {
       from: (table: string) => {
         if (table === "staff") return makeChain({ data: null, error: null });
         return makeChain({ data: branches, error: null });

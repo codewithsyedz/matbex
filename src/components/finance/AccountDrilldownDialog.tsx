@@ -10,7 +10,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { BranchBadge, branchDisplayLabel, UNTAGGED_BRANCH_LABEL } from "@/components/branch/BranchBadge";
@@ -63,7 +63,7 @@ export function AccountDrilldownDialog({ row, from, to, open, onOpenChange }: Pr
       }> = [];
       let page = 0;
       while (true) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("account_transactions")
           .select("id, transaction_date, debit, credit, description, reference_type, reference_id, branch_id, is_voided, created_at")
           .eq("tenant_id", tenantId!)

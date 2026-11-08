@@ -56,7 +56,7 @@ import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { usePersistedBranchDateFilter } from "@/hooks/usePersistedBranchDateFilter";
 import { BranchDateRangeFilter, resolvePreset } from "@/components/filters/BranchDateRangeFilter";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { VAT_RATE, roundMoney, splitInclusive, sumMoney } from "@/lib/vatInclusive";
 import { VatReceiptDrilldown } from "@/components/reports/VatReceiptDrilldown";
 import { VatIncidentsPanel } from "@/components/reports/VatIncidentsPanel";
@@ -142,7 +142,7 @@ export default function VatAudit() {
     enabled: !!tenant?.id && !!from && !!to,
     staleTime: 60_000,
     queryFn: async (): Promise<AuditRow[]> => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("sales_transactions")
         .select("id, receipt_number, created_at, branch_id, subtotal, tax, total, zatca_device_id")
         .eq("restaurant_id", tenant!.id)
@@ -163,7 +163,7 @@ export default function VatAudit() {
       );
       const deviceNames: Record<string, string> = {};
       if (deviceIds.length) {
-        const { data: devices } = await (supabase as any)
+        const { data: devices } = await (db as any)
           .from("zatca_devices")
           .select("id, name, serial_number")
           .in("id", deviceIds);
@@ -176,7 +176,7 @@ export default function VatAudit() {
       const itemsSum: Record<string, number> = {};
       for (let i = 0; i < ids.length; i += 500) {
         const chunk = ids.slice(i, i + 500);
-        const { data: items, error: iErr } = await (supabase as any)
+        const { data: items, error: iErr } = await (db as any)
           .from("sales_items")
           .select("transaction_id, total_price")
           .in("transaction_id", chunk);
@@ -245,7 +245,7 @@ export default function VatAudit() {
 
   const reconcileMutation = useMutation({
     mutationFn: async (row: AuditRow) => {
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from("sales_transactions")
         .update({
           subtotal: row.after.subtotal,
@@ -256,7 +256,7 @@ export default function VatAudit() {
       if (error) throw error;
 
       // Audit trail entry so the drill-down panel can show who corrected what.
-      await (supabase as any).from("audit_logs").insert({
+      await (db as any).from("audit_logs").insert({
         user_id: user?.id ?? null,
         tenant_id: tenant?.id ?? null,
         action: "vat_reconcile",

@@ -1,7 +1,7 @@
 import { useCachedQuery } from "@/lib/redisCache";
 import { dashboardQueryOptions } from "@/lib/query/queryPolicy";
 import { qk } from "@/lib/query/queryKeys";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { format, subDays } from "date-fns";
@@ -127,7 +127,7 @@ export function useDailyProfit(selectedDate?: Date) {
   const { activeBranchId, isBranchReady } = useBranch();
   const branchId = activeBranchId || null;
   /** Adds a branch filter when a specific branch is active. Untyped on purpose
-   *  to avoid supabase-js query-builder type explosion. */
+   *  to avoid db-js query-builder type explosion. */
   const withBranch = (q: any, col = "branch_id"): any => (branchId ? q.eq(col, branchId) : q);
   const tz = restaurant?.timezone || "UTC";
   const today = selectedDate || new Date();
@@ -143,7 +143,7 @@ export function useDailyProfit(selectedDate?: Date) {
       if (!restaurant?.id) return [];
       const { start, endExclusive } = getRestaurantDayBoundsUTC(today, tz);
       const { data, error } = await withBranch(
-        supabase
+        db
           .from("sales_transactions")
           .select("total, payment_method, shift_id, created_at, branch_id")
           .eq("restaurant_id", restaurant.id)
@@ -164,7 +164,7 @@ export function useDailyProfit(selectedDate?: Date) {
     queryFn: async () => {
       if (!restaurant?.id) return [] as Array<{ business_date: string; amount: number }>;
       const { data, error } = await withBranch(
-        supabase
+        db
           .from("day_end_adjustments")
           .select("business_date, amount, reversed_at, reversal_of_id")
           .eq("restaurant_id", restaurant.id)
@@ -197,7 +197,7 @@ export function useDailyProfit(selectedDate?: Date) {
       // Day-end is branch-scoped: in a branch view only that branch's closed
       // days override raw POS totals. In "all branches" mode every branch's
       // closed summary must be summed, otherwise only one branch is counted.
-      let q = supabase
+      let q = db
         .from("daily_sales_summary")
         .select("sales_date, total_sales, branch_id, status")
         .eq("restaurant_id", restaurant.id)
@@ -253,7 +253,7 @@ export function useDailyProfit(selectedDate?: Date) {
       const yesterday = subDays(today, 1);
       const { start, endExclusive } = getRestaurantDayBoundsUTC(yesterday, tz);
       const { data, error } = await withBranch(
-        supabase
+        db
           .from("sales_transactions")
           .select("total")
           .eq("restaurant_id", restaurant.id)
@@ -278,7 +278,7 @@ export function useDailyProfit(selectedDate?: Date) {
       const { endExclusive } = getRestaurantDayBoundsUTC(today, tz);
 
       const { data, error } = await withBranch(
-        supabase
+        db
           .from("sales_transactions")
           .select("total, created_at")
           .eq("restaurant_id", restaurant.id)
@@ -299,7 +299,7 @@ export function useDailyProfit(selectedDate?: Date) {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const { data, error } = await withBranch(
-        supabase
+        db
           .from("expenses")
           .select("amount, status, expense_categories(name, color)")
           .eq("restaurant_id", restaurant.id)
@@ -321,7 +321,7 @@ export function useDailyProfit(selectedDate?: Date) {
       if (!restaurant?.id) return [];
       const { start, endExclusive } = getRestaurantDayBoundsUTC(today, tz);
       const { data: shifts, error } = await withBranch(
-        supabase
+        db
           .from("shifts")
           .select("id, opened_at, closed_at, cashier_user_id")
           .eq("restaurant_id", restaurant.id)
@@ -336,7 +336,7 @@ export function useDailyProfit(selectedDate?: Date) {
 
       let profileNameById = new Map<string, string>();
       if (cashierIds.length > 0) {
-        const { data: profiles, error: profilesError } = await supabase
+        const { data: profiles, error: profilesError } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", cashierIds);
@@ -363,7 +363,7 @@ export function useDailyProfit(selectedDate?: Date) {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const { data, error } = await withBranch(
-        supabase
+        db
           .from("overhead_allocation")
           .select("monthly_amount")
           .eq("restaurant_id", restaurant.id)
@@ -387,7 +387,7 @@ export function useDailyProfit(selectedDate?: Date) {
       // For historical dates, fetch all staff for versioned filtering
       const isViewingCurrentDate = isCurrentPeriod(today);
       
-      let query = supabase
+      let query = db
         .from("staff")
         .select("monthly_salary, hourly_rate, joined_date, termination_date, is_active")
         .eq("restaurant_id", restaurant.id);
@@ -419,7 +419,7 @@ export function useDailyProfit(selectedDate?: Date) {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const { data, error } = await withBranch(
-        supabase
+        db
           .from("inventory_items")
           .select("current_stock, unit_cost")
           .eq("restaurant_id", restaurant.id)
@@ -437,7 +437,7 @@ export function useDailyProfit(selectedDate?: Date) {
     ...dashboardQueryOptions(),
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_usage")
         .select("total_cost, inventory_items(name)")
         .eq("restaurant_id", restaurant.id)
@@ -457,7 +457,7 @@ export function useDailyProfit(selectedDate?: Date) {
       if (!restaurant?.id) return [];
       const { start, endExclusive } = getRestaurantDayBoundsUTC(today, tz);
       const { data, error } = await withBranch(
-        supabase
+        db
           .from("sales_items")
           .select("menu_item_id, quantity")
           .eq("restaurant_id", restaurant.id)
@@ -477,7 +477,7 @@ export function useDailyProfit(selectedDate?: Date) {
     ...dashboardQueryOptions(),
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("recipe_ingredients")
         .select("menu_item_id, quantity_required, inventory_items(unit_cost)")
         .eq("restaurant_id", restaurant.id);
@@ -494,7 +494,7 @@ export function useDailyProfit(selectedDate?: Date) {
     ...dashboardQueryOptions(),
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_rates")
         .select("user_id, hourly_rate")
         .eq("restaurant_id", restaurant.id)

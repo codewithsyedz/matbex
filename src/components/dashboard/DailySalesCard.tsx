@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -63,7 +63,7 @@ export function DailySalesCard() {
       const { endExclusive: rangeEnd } = getRestaurantDayBoundsUTC(selectedDate, timezone);
 
       // Single batch query for all 7 days (raw POS — used for payment + shift breakdown)
-      let rawSalesQuery = supabase
+      let rawSalesQuery = db
         .from("sales_transactions")
         .select("total, created_at, payment_method, settlement_status, shift_id")
         .eq("restaurant_id", restaurant.id)
@@ -154,12 +154,12 @@ export function DailySalesCard() {
       let shiftSales: ShiftSale[] = [];
 
       if (shiftIds.length > 0) {
-        const { data: shiftsData } = await supabase
+        const { data: shiftsData } = await db
           .from("shifts")
           .select("id, opened_at, drawer_id, shift_templates(name), drawers(name)")
           .in("id", shiftIds as string[]);
 
-        const shiftMap = new Map(shiftsData?.map(s => [s.id, s]) || []);
+        const shiftMap = new Map<any, any>(shiftsData?.map(s => [s.id, s]) || []);
         
         // Group sales by shift
         const shiftTotals = new Map<string, number>();

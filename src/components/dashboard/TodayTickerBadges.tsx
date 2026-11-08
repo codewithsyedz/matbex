@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRoleGuard } from "@/hooks/useRoleGuard";
 import { useBranch } from "@/contexts/BranchContext";
@@ -82,13 +82,13 @@ export function TodayTickerBadges({ compact = false }: TodayTickerBadgesProps = 
       const startDate = format(today, "yyyy-MM-dd");
 
       const [salesRes, expensesRes] = await Promise.all([
-        (supabase as any).rpc("dashboard_sales_summary", {
+        (db as any).rpc("dashboard_sales_summary", {
           p_restaurant_id: restaurant!.id,
           p_start: startISO,
           p_end: endISO,
           p_branch_id: activeBranchId,
         }),
-        (supabase as any).rpc("dashboard_expense_summary", {
+        (db as any).rpc("dashboard_expense_summary", {
           p_restaurant_id: restaurant!.id,
           p_start_date: startDate,
           p_end_date: startDate,
@@ -112,7 +112,7 @@ export function TodayTickerBadges({ compact = false }: TodayTickerBadgesProps = 
   useEffect(() => {
     if (!restaurant?.id) return;
     const filter = `restaurant_id=eq.${restaurant.id}`;
-    const channel = supabase
+    const channel = db
       .channel(`ticker-rt-${restaurant.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "sales_transactions", filter }, () => {
         qc.invalidateQueries({ queryKey: ["today-ticker", restaurant.id, activeBranchId] });
@@ -122,7 +122,7 @@ export function TodayTickerBadges({ compact = false }: TodayTickerBadgesProps = 
       })
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [restaurant?.id, qc, activeBranchId]);
 

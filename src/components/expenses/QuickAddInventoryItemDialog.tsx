@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Loader2, PackagePlus } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { useBranch } from "@/contexts/BranchContext";
 import { useAuth } from "@/contexts/AuthContext";
@@ -62,7 +62,7 @@ export function QuickAddInventoryItemDialog({
     if (!canSubmit || !restaurantId) return;
     setSaving(true);
     try {
-      const sb = supabase as any;
+      const sb = db as any;
       const { data, error } = await sb
         .from("inventory_items")
         .insert({

@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import {
@@ -69,7 +69,7 @@ export function GroupTotalsDrilldownDialog({ target, onOpenChange }: Props) {
     staleTime: 2 * 60 * 1000,
     refetchOnWindowFocus: false,
     queryFn: async () => {
-      let salesQuery = supabase
+      let salesQuery = db
         .from("daily_sales_summary")
         .select(
           "id, sales_date, branch_id, cash_sales, card_sales, delivery_sales, other_sales, total_sales, status",
@@ -80,7 +80,7 @@ export function GroupTotalsDrilldownDialog({ target, onOpenChange }: Props) {
         .order("sales_date", { ascending: true });
       if (branchIds.length) salesQuery = salesQuery.in("branch_id", branchIds);
       const buildExpenses = () => {
-        let q = supabase
+        let q = db
           .from("expenses")
           .select(
             "id, expense_date, branch_id, amount, description, payment_method, status, category_id, vat_amount, supplier_id",
@@ -106,7 +106,7 @@ export function GroupTotalsDrilldownDialog({ target, onOpenChange }: Props) {
       const [salesRes, expenseRes, branchRes] = await Promise.all([
         salesQuery,
         fetchAllExpenses(),
-        supabase.from("branches").select("id, name").eq("restaurant_id", restaurantId!),
+        db.from("branches").select("id, name").eq("restaurant_id", restaurantId!),
       ]);
       if (salesRes.error) throw salesRes.error;
       if (expenseRes.error) throw expenseRes.error;
@@ -116,7 +116,7 @@ export function GroupTotalsDrilldownDialog({ target, onOpenChange }: Props) {
       ];
       let categories: Record<string, string> = {};
       if (categoryIds.length) {
-        const catRes = await supabase
+        const catRes = await db
           .from("expense_categories")
           .select("id, name")
           .in("id", categoryIds as string[]);
@@ -130,7 +130,7 @@ export function GroupTotalsDrilldownDialog({ target, onOpenChange }: Props) {
       ];
       let suppliers: Record<string, string> = {};
       if (supplierIds.length) {
-        const supRes = await supabase
+        const supRes = await db
           .from("suppliers")
           .select("id, name")
           .in("id", supplierIds as string[]);

@@ -124,7 +124,7 @@ function loadMeta(id: string) {
     document.head.appendChild(s);
   }
   window.fbq!("consent", "grant");
-  window.fbq!("init", id, {}, { agent: "lovable" });
+  window.fbq!("init", id);
   window.fbq!("track", "PageView");
 }
 

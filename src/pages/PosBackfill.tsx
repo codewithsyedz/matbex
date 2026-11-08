@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { splitInclusive } from "@/lib/vatInclusive";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
@@ -134,7 +134,7 @@ export default function PosBackfill() {
     }
     setLoading(true);
     try {
-      const { data: rows, error } = await supabase
+      const { data: rows, error } = await db
         .from("pos_backfill_entries")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -156,7 +156,7 @@ export default function PosBackfill() {
       const fromIso = startOfDay(parseISO(minDate)).toISOString();
       const toIso = endOfDay(parseISO(maxDate)).toISOString();
 
-      const { data: salesRows, error: salesErr } = await supabase
+      const { data: salesRows, error: salesErr } = await db
         .from("sales_transactions")
         .select("payment_method, total, receipt_number, created_at, branch_id")
         .eq("restaurant_id", restaurant.id)
@@ -207,7 +207,7 @@ export default function PosBackfill() {
     },
   ) => {
     if (!restaurant?.id) throw new Error("Restaurant context missing");
-    const { error } = await supabase
+    const { error } = await db
       .from("pos_backfill_entries")
       .insert({
         restaurant_id: restaurant.id,
@@ -382,12 +382,12 @@ export default function PosBackfill() {
         });
       }
       if (rows.length > 0) {
-        const { error: insErr } = await supabase
+        const { error: insErr } = await db
           .from("sales_transactions")
           .insert(rows as never);
         if (insErr) throw insErr;
       }
-      const { error: upErr } = await supabase
+      const { error: upErr } = await db
         .from("pos_backfill_entries")
         .update({
           status: "reconciled",
@@ -422,7 +422,7 @@ export default function PosBackfill() {
   };
 
   const discardEntry = async (row: BackfillRow) => {
-    const { error } = await supabase
+    const { error } = await db
       .from("pos_backfill_entries")
       .update({ status: "discarded" } as never)
       .eq("id", row.id);

@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { getTerminalId } from "@/lib/offline/terminal";
 import { exitKioskMode, isNativeKioskAvailable } from "@/lib/kiosk";
 import {
@@ -92,7 +92,7 @@ export function EmergencyKioskUnlockDialog({ open, onOpenChange }: Props) {
       };
 
       if (online) {
-        const { error: insertError } = await supabase
+        const { error: insertError } = await db
           .from("kiosk_offline_unlock_events" as never)
           .insert(event as never);
         if (insertError) queueUnlockEvent(event as never);

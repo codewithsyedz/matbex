@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -46,7 +46,7 @@ export function BranchReceiptOverridesEditor() {
     queryKey: ["branches-for-overrides", tenantId],
     enabled: !!tenantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branches")
         .select("id, name, is_primary")
         .is("deleted_at", null)
@@ -62,7 +62,7 @@ export function BranchReceiptOverridesEditor() {
     queryKey: ["branch-receipt-overrides", tenantId],
     enabled: !!tenantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branch_receipt_overrides")
         .select("id, branch_id, address_ar, address_en, phone, terminal_id");
       if (error) throw error;
@@ -108,7 +108,7 @@ export function BranchReceiptOverridesEditor() {
         phone: draft.phone.trim() || null,
         terminal_id: draft.terminal_id.trim() || null,
       };
-      const { error } = await supabase
+      const { error } = await db
         .from("branch_receipt_overrides")
         .upsert(payload, { onConflict: "branch_id" });
       if (error) throw error;
@@ -124,7 +124,7 @@ export function BranchReceiptOverridesEditor() {
   const clear = useMutation({
     mutationFn: async () => {
       if (!currentOverride) return;
-      const { error } = await supabase
+      const { error } = await db
         .from("branch_receipt_overrides")
         .delete()
         .eq("id", currentOverride.id);

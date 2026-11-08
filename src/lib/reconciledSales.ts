@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 /**
  * Shared helper for computing reconciled Sales totals everywhere a
@@ -260,7 +260,7 @@ export async function fetchReconciledSalesByDay({
       const PAGE = 1000;
       const all: any[] = [];
       for (let page = 0; ; page++) {
-        let q = supabase
+        let q = db
           .from("sales_transactions")
           .select("total, created_at, payment_method, is_delivery")
           .eq("restaurant_id", restaurantId)
@@ -279,7 +279,7 @@ export async function fetchReconciledSalesByDay({
       return { data: all, error: null } as any;
     })(),
     (async () => {
-      let q = supabase
+      let q = db
         .from("daily_sales_summary")
         .select("sales_date, total_sales, cash_sales, card_sales, delivery_sales, other_sales")
         .eq("restaurant_id", restaurantId)
@@ -290,7 +290,7 @@ export async function fetchReconciledSalesByDay({
       return await q;
     })(),
     (async () => {
-      let q = supabase
+      let q = db
         .from("day_end_adjustments")
         .select("amount, business_date, reversed_at, reversal_of_id")
         .eq("restaurant_id", restaurantId)

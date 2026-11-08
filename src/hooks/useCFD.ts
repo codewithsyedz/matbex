@@ -5,13 +5,13 @@
 //   • Same-device: a BroadcastChannel pushes cart updates to /cfd
 //     opened in another window on the same machine (HDMI second screen).
 //   • Paired tablet: a dedicated tablet pairs with a code and subscribes
-//     to the cfd_sessions row via Supabase Realtime.
+//     to the cfd_sessions row via the API Realtime.
 // The publisher always broadcasts locally and only hits the DB when a
 // session is paired, so we never burn writes when no CFD is active.
 // =====================================================================
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type CFDState = "idle" | "cart" | "payment" | "thankyou";
@@ -97,7 +97,7 @@ export function useCFDPublisher() {
           : null;
       if (!sessionId) return;
       try {
-        await supabase
+        await db
           .from("cfd_sessions" as any)
           .update({
             state: snap.state,
@@ -132,7 +132,7 @@ export function useCFDSessions() {
     queryKey: ["cfd-sessions", rid],
     queryFn: async () => {
       if (!rid) return [] as CFDSession[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cfd_sessions" as any)
         .select("*")
         .eq("restaurant_id", rid)
@@ -146,7 +146,7 @@ export function useCFDSessions() {
   const create = useMutation({
     mutationFn: async (label: string) => {
       if (!rid) throw new Error("No restaurant");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cfd_sessions" as any)
         .insert({
           restaurant_id: rid,
@@ -163,7 +163,7 @@ export function useCFDSessions() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("cfd_sessions" as any)
         .delete()
         .eq("id", id);
@@ -249,7 +249,7 @@ export function useCFDDisplay(params: {
     // on cfd_sessions is closed for security; the display only ever needs
     // its own paired row).
     const fetchOnce = async () => {
-      const { data }: any = await (supabase as any).rpc("cfd_get_session", {
+      const { data }: any = await (db as any).rpc("cfd_get_session", {
         p_restaurant_id: restaurantId,
         p_pair_code: pairCode,
       });
@@ -257,7 +257,7 @@ export function useCFDDisplay(params: {
       if (row) applyRow(row);
     };
     const heartbeat = () => {
-      void (supabase as any).rpc("cfd_heartbeat", {
+      void (db as any).rpc("cfd_heartbeat", {
         p_restaurant_id: restaurantId,
         p_pair_code: pairCode,
       });
@@ -330,7 +330,7 @@ export function useCFDIdleAdmin() {
     queryKey: ["cfd-idle-settings", rid],
     queryFn: async () => {
       if (!rid) return null;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cfd_idle_settings" as any)
         .select("*")
         .eq("restaurant_id", rid)
@@ -345,7 +345,7 @@ export function useCFDIdleAdmin() {
     queryKey: ["cfd-promos", rid],
     queryFn: async () => {
       if (!rid) return [] as CFDPromo[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cfd_promos" as any)
         .select("*")
         .eq("restaurant_id", rid)
@@ -362,7 +362,7 @@ export function useCFDIdleAdmin() {
       if (!rid) throw new Error("No restaurant");
       const current = settingsQ.data ?? { restaurant_id: rid, ...DEFAULT_IDLE };
       const next = { ...current, ...patch, restaurant_id: rid };
-      const { error } = await supabase
+      const { error } = await db
         .from("cfd_idle_settings" as any)
         .upsert(next, { onConflict: "restaurant_id" });
       if (error) throw error;
@@ -375,7 +375,7 @@ export function useCFDIdleAdmin() {
     mutationFn: async (p: Partial<CFDPromo> & { id?: string; title: string }) => {
       if (!rid) throw new Error("No restaurant");
       const payload: any = { ...p, restaurant_id: rid };
-      const { error } = await supabase.from("cfd_promos" as any).upsert(payload);
+      const { error } = await db.from("cfd_promos" as any).upsert(payload);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cfd-promos", rid] }),
@@ -383,7 +383,7 @@ export function useCFDIdleAdmin() {
 
   const deletePromo = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("cfd_promos" as any).delete().eq("id", id);
+      const { error } = await db.from("cfd_promos" as any).delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["cfd-promos", rid] }),
@@ -430,8 +430,8 @@ export function usePublicCFDIdle(restaurantId: string | null | undefined) {
     let cancelled = false;
     void (async () => {
       const [{ data: s }, { data: p }] = await Promise.all([
-        supabase.rpc("get_cfd_idle_settings" as any, { _restaurant_id: restaurantId }),
-        supabase.rpc("get_cfd_promos" as any, { _restaurant_id: restaurantId }),
+        db.rpc("get_cfd_idle_settings" as any, { _restaurant_id: restaurantId }),
+        db.rpc("get_cfd_promos" as any, { _restaurant_id: restaurantId }),
       ]);
       if (cancelled) return;
       const settingsRow = Array.isArray(s) ? s[0] : s;

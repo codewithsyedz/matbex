@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -116,7 +116,7 @@ export function useComplianceViolations(filters: ViolationFilters = {}) {
   const query = useQuery({
     queryKey: ["compliance-violations", rid, activeBranchId, filters],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("compliance_violations")
         .select(SELECT)
         .eq("restaurant_id", rid!)
@@ -159,14 +159,14 @@ export function useComplianceViolations(filters: ViolationFilters = {}) {
       delete payload.responsible_staff;
       delete payload.supervisor_staff;
       if (input.id) {
-        const { error } = await supabase
+        const { error } = await db
           .from("compliance_violations")
           .update(payload as never)
           .eq("id", input.id);
         if (error) throw error;
         return input.id;
       }
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_violations")
         .insert(payload as never)
         .select("id")
@@ -196,7 +196,7 @@ export function useComplianceViolations(filters: ViolationFilters = {}) {
       if (status === "verified") patch.verified_at = new Date().toISOString();
       if (status === "closed") patch.is_overdue = false;
       if (comment) patch.notes = comment;
-      const { error } = await supabase.from("compliance_violations").update(patch as never).eq("id", id);
+      const { error } = await db.from("compliance_violations").update(patch as never).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -208,7 +208,7 @@ export function useComplianceViolations(filters: ViolationFilters = {}) {
 
   const softDelete = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("compliance_violations")
         .update({ deleted_at: new Date().toISOString() } as never)
         .eq("id", id);
@@ -235,7 +235,7 @@ export function useViolationTimeline(violationId?: string | null) {
   return useQuery({
     queryKey: ["compliance-timeline", violationId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_action_events")
         .select("*")
         .eq("violation_id", violationId!)
@@ -257,7 +257,7 @@ export function useRepeatInfo(violationId?: string | null) {
   return useQuery({
     queryKey: ["compliance-repeat", violationId],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("compliance_repeat_info", {
+      const { data, error } = await db.rpc("compliance_repeat_info", {
         _violation_id: violationId!,
       });
       if (error) throw error;

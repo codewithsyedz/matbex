@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format, differenceInDays, isPast, addDays } from "date-fns";
 
@@ -93,18 +93,18 @@ export function BatchTracker() {
     
     try {
       const [batchesRes, itemsRes, suppliersRes] = await Promise.all([
-        supabase
+        db
           .from("inventory_batches")
           .select("*, inventory_items(name, unit), suppliers(name)")
           .eq("restaurant_id", restaurant.id)
           .eq("status", "active")
           .order("expiry_date", { ascending: true, nullsFirst: false }),
-        supabase
+        db
           .from("inventory_items")
           .select("id, name, unit")
           .eq("restaurant_id", restaurant.id)
           .order("name"),
-        supabase
+        db
           .from("suppliers")
           .select("id, name")
           .eq("restaurant_id", restaurant.id)
@@ -147,7 +147,7 @@ export function BatchTracker() {
       };
 
       if (editingBatch) {
-        const { error } = await supabase
+        const { error } = await db
           .from("inventory_batches")
           .update(batchData)
           .eq("id", editingBatch.id);
@@ -155,7 +155,7 @@ export function BatchTracker() {
         if (error) throw error;
         toast({ title: "Batch updated" });
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("inventory_batches")
           .insert(batchData);
 
@@ -177,7 +177,7 @@ export function BatchTracker() {
     if (!confirm(`Delete batch "${batch.batch_number}"?`)) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("inventory_batches")
         .update({ status: "deleted" })
         .eq("id", batch.id);

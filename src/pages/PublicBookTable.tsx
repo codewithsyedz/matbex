@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -34,7 +34,7 @@ export default function PublicBookTable() {
     queryKey: ["public-restaurant-booking", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("restaurants_public")
         .select("id,name")
         .eq("id", restaurantId!)
@@ -52,7 +52,7 @@ export default function PublicBookTable() {
       return;
     }
     setSubmitting(true);
-    const { error } = await (supabase as any).from("table_reservations").insert({
+    const { error } = await (db as any).from("table_reservations").insert({
       restaurant_id: restaurantId,
       guest_name: form.guest_name.trim(),
       guest_phone: form.guest_phone.trim(),

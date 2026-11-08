@@ -2,7 +2,7 @@
  * Regression suite: July 2026 sales, expenses and payroll must always be
  * filtered by the active branch.
  *
- * The Supabase mock here is filter-aware, so dropping a `branch_id` /
+ * The the API mock here is filter-aware, so dropping a `branch_id` /
  * `assigned_branch_id` filter in production code changes the returned rows and
  * fails these tests instead of silently showing tenant-wide totals.
  */
@@ -23,13 +23,13 @@ import {
   julyPayrollRecords,
   expectedPayroll,
 } from "@/test/fixtures/julyBranchFixtures";
-import { createSupabaseTableMock } from "@/test/utils/supabaseTableMock";
+import { createDbTableMock } from "@/test/utils/dbTableMock";
 import { filterStaffActiveInPeriod, calculateMonthlyPayroll } from "@/lib/staffUtils";
 
-vi.mock("@/integrations/supabase/client", async () => {
-  const { createSupabaseTableMock } = await import("@/test/utils/supabaseTableMock");
+vi.mock("@/integrations/db/client", async () => {
+  const { createDbTableMock } = await import("@/test/utils/dbTableMock");
   const fixtures = await import("@/test/fixtures/julyBranchFixtures");
-  const mock = createSupabaseTableMock({
+  const mock = createDbTableMock({
     sales_transactions: fixtures.julySalesTransactions,
     daily_sales_summary: fixtures.julyDailySalesSummary,
     day_end_adjustments: fixtures.julyDayEndAdjustments,
@@ -38,11 +38,11 @@ vi.mock("@/integrations/supabase/client", async () => {
     payroll_records: fixtures.julyPayrollRecords,
     staff_advances: fixtures.julyStaffAdvances,
   });
-  return { supabase: mock.supabase };
+  return { db: mock.db };
 });
 
 const { fetchReconciledSalesByDay } = await import("@/lib/reconciledSales");
-const { supabase } = await import("@/integrations/supabase/client");
+const { db } = await import("@/integrations/db/client");
 
 // ---------------------------------------------------------------- Sales -----
 
@@ -126,7 +126,7 @@ describe("July sales are branch-filtered", () => {
 // ------------------------------------------------------------- Expenses -----
 
 async function fetchJulyExpenses(branchId: string | null) {
-  let q: any = supabase
+  let q: any = db
     .from("expenses")
     .select("id, amount, branch_id, expense_date")
     .eq("restaurant_id", RESTAURANT_ID)
@@ -157,7 +157,7 @@ describe("July expenses are branch-filtered", () => {
   });
 
   it("excludes other tenants and out-of-range dates", async () => {
-    const { data } = await (supabase
+    const { data } = await (db
       .from("expenses")
       .select("id")
       .eq("restaurant_id", RESTAURANT_ID)
@@ -177,7 +177,7 @@ const JULY_START = new Date("2026-07-01T00:00:00Z");
 const JULY_END = new Date("2026-07-31T00:00:00Z");
 
 async function julyPayrollFor(branchId: string | null) {
-  let q: any = supabase
+  let q: any = db
     .from("staff")
     .select("id, monthly_salary, hourly_rate, joined_date, termination_date, is_active, assigned_branch_id")
     .eq("restaurant_id", RESTAURANT_ID);

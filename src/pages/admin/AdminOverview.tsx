@@ -15,7 +15,7 @@ import {
   Store,
   ArrowRight,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { ReleaseNotesPanel } from "@/components/admin/ReleaseNotesPanel";
 
 interface Stats {
@@ -87,16 +87,16 @@ export default function AdminOverview() {
     const fetchAll = async () => {
       try {
         const [tenantsRes, usersRes, messagesRes, restaurantsRes] = await Promise.all([
-          supabase.from("tenants").select("id, status"),
-          supabase.from("profiles").select("id"),
-          supabase
+          db.from("tenants").select("id, status"),
+          db.from("profiles").select("id"),
+          db
             .from("contact_messages")
             .select(
               "id, name, email, kind, message, company, source_path, preferred_date, preferred_slot, handled_at, created_at",
             )
             .order("created_at", { ascending: false })
             .limit(500),
-          supabase
+          db
             .from("restaurants")
             .select("id, name, status, created_at, tenant_id")
             .order("created_at", { ascending: false })

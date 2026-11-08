@@ -1,10 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /** Untyped client: installment tables are newer than the generated types. */
-const db = supabase as any;
-
 export type AgingBucket = "current" | "d1_30" | "d31_60" | "d61_90" | "d90_plus";
 
 export const AGING_BUCKETS: { key: AgingBucket; label: string }[] = [

@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from "react";
-import { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import { Json } from "@/integrations/supabase/types";
+import { User, Session } from "@matbex/client";
+import { db } from "@/integrations/db/client";
+import { Json } from "@/integrations/db/types";
 import { readSessionHydration, writeSessionHydration } from "@/lib/sessionHydration";
 import {
   selectEffectivePermissions,
@@ -206,7 +206,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchTenantData = useCallback(async (tenantId: string) => {
-    const { data: tenantData } = await supabase
+    const { data: tenantData } = await db
       .from("tenants")
       .select("*")
       .eq("id", tenantId)
@@ -215,7 +215,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTenant(tenantData);
 
     // Fetch all restaurants for this tenant
-    const { data: restaurantsData } = await supabase
+    const { data: restaurantsData } = await db
       .from("restaurants")
       .select("*")
       .eq("tenant_id", tenantId);
@@ -232,7 +232,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Fetch plan and feature flags
     if (tenantData?.plan_id) {
-      const { data: planData } = await supabase
+      const { data: planData } = await db
         .from("plans")
         .select("*")
         .eq("id", tenantData.plan_id)
@@ -241,7 +241,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setPlan(planData);
 
       // Get tenant-specific feature overrides
-      const { data: tenantFeatures } = await supabase
+      const { data: tenantFeatures } = await db
         .from("tenant_features")
         .select("*")
         .eq("tenant_id", tenantId);
@@ -256,7 +256,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       });
 
       // Merge in features unlocked by active addons
-      const { data: activeAddons } = await supabase
+      const { data: activeAddons } = await db
         .from("tenant_addons" as any)
         .select("addon:addons(included_features)")
         .eq("tenant_id", tenantId)
@@ -280,14 +280,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const fetchUserData = useCallback(async (userId: string) => {
     try {
       // Fetch profile
-      const { data: profileData } = await supabase
+      const { data: profileData } = await db
         .from("profiles")
         .select("*")
         .eq("id", userId)
         .maybeSingle();
 
       // Fetch tenant roles
-      const { data: rolesDataRaw } = await supabase
+      const { data: rolesDataRaw } = await db
         .from("user_tenant_roles")
         .select("*")
         .eq("user_id", userId);
@@ -305,7 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           membershipSyncAttemptedRef.current = true;
 
           const token = sessionRef.current?.access_token;
-          const { error: syncError } = await supabase.functions.invoke(
+          const { error: syncError } = await db.functions.invoke(
             "sync-membership",
             token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
           );
@@ -314,13 +314,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.warn("Membership sync failed:", syncError);
           } else {
             // Re-fetch now that roles/profile may have been repaired
-            const { data: profileAfter } = await supabase
+            const { data: profileAfter } = await db
               .from("profiles")
               .select("*")
               .eq("id", userId)
               .maybeSingle();
 
-            const { data: rolesAfter } = await supabase
+            const { data: rolesAfter } = await db
               .from("user_tenant_roles")
               .select("*")
               .eq("user_id", userId);
@@ -339,7 +339,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (storedImpersonation) {
         try {
           // First verify this user is actually a SuperAdmin before using impersonation
-          const { data: superadminCheck } = await supabase
+          const { data: superadminCheck } = await db
             .from("superadmin_users")
             .select("id")
             .eq("user_id", userId)
@@ -388,7 +388,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = db.auth.onAuthStateChange(
       (event, session) => {
         if (!isMounted) return;
 
@@ -403,7 +403,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionRef.current = session ?? null;
 
         // Let the initial getSession() hydration own first-load UX.
-        // Supabase can emit INITIAL_SESSION before/around that call.
+        // the API can emit INITIAL_SESSION before/around that call.
         if (event === "INITIAL_SESSION" && !hasInitializedRef.current) {
           return;
         }
@@ -457,7 +457,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    db.auth.getSession().then(async ({ data: { session } }) => {
       if (!isMounted) return;
       hasInitializedRef.current = true;
       
@@ -489,7 +489,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string, fullName: string) => {
     const redirectUrl = `${window.location.origin}/`;
     
-    const { error } = await supabase.auth.signUp({
+    const { error } = await db.auth.signUp({
       email,
       password,
       options: {
@@ -503,7 +503,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await db.auth.signInWithPassword({
       email,
       password,
     });
@@ -519,14 +519,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const trackSession = async (userId: string) => {
     try {
       // Get user's tenant_id from profile
-      const { data: profileData } = await supabase
+      const { data: profileData } = await db
         .from("profiles")
         .select("tenant_id")
         .eq("id", userId)
         .maybeSingle();
 
       // Call session tracking edge function
-      await supabase.functions.invoke("track-session", {
+      await db.functions.invoke("track-session", {
         body: {
           user_id: userId,
           tenant_id: profileData?.tenant_id,
@@ -546,7 +546,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const activeLogId = impersonationLogId;
     if (activeLogId) {
       try {
-        await supabase
+        await db
           .from("role_impersonation_logs")
           .update({ ended_at: new Date().toISOString(), end_reason: "signout" })
           .eq("id", activeLogId);
@@ -558,7 +558,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setImpersonationLogId(null);
       setImpersonationExpiresAt(null);
     }
-    await supabase.auth.signOut();
+    await db.auth.signOut();
     setUser(null);
     sessionRef.current = null;
     setSession(null);
@@ -602,7 +602,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSuperAdmin = roles.some((r) => r.role === "superadmin");
 
   // Mirror role-impersonation state into the global fetch-level write guard
-  // so every mutating Supabase call refuses to fire while "Test as…" is on,
+  // so every mutating the API call refuses to fire while "Test as…" is on,
   // regardless of whether the call site remembered useImpersonationGuard.
   useEffect(() => {
     setImpersonationActive(perms.isRoleImpersonating);
@@ -629,7 +629,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("role_impersonation_logs")
         .insert({
           tenant_id: tenant.id,
@@ -666,7 +666,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setImpersonationExpiresAt(null);
     if (logId) {
       try {
-        await supabase
+        await db
           .from("role_impersonation_logs")
           .update({ ended_at: new Date().toISOString(), end_reason: reason })
           .eq("id", logId);
@@ -687,7 +687,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .rpc("validate_active_impersonation", { _log_id: impersonationLogId });
       if (cancelled) return;
       const row = Array.isArray(data) ? data[0] : null;
@@ -746,7 +746,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         stopRoleImpersonation("invalidated");
         return;
       }
-      supabase
+      db
         .rpc("heartbeat_impersonation", { _log_id: impersonationLogId })
         .then(({ data }) => {
           // Server returned false → row was already closed (swept or timed out).
@@ -785,14 +785,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Best-effort: fire-and-forget keepalive PATCH to PostgREST so the
       // request survives the tab teardown.
       try {
-        const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/role_impersonation_logs?id=eq.${impersonationLogId}`;
+        const url = `${import.meta.env.VITE_API_URL}/rest/v1/role_impersonation_logs?id=eq.${impersonationLogId}`;
         const token = sessionRef.current?.access_token;
         fetch(url, {
           method: "PATCH",
           keepalive: true,
           headers: {
             "Content-Type": "application/json",
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "",
+            apikey: import.meta.env.VITE_API_KEY ?? "",
             Authorization: token ? `Bearer ${token}` : "",
             Prefer: "return=minimal",
           },

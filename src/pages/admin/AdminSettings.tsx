@@ -12,7 +12,7 @@ import { CheckoutComPlatformSettingsCard } from "@/components/admin/CheckoutComP
 import { CloudflareSettingsCard } from "@/components/admin/CloudflareSettingsCard";
 import { HyperPaySettingsCard } from "@/components/admin/HyperPaySettingsCard";
 import { PromotionCampaignCard } from "@/components/admin/PromotionCampaignCard";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 interface Plan {
   id: string;
@@ -25,7 +25,7 @@ export default function AdminSettings() {
   const [plans, setPlans] = useState<Plan[]>([]);
 
   const fetchPlans = async () => {
-    const { data } = await supabase
+    const { data } = await db
       .from("plans")
       .select("id, name, price, quota_limits")
       .eq("is_active", true)

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useBranch } from "@/contexts/BranchContext";
@@ -40,7 +40,7 @@ export function StaffSummaryCards() {
     queryKey: ["staff-summary", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff")
         .select("id, is_active, payment_type, monthly_salary, hourly_rate, assigned_branch_id")
         .eq("restaurant_id", restaurant.id);
@@ -55,7 +55,7 @@ export function StaffSummaryCards() {
     queryKey: ["payroll", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("payroll_records")
         .select("id, amount, payment_date, branch_id")
         .eq("restaurant_id", restaurant.id);
@@ -70,7 +70,7 @@ export function StaffSummaryCards() {
     queryKey: ["staff-settings", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return null;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_settings")
         .select("salary_day, include_payroll_in_overhead")
         .eq("restaurant_id", restaurant.id)

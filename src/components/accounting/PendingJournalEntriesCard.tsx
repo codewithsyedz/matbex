@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { BranchBadge } from "@/components/branch/BranchBadge";
@@ -78,7 +78,7 @@ export function PendingJournalEntriesCard() {
     queryKey: ["coa-lookup", tenantId],
     queryFn: async () => {
       if (!tenantId) return {} as Record<string, { code: string; name: string }>;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name")
         .eq("tenant_id", tenantId);
@@ -146,7 +146,7 @@ export function PendingJournalEntriesCard() {
     queryKey: ["pending-batch-accounts", allPending.map((b) => b.id).join(",")],
     enabled: allPending.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("account_transactions")
         .select("batch_id, account_id")
         .in("batch_id", allPending.map((b) => b.id))
@@ -255,7 +255,7 @@ export function PendingJournalEntriesCard() {
     gcTime: 0,
     refetchOnMount: "always",
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("journal_entry_batches")
         .select("id, approval_status, pending_lines, posted_at, posted_by")
         .eq("id", reviewing!.id)
@@ -288,7 +288,7 @@ export function PendingJournalEntriesCard() {
     gcTime: 0,
     refetchOnMount: "always",
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("account_transactions")
         .select(
           "id, account_id, debit, credit, description, transaction_date, reference_type, reference_id, branch_id, is_voided, void_reason, created_at"
@@ -348,7 +348,7 @@ export function PendingJournalEntriesCard() {
     queryKey: ["pending-batch-creator", reviewing?.created_by],
     enabled: !!reviewing?.created_by,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("profiles")
         .select("id, full_name")
         .eq("id", reviewing!.created_by as string)
@@ -362,7 +362,7 @@ export function PendingJournalEntriesCard() {
     queryKey: ["pending-batch-audit", reviewing?.id],
     enabled: !!reviewing?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_posting_audit")
         .select(
           "id, action, outcome, reason_code, reason_detail, trigger_source, triggered_by, dr_total, cr_total, created_at"

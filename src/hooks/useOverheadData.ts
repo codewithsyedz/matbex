@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useFiscalSettings, getFiscalMonthRange, getPreviousFiscalMonthRange } from "@/hooks/useFiscalSettings";
@@ -69,7 +69,7 @@ export function useOverheadData(useLastMonth = false) {
       // Run all queries in parallel
       const [overheadResult, staffResult, advancesResult, payrollResult, overheadPaymentsResult] = await Promise.all([
         (async () => {
-          let q = supabase
+          let q = db
             .from("overhead_allocation")
             .select("id, name, monthly_amount, is_active")
             .eq("restaurant_id", restaurant.id)
@@ -82,7 +82,7 @@ export function useOverheadData(useLastMonth = false) {
         (async () => {
           const isViewingCurrentPeriod = isCurrentPeriod(fiscalEnd);
           
-          let query = supabase
+          let query = db
             .from("staff")
             .select("id, monthly_salary, hourly_rate, joined_date, termination_date, is_active, payment_type, assigned_branch_id")
             .eq("restaurant_id", restaurant.id);
@@ -104,14 +104,14 @@ export function useOverheadData(useLastMonth = false) {
         })(),
         
         // Pending advances query - advances not yet deducted from payroll
-        supabase
+        db
           .from("staff_advances")
           .select("amount, staff_id")
           .eq("restaurant_id", restaurant.id)
           .eq("status", "pending"),
         
         // Payroll records for this fiscal month (to find already-paid staff)
-        supabase
+        db
           .from("payroll_records")
           .select("staff_id, amount")
           .eq("restaurant_id", restaurant.id)
@@ -120,7 +120,7 @@ export function useOverheadData(useLastMonth = false) {
         
         // Overhead payments - use fiscal start since OverheadPaymentManager uses fiscal months
         (async () => {
-          let q = supabase
+          let q = db
             .from("overhead_payments")
             .select("overhead_allocation_id, amount_paid")
             .eq("restaurant_id", restaurant.id)

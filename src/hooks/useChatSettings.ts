@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 
@@ -25,7 +25,7 @@ export function useChatSettings() {
     queryFn: async () => {
       if (!restaurant?.tenant_id) return null;
       
-      const { data, error } = await (supabase
+      const { data, error } = await (db
         .from("chat_settings" as any)
         .select("*")
         .eq("tenant_id", restaurant.tenant_id)
@@ -54,14 +54,14 @@ export function useChatSettings() {
       if (!restaurant?.tenant_id) throw new Error("No tenant");
       
       // Check if settings exist
-      const { data: existing } = await (supabase
+      const { data: existing } = await (db
         .from("chat_settings" as any)
         .select("id")
         .eq("tenant_id", restaurant.tenant_id)
         .maybeSingle() as any);
       
       if (existing) {
-        const { data, error } = await (supabase
+        const { data, error } = await (db
           .from("chat_settings" as any)
           .update(updates)
           .eq("tenant_id", restaurant.tenant_id)
@@ -71,7 +71,7 @@ export function useChatSettings() {
         if (error) throw error;
         return data;
       } else {
-        const { data, error } = await (supabase
+        const { data, error } = await (db
           .from("chat_settings" as any)
           .insert({ tenant_id: restaurant.tenant_id, ...updates })
           .select()

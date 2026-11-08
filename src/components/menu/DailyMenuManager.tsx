@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { format, addDays, subDays } from "date-fns";
@@ -50,7 +50,7 @@ export function DailyMenuManager() {
     queryKey: ["menu-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -68,7 +68,7 @@ export function DailyMenuManager() {
     queryKey: ["daily-menu", restaurant?.id, dateStr],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("daily_menu")
         .select("id, menu_item_id, notes")
         .eq("restaurant_id", restaurant.id)
@@ -94,7 +94,7 @@ export function DailyMenuManager() {
       if (!restaurant?.id || !user?.id) throw new Error("No restaurant or user");
 
       // Delete existing entries for this date
-      const { error: deleteError } = await supabase
+      const { error: deleteError } = await db
         .from("daily_menu")
         .delete()
         .eq("restaurant_id", restaurant.id)
@@ -112,7 +112,7 @@ export function DailyMenuManager() {
           created_by: user.id,
         }));
 
-        const { error: insertError } = await supabase
+        const { error: insertError } = await db
           .from("daily_menu")
           .insert(entries);
         

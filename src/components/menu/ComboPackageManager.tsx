@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -80,7 +80,7 @@ export function ComboPackageManager() {
     queryKey: ["menu-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -97,7 +97,7 @@ export function ComboPackageManager() {
     queryKey: ["combo-packages", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("combo_packages")
         .select(`
           *,
@@ -123,7 +123,7 @@ export function ComboPackageManager() {
       if (!restaurant?.id) throw new Error("No restaurant");
       
       // Create combo package
-      const { data: combo, error: comboError } = await supabase
+      const { data: combo, error: comboError } = await db
         .from("combo_packages")
         .insert({
           restaurant_id: restaurant.id,
@@ -138,7 +138,7 @@ export function ComboPackageManager() {
 
       // Add combo items
       if (selectedItems.length > 0) {
-        const { error: itemsError } = await supabase
+        const { error: itemsError } = await db
           .from("combo_package_items")
           .insert(
             selectedItems.map((item) => ({
@@ -167,7 +167,7 @@ export function ComboPackageManager() {
       if (!editingCombo) throw new Error("No combo");
 
       // Update combo package
-      const { error: comboError } = await supabase
+      const { error: comboError } = await db
         .from("combo_packages")
         .update({
           name: editingCombo.name,
@@ -180,14 +180,14 @@ export function ComboPackageManager() {
       if (comboError) throw comboError;
 
       // Delete existing items
-      await supabase
+      await db
         .from("combo_package_items")
         .delete()
         .eq("combo_id", editingCombo.id);
 
       // Add new items
       if (selectedItems.length > 0) {
-        const { error: itemsError } = await supabase
+        const { error: itemsError } = await db
           .from("combo_package_items")
           .insert(
             selectedItems.map((item) => ({
@@ -212,7 +212,7 @@ export function ComboPackageManager() {
   // Delete combo mutation
   const deleteComboMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("combo_packages").delete().eq("id", id);
+      const { error } = await db.from("combo_packages").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -225,7 +225,7 @@ export function ComboPackageManager() {
   // Toggle active mutation
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("combo_packages")
         .update({ is_active })
         .eq("id", id);

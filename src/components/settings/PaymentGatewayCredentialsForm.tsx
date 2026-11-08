@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -226,7 +226,7 @@ export function PaymentGatewayCredentialsForm({
   useEffect(() => {
     (async () => {
       setLoading(true);
-      const { data } = await supabase
+      const { data } = await db
         .from("payment_gateway_credentials")
         .select("credentials")
         .eq("tenant_id", tenantId)
@@ -259,8 +259,8 @@ export function PaymentGatewayCredentialsForm({
       }
     });
 
-    const { data: userData } = await supabase.auth.getUser();
-    const { error } = await supabase
+    const { data: userData } = await db.auth.getUser();
+    const { error } = await db
       .from("payment_gateway_credentials")
       .upsert(
         {

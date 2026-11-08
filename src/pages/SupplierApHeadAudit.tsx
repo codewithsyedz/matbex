@@ -4,7 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, ChevronsUpDown, Download, History, RefreshCw, Search } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -79,7 +79,7 @@ export default function SupplierApHeadAudit() {
     enabled: !!tenant?.id,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("supplier_ap_account_audit")
         .select(
           "id, supplier_id, supplier_name, account_code, account_name, action, changed_fields, performed_by, created_at",
@@ -102,7 +102,7 @@ export default function SupplierApHeadAudit() {
     enabled: actorIds.length > 0,
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase.from("profiles").select("id, full_name").in("id", actorIds);
+      const { data, error } = await db.from("profiles").select("id, full_name").in("id", actorIds);
       if (error) throw error;
       return Object.fromEntries((data ?? []).map((p) => [p.id, p.full_name ?? "—"])) as Record<string, string>;
     },

@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface AiIncomeJournalResult {
   posted: boolean;
@@ -19,7 +19,7 @@ export class AiIncomeNeedsReviewError extends Error {
 }
 
 async function invoke(body: Record<string, unknown>): Promise<AiIncomeJournalResult> {
-  const { data, error } = await supabase.functions.invoke("generate-income-journal", { body });
+  const { data, error } = await db.functions.invoke("generate-income-journal", { body });
   if (error) {
     const context = error.context as Response | undefined;
     let message = error.message;

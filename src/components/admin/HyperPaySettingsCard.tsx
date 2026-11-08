@@ -25,7 +25,7 @@ import {
   Save,
   CheckCircle2,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 const KEY = "hyperpay";
@@ -62,7 +62,7 @@ export function HyperPaySettingsCard() {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("platform_settings" as any)
       .select("value")
       .eq("key", KEY)
@@ -103,14 +103,14 @@ export function HyperPaySettingsCard() {
       payload.webhook_decryption_key = values.webhook_decryption_key.trim();
     }
 
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from("platform_settings" as any)
       .select("value")
       .eq("key", KEY)
       .maybeSingle();
     const merged = { ...((existing as any)?.value ?? {}), ...payload };
 
-    const { error } = await supabase
+    const { error } = await db
       .from("platform_settings" as any)
       .upsert(
         {

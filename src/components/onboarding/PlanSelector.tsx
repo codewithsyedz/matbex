@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { cn } from "@/lib/utils";
 import { Check, Building2, Rocket, Crown, Sparkles, Gift } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -72,7 +72,7 @@ export function PlanSelector({
 
   useEffect(() => {
     const fetchPlans = async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("plans")
         .select("*")
         .eq("is_active", true)

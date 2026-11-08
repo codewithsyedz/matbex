@@ -26,7 +26,7 @@ import {
 } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Loader2, TrendingDown, TrendingUp, AlertCircle, FileX, CalendarIcon } from "lucide-react";
@@ -117,7 +117,7 @@ export function BalanceAdjustmentDialog({
         throw new Error("Please provide a reason for this adjustment");
       }
 
-      const { error } = await supabase.from("customer_balance_adjustments").insert({
+      const { error } = await db.from("customer_balance_adjustments").insert({
         restaurant_id: restaurant.id,
         customer_id: customer.id,
         tenant_id: tenant.id,

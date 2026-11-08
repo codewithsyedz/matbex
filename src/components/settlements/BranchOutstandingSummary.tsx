@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 interface BranchOutstandingRow {
   branchId: string | null;
@@ -35,7 +35,7 @@ export function BranchOutstandingSummary() {
     queryKey: ["settlements-branch-outstanding", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data: rows, error } = await supabase
+      const { data: rows, error } = await db
         .from("sales_transactions")
         .select("branch_id, customer_id, total")
         .eq("restaurant_id", restaurant.id)

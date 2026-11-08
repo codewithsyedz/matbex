@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import {
@@ -81,7 +81,7 @@ export function useChartOfAccounts() {
     queryFn: async () => {
       if (!tenantId) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('chart_of_accounts')
         .select('*')
         .eq('tenant_id', tenantId)
@@ -92,7 +92,7 @@ export function useChartOfAccounts() {
       // Check for transactions for each account
       const accountsWithTransactions = await Promise.all(
         (data || []).map(async (account) => {
-          const { count } = await supabase
+          const { count } = await db
             .from('account_transactions')
             .select('*', { count: 'exact', head: true })
             .eq('account_id', account.id);
@@ -113,7 +113,7 @@ export function useChartOfAccounts() {
     mutationFn: async (data: CreateAccountData) => {
       if (!tenantId) throw new Error('No tenant ID');
 
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from('chart_of_accounts')
         .insert({
           ...data,
@@ -145,7 +145,7 @@ export function useChartOfAccounts() {
     mutationFn: async (data: UpdateAccountData) => {
       const { id, ...updateData } = data;
 
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from('chart_of_accounts')
         .update(updateData)
         .eq('id', id)
@@ -167,7 +167,7 @@ export function useChartOfAccounts() {
 
   const deleteAccount = useMutation({
     mutationFn: async (accountId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from('chart_of_accounts')
         .delete()
         .eq('id', accountId);

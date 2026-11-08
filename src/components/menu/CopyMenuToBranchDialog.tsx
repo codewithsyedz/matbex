@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   Dialog,
   DialogContent,
@@ -44,7 +44,7 @@ export function CopyMenuToBranchDialog({
   const { data: branches = [], isLoading } = useQuery({
     queryKey: ["copy-menu-branches", tenantId, sourceRestaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("restaurants")
         .select("id, name")
         .eq("tenant_id", tenantId)
@@ -64,7 +64,7 @@ export function CopyMenuToBranchDialog({
       if (selected.length === 0) throw new Error("Select at least one branch");
 
       // Fetch source items
-      const { data: sourceItems, error: srcErr } = await supabase
+      const { data: sourceItems, error: srcErr } = await db
         .from("menu_items")
         .select(
           "name, category, selling_price, quarter_price, half_price, full_price, is_active, image_url, description, is_chefs_special, is_market_price, allergens, dietary_tags, nutritional_info, vat_category, vat_exemption_reason_code, available_online, print_route"
@@ -81,7 +81,7 @@ export function CopyMenuToBranchDialog({
 
       for (const targetId of selected) {
         // Existing names in target
-        const { data: existing, error: exErr } = await supabase
+        const { data: existing, error: exErr } = await db
           .from("menu_items")
           .select(
             "id, name, category, selling_price, quarter_price, half_price, full_price, is_active, image_url, description, is_chefs_special, is_market_price, allergens, dietary_tags, nutritional_info, vat_category, vat_exemption_reason_code, available_online, print_route"
@@ -113,7 +113,7 @@ export function CopyMenuToBranchDialog({
         }
 
         if (toInsert.length > 0) {
-          const { data: insData, error: insErr } = await supabase
+          const { data: insData, error: insErr } = await db
             .from("menu_items")
             .insert(toInsert)
             .select("id");
@@ -122,7 +122,7 @@ export function CopyMenuToBranchDialog({
           (insData || []).forEach((r: any) => insertedIds.push(r.id));
         }
         for (const u of toUpdate) {
-          const { error: upErr } = await supabase
+          const { error: upErr } = await db
             .from("menu_items")
             .update(u.payload)
             .eq("id", u.id);
@@ -167,7 +167,7 @@ export function CopyMenuToBranchDialog({
         const chunkSize = 100;
         for (let i = 0; i < insertedIds.length; i += chunkSize) {
           const chunk = insertedIds.slice(i, i + chunkSize);
-          const { error } = await supabase
+          const { error } = await db
             .from("menu_items")
             .delete()
             .in("id", chunk);
@@ -175,7 +175,7 @@ export function CopyMenuToBranchDialog({
         }
       }
       for (const snap of updatedSnapshots) {
-        const { error } = await supabase
+        const { error } = await db
           .from("menu_items")
           .update(snap.payload)
           .eq("id", snap.id);

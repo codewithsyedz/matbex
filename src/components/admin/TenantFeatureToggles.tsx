@@ -4,7 +4,7 @@ import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 interface Props {
@@ -44,7 +44,7 @@ export function TenantFeatureToggles({ tenantId, planId }: Props) {
     setLoading(true);
     try {
       if (planId) {
-        const { data: plan } = await supabase
+        const { data: plan } = await db
           .from("plans")
           .select("default_feature_flags")
           .eq("id", planId)
@@ -57,7 +57,7 @@ export function TenantFeatureToggles({ tenantId, planId }: Props) {
         setPlanFlags({});
       }
 
-      const { data: tf } = await supabase
+      const { data: tf } = await db
         .from("tenant_features")
         .select("feature_key, enabled")
         .eq("tenant_id", tenantId);
@@ -79,7 +79,7 @@ export function TenantFeatureToggles({ tenantId, planId }: Props) {
   const handleToggle = async (key: string, enabled: boolean) => {
     setSaving(key);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenant_features")
         .upsert(
           { tenant_id: tenantId, feature_key: key, enabled },
@@ -99,7 +99,7 @@ export function TenantFeatureToggles({ tenantId, planId }: Props) {
   const handleResetToPlan = async (key: string) => {
     setSaving(key);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenant_features")
         .delete()
         .eq("tenant_id", tenantId)

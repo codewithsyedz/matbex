@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface ZatcaReconGroup {
   branch_id: string;
@@ -65,7 +65,7 @@ export function useZatcaReconciliation(fromDate: string, toDate: string, branchI
     enabled: Boolean(tenantId && fromDate && toDate),
     staleTime: 2 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_zatca_pl_reconciliation" as never, {
+      const { data, error } = await db.rpc("get_zatca_pl_reconciliation" as never, {
         p_tenant_id: tenantId, p_from_date: fromDate, p_to_date: toDate, p_branch_id: branchId,
       } as never);
       if (error) throw error;

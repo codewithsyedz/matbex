@@ -10,7 +10,7 @@
 // block the sale itself.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import type { ZatcaReceiptSnapshot } from "@/lib/printUtils";
 
 export type GenerationStatus = "success" | "failed" | "skipped";
@@ -29,7 +29,7 @@ export async function uploadZatcaPdf(args: UploadPdfArgs): Promise<string | null
     const safeReceipt = args.receiptNumber.replace(/[^a-zA-Z0-9._-]/g, "_");
     const path = `${args.restaurantId}/${new Date().getFullYear()}/${safeReceipt}.pdf`;
     const blob = new Blob([args.pdfBytes as BlobPart], { type: "application/pdf" });
-    const { error } = await supabase.storage
+    const { error } = await db.storage
       .from("zatca-receipts")
       .upload(path, blob, {
         contentType: "application/pdf",
@@ -40,7 +40,7 @@ export async function uploadZatcaPdf(args: UploadPdfArgs): Promise<string | null
       return null;
     }
     // Bucket is private - produce a long-lived signed URL (1 year).
-    const { data: signed } = await supabase.storage
+    const { data: signed } = await db.storage
       .from("zatca-receipts")
       .createSignedUrl(path, 60 * 60 * 24 * 365);
     return signed?.signedUrl ?? null;
@@ -60,7 +60,7 @@ export interface SnapshotWriteArgs {
 /** Freeze the ZATCA snapshot onto the sales transaction row. */
 export async function writeZatcaSnapshot(args: SnapshotWriteArgs): Promise<void> {
   try {
-    const { error } = await supabase
+    const { error } = await db
       .from("sales_transactions")
       .update({
         zatca_seller_name: args.snapshot.sellerName,
@@ -99,7 +99,7 @@ export interface LogGenerationArgs {
 
 export async function logInvoiceGeneration(args: LogGenerationArgs): Promise<void> {
   try {
-    const { error } = await supabase.from("invoice_generation_logs").insert({
+    const { error } = await db.from("invoice_generation_logs").insert({
       restaurant_id: args.restaurantId,
       sales_transaction_id: args.salesTransactionId,
       receipt_number: args.receiptNumber,

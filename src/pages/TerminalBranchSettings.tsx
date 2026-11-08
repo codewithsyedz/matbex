@@ -19,7 +19,7 @@ import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
 import { BranchBadge } from "@/components/branch/BranchBadge";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { RefreshCw, Smartphone, Monitor, Search, Check, Pencil, X, Zap } from "lucide-react";
 import { useTerminalStateRefresh } from "@/hooks/useTerminalStateRefresh";
@@ -94,26 +94,26 @@ export default function TerminalBranchSettings() {
     queryFn: async () => {
       const activitySince = new Date(Date.now() - ONLINE_WINDOW_MS).toISOString();
       const [termRes, licRes, staffRes, activityRes] = await Promise.all([
-        supabase
+        db
           .from("pos_terminals")
           .select(
             "id, terminal_uid, name, branch_id, branch_label, platform, app_version, active, paired_at, last_seen_at"
           )
           .eq("restaurant_id", restaurant!.id),
-        supabase
+        db
           .from("device_licenses")
           .select(
             "terminal_id, device_label, platform, last_seen_at, claimed_at, revoked_at, claimed_by_user_id"
           )
           .eq("restaurant_id", restaurant!.id),
-        supabase
+        db
           .from("staff")
           .select("user_id, assigned_branch_id")
           .eq("restaurant_id", restaurant!.id)
           .not("user_id", "is", null),
         // Recent POS writes (sale syncs) prove a tablet is alive even when its
         // licence heartbeat is stale.
-        supabase
+        db
           .from("pos_idempotency_keys")
           .select("terminal_uid, created_at")
           .eq("restaurant_id", restaurant!.id)
@@ -202,7 +202,7 @@ export default function TerminalBranchSettings() {
       name,
     }: { id: string | null; branchId: string | null; terminalUid: string; name?: string }) => {
       if (id) {
-        const { error } = await supabase
+        const { error } = await db
           .from("pos_terminals")
           .update({ branch_id: branchId })
           .eq("id", id);
@@ -210,7 +210,7 @@ export default function TerminalBranchSettings() {
         return;
       }
       // Licence-only device: register it so the pin persists.
-      const { error } = await supabase.from("pos_terminals").upsert(
+      const { error } = await db.from("pos_terminals").upsert(
         {
           restaurant_id: restaurant!.id,
           terminal_uid: terminalUid,
@@ -236,11 +236,11 @@ export default function TerminalBranchSettings() {
       branchId,
     }: { id: string | null; name: string; terminalUid: string; branchId: string | null }) => {
       if (id) {
-        const { error } = await supabase.from("pos_terminals").update({ name }).eq("id", id);
+        const { error } = await db.from("pos_terminals").update({ name }).eq("id", id);
         if (error) throw error;
         return;
       }
-      const { error } = await supabase.from("pos_terminals").upsert(
+      const { error } = await db.from("pos_terminals").upsert(
         { restaurant_id: restaurant!.id, terminal_uid: terminalUid, name, branch_id: branchId },
         { onConflict: "restaurant_id,terminal_uid" }
       );

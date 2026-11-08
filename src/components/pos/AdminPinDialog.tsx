@@ -12,7 +12,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 interface AdminPinDialogProps {
   open: boolean;
@@ -55,7 +55,7 @@ export function AdminPinDialog({
     setSubmitting(true);
     setError(null);
     try {
-      const { data, error: rpcError } = await supabase.rpc("verify_tenant_admin_pin", {
+      const { data, error: rpcError } = await db.rpc("verify_tenant_admin_pin", {
         p_pin: pin,
       });
       if (rpcError) throw rpcError;

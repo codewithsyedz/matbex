@@ -64,7 +64,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -220,7 +220,7 @@ export default function Sales() {
     queryKey: ["transaction-payment-history", viewingTransaction?.settlement_invoice_id],
     enabled: viewDetailsDialogOpen && !!viewingTransaction?.settlement_invoice_id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("settlement_payments")
         .select("id, amount, payment_method, payment_reference, notes, created_at")
         .eq("settlement_invoice_id", viewingTransaction!.settlement_invoice_id!)
@@ -242,7 +242,7 @@ export default function Sales() {
       const customerId = viewingTransaction!.customer_id!;
 
       // 1. Settlement payments (joined via settlement_invoices to filter by customer)
-      const { data: payments, error: payErr } = await supabase
+      const { data: payments, error: payErr } = await db
         .from("settlement_payments")
         .select(
           "id, amount, payment_method, payment_reference, notes, created_at, settlement_invoice:settlement_invoices!inner(invoice_number, customer_id)"
@@ -252,7 +252,7 @@ export default function Sales() {
       if (payErr) throw payErr;
 
       // 2. Manual balance adjustments
-      const { data: adjustments, error: adjErr } = await supabase
+      const { data: adjustments, error: adjErr } = await db
         .from("customer_balance_adjustments")
         .select("id, amount, adjustment_type, reason, notes, created_at")
         .eq("customer_id", customerId)
@@ -296,7 +296,7 @@ export default function Sales() {
       !!viewingTransaction?.customer_id &&
       viewingTransaction?.settlement_status === "unpaid",
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("settlement_invoices")
         .select(
           "id, invoice_number, billing_period_start, billing_period_end, total_amount, amount_paid, status, created_at, settlement_payments(id, amount, payment_method, payment_reference, notes, created_at)"
@@ -394,7 +394,7 @@ export default function Sales() {
     queryFn: async () => {
       if (!restaurant?.id) return 0;
       
-      let query = supabase
+      let query = db
         .from("sales_transactions")
         .select("*", { count: "exact", head: true })
         .eq("restaurant_id", restaurant.id);
@@ -439,7 +439,7 @@ export default function Sales() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       
-      let query = supabase
+      let query = db
         .from("sales_transactions")
         .select("*, settlement_status, branch:branches!sales_transactions_branch_id_fkey(id, name, code), customer:customers(id, name, phone, current_balance), shift:shifts(id, drawer_id, opened_at, closed_at, drawers(name)), sales_items(id, menu_item_id, quantity, unit_price, total_price, menu_item:menu_items(id, name, category))")
         .eq("restaurant_id", restaurant.id);
@@ -593,7 +593,7 @@ export default function Sales() {
       
       const fiscalMonth = getFiscalMonthRange(new Date(), monthStartDay);
       
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("total, settlement_status, paid_amount")
         .eq("restaurant_id", restaurant.id)
@@ -622,7 +622,7 @@ export default function Sales() {
       const fromDate = format(fiscalMonth.start, "yyyy-MM-dd");
       const toDate = format(fiscalMonth.end, "yyyy-MM-dd");
 
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("amount")
         .eq("restaurant_id", restaurant.id)
@@ -658,7 +658,7 @@ export default function Sales() {
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(), tz);
       
       // Get today's sales with shift info
-      let salesQ = supabase
+      let salesQ = db
         .from("sales_transactions")
         .select("total, shift_id")
         .eq("restaurant_id", restaurant.id)
@@ -675,12 +675,12 @@ export default function Sales() {
       if (shiftIds.length === 0) return [];
       
       // Fetch shift details - use template_id FK to shift_templates
-      const { data: shiftsData } = await supabase
+      const { data: shiftsData } = await db
         .from("shifts")
         .select("id, opened_at, template:shift_templates(name), drawers(name)")
         .in("id", shiftIds);
       
-      const shiftMap = new Map(shiftsData?.map(s => [s.id, s]) || []);
+      const shiftMap = new Map<any, any>(shiftsData?.map(s => [s.id, s]) || []);
       
       // Group sales by shift
       const shiftTotals = new Map<string, number>();
@@ -716,7 +716,7 @@ export default function Sales() {
       const tz = restaurant.timezone || "Asia/Riyadh";
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(), tz);
       
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("id", { count: "exact", head: true })
         .eq("restaurant_id", restaurant.id)
@@ -741,7 +741,7 @@ export default function Sales() {
       const tz = restaurant.timezone || "Asia/Riyadh";
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(), tz);
 
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("total")
         .eq("restaurant_id", restaurant.id)
@@ -762,7 +762,7 @@ export default function Sales() {
     queryFn: async () => {
       if (!restaurant?.id) return { total: 0, count: 0, paidTotal: 0, unpaidTotal: 0 };
       
-      let query = supabase
+      let query = db
         .from("sales_transactions")
         .select("total, settlement_status")
         .eq("restaurant_id", restaurant.id);
@@ -811,7 +811,7 @@ export default function Sales() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       
-      let query = supabase
+      let query = db
         .from("sales_transactions")
         .select("*, shift:shifts(id, drawer_id, drawers(name))")
         .eq("restaurant_id", restaurant.id);
@@ -862,7 +862,7 @@ export default function Sales() {
   // Realtime: refresh today's metrics + transactions list when sales change
   useEffect(() => {
     if (!restaurant?.id) return;
-    const channel = supabase
+    const channel = db
       .channel(`sales-realtime-${restaurant.id}`)
       .on(
         "postgres_changes",
@@ -886,7 +886,7 @@ export default function Sales() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [restaurant?.id, queryClient]);
 
@@ -894,7 +894,7 @@ export default function Sales() {
     if (!restaurant?.id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id, drawer_id, drawers(name)")
         .eq("restaurant_id", restaurant.id)
@@ -914,7 +914,7 @@ export default function Sales() {
     if (!restaurant?.id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id, opened_at, closed_at, drawer_id, drawers(name), cashier_staff_id, staff(name)")
         .eq("restaurant_id", restaurant.id)
@@ -965,7 +965,7 @@ export default function Sales() {
         insertData.created_at = createdAt;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .insert(insertData)
         .select()
@@ -975,9 +975,9 @@ export default function Sales() {
 
       // Create cash event for shift tracking (all payment methods, not just cash)
       if (selectedShift && selectedShift !== "none") {
-        const { data: { user } } = await supabase.auth.getUser();
+        const { data: { user } } = await db.auth.getUser();
         if (user) {
-          await supabase.from("cash_events").insert({
+          await db.from("cash_events").insert({
             shift_id: selectedShift,
             restaurant_id: restaurant.id,
             event_type: "sale",
@@ -1015,7 +1015,7 @@ export default function Sales() {
   const handleDeleteSale = async (transactionId: string) => {
     try {
       // First delete related sales_items
-      const { error: itemsError } = await supabase
+      const { error: itemsError } = await db
         .from("sales_items")
         .delete()
         .eq("transaction_id", transactionId);
@@ -1023,7 +1023,7 @@ export default function Sales() {
       if (itemsError) throw itemsError;
 
       // Then delete the transaction
-      const { error } = await supabase
+      const { error } = await db
         .from("sales_transactions")
         .delete()
         .eq("id", transactionId);
@@ -1068,7 +1068,7 @@ export default function Sales() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("sales_transactions")
         .update({ shift_id: selectedReassignShift && selectedReassignShift !== "none" ? selectedReassignShift : null })
         .eq("id", reassigningTransaction.id);
@@ -1095,7 +1095,7 @@ export default function Sales() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("sales_transactions")
         .update({
           subtotal: netSubtotal,

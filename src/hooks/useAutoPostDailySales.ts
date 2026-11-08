@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatZonedYMD } from "@/lib/timezone";
 import { toast } from "sonner";
@@ -35,7 +35,6 @@ export function usePendingDailySalesPostings(
     enabled: !!restaurant?.id,
     staleTime: 15_000,
     queryFn: async () => {
-      const db = supabase as any;
       let q = db
         .from("daily_sales_summary")
         .select("id, sales_date, total_sales, status, ledger_posted, branch_id")

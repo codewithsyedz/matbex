@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useQuery, useIsFetching } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { AuthContext } from "@/contexts/AuthContext";
 
 /**
@@ -144,7 +144,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     queryKey: ["branches", restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [] as Branch[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branches" as any)
         .select("id, restaurant_id, name, code, is_primary, is_active, country, city")
         .eq("restaurant_id", restaurantId)
@@ -162,7 +162,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     queryKey: ["staff-pinned-branch", user?.id, restaurantId],
     queryFn: async () => {
       if (!user?.id || !restaurantId) return null;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff")
         .select("assigned_branch_id")
         .eq("user_id", user.id)

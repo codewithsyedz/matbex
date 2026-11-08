@@ -14,7 +14,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Globe, Lock, Shield, Loader2, History } from "lucide-react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 type DataRegion = "global" | "ksa";
@@ -36,7 +36,7 @@ export function TenantDataResidency({ tenantId, tenantName }: Props) {
 
   const fetchState = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("tenants")
       .select("data_region, residency_locked")
       .eq("id", tenantId)
@@ -74,7 +74,7 @@ export function TenantDataResidency({ tenantId, tenantName }: Props) {
       if (!confirmed) return;
     }
     setSaving(true);
-    const { error } = await supabase
+    const { error } = await db
       .from("tenants")
       .update({ data_region: region, residency_locked: locked })
       .eq("id", tenantId);

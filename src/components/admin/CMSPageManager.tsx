@@ -26,7 +26,7 @@ import {
 import { FileText, Settings2, ExternalLink, Layers, Eye, Pencil, Languages, Loader2 } from "lucide-react";
 import { CMSPageBlockEditor } from "./CMSPageBlockEditor";
 import { CMSBlockRenderer } from "@/components/cms/CMSBlockRenderer";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 export function CMSPageManager() {
@@ -42,7 +42,7 @@ export function CMSPageManager() {
     if (isAll) setTranslatingAll(true);
     else setTranslatingSlug(opts.slug!);
     try {
-      const { data, error } = await supabase.functions.invoke("cms-translate-arabic", {
+      const { data, error } = await db.functions.invoke("cms-translate-arabic", {
         body: opts,
       });
       if (error) throw error;
@@ -54,7 +54,7 @@ export function CMSPageManager() {
     } catch (e: any) {
       const msg = e?.message ?? "Translation failed";
       if (msg.includes("RATE_LIMITED")) toast.error("AI rate limit hit — try again in a moment.");
-      else if (msg.includes("AI_CREDITS")) toast.error("Lovable AI credits exhausted — top up workspace.");
+      else if (msg.includes("AI_CREDITS")) toast.error("AI provider quota exhausted — check the Anthropic account.");
       else toast.error(msg);
     } finally {
       setTranslatingAll(false);
@@ -101,7 +101,7 @@ export function CMSPageManager() {
               <Languages className="h-4 w-4" /> Arabic translations
             </div>
             <p className="text-sm text-muted-foreground mt-1">
-              Auto-translate every page and block to Arabic via Lovable AI. Skips rows that already have an Arabic translation unless you force a re-run.
+              Auto-translate every page and block to Arabic via Claude (Anthropic API). Skips rows that already have an Arabic translation unless you force a re-run.
             </p>
           </div>
           <div className="flex gap-2">

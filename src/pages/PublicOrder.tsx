@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,7 +71,7 @@ export default function PublicOrder() {
     queryKey: ["public-restaurant", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("restaurants_public")
         .select("id,name,currency")
         .eq("id", restaurantId!)
@@ -85,7 +85,7 @@ export default function PublicOrder() {
     queryKey: ["public-online-settings", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("online_ordering_settings")
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -99,7 +99,7 @@ export default function PublicOrder() {
     queryKey: ["public-menu", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurantId!)
@@ -115,7 +115,7 @@ export default function PublicOrder() {
     queryKey: ["public-top-selling", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("public_top_selling_items", {
+      const { data, error } = await (db as any).rpc("public_top_selling_items", {
         p_restaurant_id: restaurantId,
         p_limit: 12,
       });
@@ -254,7 +254,7 @@ export default function PublicOrder() {
         unit_price: c.unit_price,
         line_total: c.unit_price * c.qty,
       }));
-      const { data: orderId, error } = await (supabase as any).rpc("public_create_online_order", {
+      const { data: orderId, error } = await (db as any).rpc("public_create_online_order", {
         p_payload: payload,
         p_items: items,
       });

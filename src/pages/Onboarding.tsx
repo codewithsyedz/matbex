@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -125,7 +125,7 @@ export default function Onboarding() {
         const p = localStorage.getItem("matbex_trial_plan");
         if (p === "starter" || p === "growth" || p === "enterprise") plan = p;
       } catch { /* ignore */ }
-      const { data: trial, error: trialError } = await supabase.functions.invoke("start-free-trial", {
+      const { data: trial, error: trialError } = await db.functions.invoke("start-free-trial", {
         body: {
           restaurantName: restaurantName.trim(),
           currency,
@@ -170,7 +170,7 @@ export default function Onboarding() {
         }));
 
       if (templatesData.length > 0) {
-        const { error } = await supabase
+        const { error } = await db
           .from("shift_templates")
           .insert(templatesData);
 
@@ -199,7 +199,7 @@ export default function Onboarding() {
         }));
 
       if (drawersData.length > 0) {
-        const { error } = await supabase.from("drawers").insert(drawersData);
+        const { error } = await db.from("drawers").insert(drawersData);
 
         if (error) throw error;
       }

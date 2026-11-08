@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -54,7 +54,7 @@ export function POSDetailsDialog({ open, onOpenChange, restaurantId, date }: Pro
     queryKey: ["pos-details", restaurantId, date],
     enabled: open && !!restaurantId && !!date,
     queryFn: async (): Promise<POSRow[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .select("id,receipt_number,payment_method,total,created_at")
         .eq("restaurant_id", restaurantId)

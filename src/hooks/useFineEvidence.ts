@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -21,7 +21,7 @@ export const FINE_EVIDENCE_BUCKET = "fine-evidence";
 export async function uploadFineEvidenceFile(restaurantId: string, file: File) {
   const safeName = file.name.replace(/[^\w.\-]+/g, "_");
   const path = `${restaurantId}/${crypto.randomUUID()}-${safeName}`;
-  const { error } = await supabase.storage.from(FINE_EVIDENCE_BUCKET).upload(path, file, {
+  const { error } = await db.storage.from(FINE_EVIDENCE_BUCKET).upload(path, file, {
     contentType: file.type || undefined,
   });
   if (error) throw error;
@@ -29,7 +29,7 @@ export async function uploadFineEvidenceFile(restaurantId: string, file: File) {
 }
 
 export async function openFineEvidence(path: string, download = false) {
-  const { data, error } = await supabase.storage
+  const { data, error } = await db.storage
     .from(FINE_EVIDENCE_BUCKET)
     .createSignedUrl(path, 120, download ? { download: true } : undefined);
   if (error || !data) {
@@ -46,7 +46,7 @@ export function useFineEvidence(fineId?: string | null) {
   const query = useQuery({
     queryKey: ["fine-evidence", fineId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("fine_evidence_attachments")
         .select("*")
         .eq("fine_id", fineId!)
@@ -68,7 +68,7 @@ export function useFineEvidence(fineId?: string | null) {
       if (!id) throw new Error("Missing fine reference");
       for (const file of files) {
         const { path, safeName } = await uploadFineEvidenceFile(restaurant!.id, file);
-        const { error } = await supabase.from("fine_evidence_attachments").insert({
+        const { error } = await db.from("fine_evidence_attachments").insert({
           restaurant_id: restaurant!.id,
           fine_id: id,
           storage_path: path,
@@ -89,12 +89,12 @@ export function useFineEvidence(fineId?: string | null) {
 
   const removeFile = useMutation({
     mutationFn: async (attachment: FineEvidenceAttachment) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("fine_evidence_attachments")
         .delete()
         .eq("id", attachment.id);
       if (error) throw error;
-      await supabase.storage.from(FINE_EVIDENCE_BUCKET).remove([attachment.storage_path]);
+      await db.storage.from(FINE_EVIDENCE_BUCKET).remove([attachment.storage_path]);
     },
     onSuccess: () => {
       invalidate();

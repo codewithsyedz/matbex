@@ -5,7 +5,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Check, Crown, Zap, Building2, Loader2, ExternalLink } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -70,7 +70,7 @@ export default function Billing() {
 
   useEffect(() => {
     const fetchPlans = async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("plans")
         .select("*")
         .eq("is_active", true)
@@ -101,7 +101,7 @@ export default function Billing() {
 
     setUpgrading(plan.id);
     try {
-      const { data, error } = await supabase.functions.invoke("create-checkout", {
+      const { data, error } = await db.functions.invoke("create-checkout", {
         body: { planName: plan.name },
       });
 
@@ -122,7 +122,7 @@ export default function Billing() {
   const handleManageSubscription = async () => {
     setOpeningPortal(true);
     try {
-      const { data, error } = await supabase.functions.invoke("customer-portal");
+      const { data, error } = await db.functions.invoke("customer-portal");
 
       if (error) throw error;
       if (data?.url) {

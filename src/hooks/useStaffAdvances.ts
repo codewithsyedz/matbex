@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -96,7 +96,7 @@ export function useStaffAdvances() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
 
-      let q = supabase
+      let q = db
         .from("staff_advances")
         .select("*, staff:staff_id(id, name, role, branch_id)")
         .eq("restaurant_id", restaurant.id)
@@ -135,7 +135,7 @@ export function useStaffAdvances() {
         throw new Error("Authentication required");
       }
 
-      const { data: advance, error } = await supabase
+      const { data: advance, error } = await db
         .from("staff_advances")
         .insert({
           tenant_id: tenantId,
@@ -162,7 +162,7 @@ export function useStaffAdvances() {
       if (error) throw error;
 
       // Auto-post to ledger (DR 1150 / CR the selected funding account)
-      const { error: ledgerError } = await supabase.rpc("post_staff_advance_to_ledger", {
+      const { error: ledgerError } = await db.rpc("post_staff_advance_to_ledger", {
         p_advance_id: advance.id,
       });
       if (ledgerError) {
@@ -193,7 +193,7 @@ export function useStaffAdvances() {
       advanceId: string;
       payrollId: string;
     }) => {
-      const { error } = await supabase.rpc("deduct_advance_from_payroll", {
+      const { error } = await db.rpc("deduct_advance_from_payroll", {
         p_advance_id: advanceId,
         p_payroll_id: payrollId,
       });
@@ -214,7 +214,7 @@ export function useStaffAdvances() {
   // Record a partial (or final) repayment against an advance
   const recordRepayment = useMutation({
     mutationFn: async (data: RecordRepaymentData) => {
-      const { error } = await supabase.rpc("record_staff_advance_repayment", {
+      const { error } = await db.rpc("record_staff_advance_repayment", {
         p_advance_id: data.advanceId,
         p_amount: data.amount,
         p_repayment_date: data.repayment_date,
@@ -240,7 +240,7 @@ export function useStaffAdvances() {
   // Undo a repayment (removes its ledger legs and restores the balance)
   const deleteRepayment = useMutation({
     mutationFn: async (repaymentId: string) => {
-      const { error } = await supabase.rpc("delete_staff_advance_repayment", {
+      const { error } = await db.rpc("delete_staff_advance_repayment", {
         p_repayment_id: repaymentId,
       });
       if (error) throw error;
@@ -260,7 +260,7 @@ export function useStaffAdvances() {
     mutationFn: async (advanceId: string) => {
       // Single transaction: the reversal legs and the status change either
       // both land or both roll back.
-      const { error } = await supabase.rpc("reverse_staff_advance_atomic", {
+      const { error } = await db.rpc("reverse_staff_advance_atomic", {
         p_advance_id: advanceId,
         p_reason: "Advance forgiven (written off)",
         p_settlement: "forgive",
@@ -294,7 +294,7 @@ export function useStaffAdvances() {
       });
       if (!status.allowed) throw new ReversalBlockedError(status);
 
-      const { error } = await supabase.rpc("reverse_staff_advance_atomic", {
+      const { error } = await db.rpc("reverse_staff_advance_atomic", {
         p_advance_id: advanceId,
         p_reason: reason ?? null,
         p_settlement: "none",
@@ -328,7 +328,7 @@ export function useStaffAdvances() {
     mutationFn: async (advanceId: string) => {
       // Reversal + row removal in one transaction so a posted journal can
       // never be orphaned by a partially applied delete.
-      const { error } = await supabase.rpc("reverse_staff_advance_atomic", {
+      const { error } = await db.rpc("reverse_staff_advance_atomic", {
         p_advance_id: advanceId,
         p_reason: "Advance deleted",
         p_settlement: "delete",

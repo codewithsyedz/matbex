@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface SupplierOption {
@@ -73,7 +73,7 @@ export function useSupplierLedger({ supplierId, from, to, branchId }: Args) {
     enabled: !!tenantId,
     staleTime: 1000 * 60 * 5,
     queryFn: async (): Promise<SupplierOption[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("suppliers")
         .select("id, name, ap_account_id")
         .order("name");
@@ -81,7 +81,7 @@ export function useSupplierLedger({ supplierId, from, to, branchId }: Args) {
       const accountIds = (data ?? []).map((s) => s.ap_account_id).filter(Boolean) as string[];
       let accounts: Record<string, { code: string; name: string }> = {};
       if (accountIds.length) {
-        const { data: accs } = await supabase
+        const { data: accs } = await db
           .from("chart_of_accounts")
           .select("id, account_code, account_name")
           .in("id", accountIds);
@@ -105,7 +105,7 @@ export function useSupplierLedger({ supplierId, from, to, branchId }: Args) {
     staleTime: 1000 * 60 * 2,
     queryFn: async () => {
       // 1. Expenses that carry a supplier
-      let expQ = supabase
+      let expQ = db
         .from("expenses")
         .select(
           "id, supplier_id, description, expense_date, amount, vat_amount, paid_amount, branch_id, ledger_posted",
@@ -128,7 +128,7 @@ export function useSupplierLedger({ supplierId, from, to, branchId }: Args) {
       // 2. Every ledger leg referencing those expenses (settlements included)
       const legs: any[] = [];
       for (const ids of chunk(expenseIds, 150)) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("account_transactions")
           .select(
             "id, account_id, reference_id, transaction_date, debit, credit, description, batch_id, branch_id, is_voided",
@@ -144,7 +144,7 @@ export function useSupplierLedger({ supplierId, from, to, branchId }: Args) {
       const accountIds = Array.from(new Set(legs.map((l) => l.account_id)));
       const accountMap: Record<string, { code: string; name: string; type: string }> = {};
       for (const ids of chunk(accountIds, 200)) {
-        const { data } = await supabase
+        const { data } = await db
           .from("chart_of_accounts")
           .select("id, account_code, account_name, account_type")
           .in("id", ids);
@@ -165,7 +165,7 @@ export function useSupplierLedger({ supplierId, from, to, branchId }: Args) {
         (suppliersQuery.data ?? []).map((s) => [s.id, s.name]),
       );
       if (supplierIds.length) {
-        const { data } = await supabase.from("suppliers").select("id, name").in("id", supplierIds);
+        const { data } = await db.from("suppliers").select("id, name").in("id", supplierIds);
         for (const s of data ?? []) supplierMap[s.id] = s.name;
       }
       const branchIds = Array.from(
@@ -173,7 +173,7 @@ export function useSupplierLedger({ supplierId, from, to, branchId }: Args) {
       ) as string[];
       let branchMap: Record<string, string> = {};
       if (branchIds.length) {
-        const { data } = await supabase.from("branches").select("id, name").in("id", branchIds);
+        const { data } = await db.from("branches").select("id, name").in("id", branchIds);
         branchMap = Object.fromEntries((data ?? []).map((b) => [b.id, b.name]));
       }
 

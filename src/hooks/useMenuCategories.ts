@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface MenuCategory {
@@ -71,7 +71,7 @@ export function useMenuCategories(branchId?: string | null) {
     enabled: !!restaurant?.id,
     staleTime: 2 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_categories")
         .select("*")
         .eq("restaurant_id", restaurant!.id)

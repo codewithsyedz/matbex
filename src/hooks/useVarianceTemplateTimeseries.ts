@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   startOfDay,
@@ -82,7 +82,7 @@ export function useVarianceTemplateTimeseries({
       if (!tenant?.id) return { granularity: "day", byTemplate: {} };
       const granularity = pickGranularity(fromISO, toISO);
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("variance_template_usage_events")
         .select("template_key, variance_amount, used_at")
         .eq("tenant_id", tenant.id)

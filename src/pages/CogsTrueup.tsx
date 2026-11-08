@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -51,7 +51,7 @@ export default function CogsTrueup() {
   const { data: weekly = [] } = useQuery({
     queryKey: ["weekly-stocktakes-for-trueup", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("weekly_stocktakes")
         .select("id, stocktake_date, week_start_date, week_end_date, status, total_cogs")
         .eq("restaurant_id", restaurantId)
@@ -66,7 +66,7 @@ export default function CogsTrueup() {
   const { data: daily = [] } = useQuery({
     queryKey: ["daily-stocktakes-for-trueup", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("stocktakes")
         .select("id, stocktake_date, status, total_variance_value")
         .eq("restaurant_id", restaurantId)
@@ -82,7 +82,7 @@ export default function CogsTrueup() {
   const { data: runs = [], refetch } = useQuery({
     queryKey: ["cogs-trueup-runs", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cogs_trueup_runs" as any)
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -111,7 +111,7 @@ export default function CogsTrueup() {
       let itemRows: Array<{ inventory_item_id: string; closing_qty?: number | null; closing_value?: number | null; counted_quantity?: number | null; consumption_value?: number | null; variance_value?: number | null }> = [];
 
       if (pickedKind === "weekly") {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("weekly_stocktakes")
           .select("status, week_start_date, week_end_date")
           .eq("id", pickedStocktake).single();
@@ -119,21 +119,21 @@ export default function CogsTrueup() {
         stStatus = data.status ?? "draft";
         periodStart = data.week_start_date;
         periodEnd = data.week_end_date;
-        const { data: items, error: ie } = await supabase
+        const { data: items, error: ie } = await db
           .from("weekly_stocktake_items")
           .select("inventory_item_id, closing_qty, closing_value, consumption_value")
           .eq("stocktake_id", pickedStocktake);
         if (ie) throw ie;
         itemRows = items ?? [];
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("stocktakes")
           .select("status, stocktake_date").eq("id", pickedStocktake).single();
         if (error) throw error;
         stStatus = data.status ?? "draft";
         periodStart = data.stocktake_date;
         periodEnd = data.stocktake_date;
-        const { data: items, error: ie } = await supabase
+        const { data: items, error: ie } = await db
           .from("stocktake_items")
           .select("inventory_item_id, counted_quantity, variance_value")
           .eq("stocktake_id", pickedStocktake);
@@ -176,7 +176,7 @@ export default function CogsTrueup() {
       const ids = Array.from(new Set(itemRows.map((r) => r.inventory_item_id)));
       let missingWacIds: string[] = [];
       if (ids.length > 0) {
-        const { data: invs, error: ive } = await supabase
+        const { data: invs, error: ive } = await db
           .from("inventory_items")
           .select("id, name, unit_cost")
           .in("id", ids);
@@ -196,7 +196,7 @@ export default function CogsTrueup() {
       // 4. Pending/posted provisional postings exist for the period
       const startTs = `${periodStart}T00:00:00Z`;
       const endTs = `${periodEnd}T23:59:59Z`;
-      const { data: prov, error: pe } = await supabase
+      const { data: prov, error: pe } = await db
         .from("provisional_cogs_postings")
         .select("cogs_amount, status, is_negative_stock")
         .eq("restaurant_id", restaurantId)
@@ -272,7 +272,7 @@ export default function CogsTrueup() {
   const reconcile = useMutation({
     mutationFn: async () => {
       if (!pickedStocktake) throw new Error("Pick a stocktake first.");
-      const { data, error } = await supabase.rpc("reconcile_provisional_cogs" as any, {
+      const { data, error } = await db.rpc("reconcile_provisional_cogs" as any, {
         _stocktake_id: pickedStocktake,
         _kind: pickedKind,
         _correct_wac: correctWac,
@@ -490,7 +490,7 @@ function RunDetailsDialog({
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["cogs-trueup-adj", runId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cogs_trueup_adjustments" as any)
         .select("*")
         .eq("trueup_run_id", runId)
@@ -508,7 +508,7 @@ function RunDetailsDialog({
     queryKey: ["cogs-trueup-adj-inv", ids],
     queryFn: async () => {
       if (!ids.length) return {};
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_items").select("id, name, unit").in("id", ids);
       if (error) throw error;
       return Object.fromEntries((data ?? []).map((r: any) => [r.id, r]));

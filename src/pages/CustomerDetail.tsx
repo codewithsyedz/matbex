@@ -70,7 +70,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -125,7 +125,7 @@ export default function CustomerDetail() {
     queryKey: ["customer", customerId],
     queryFn: async () => {
       if (!customerId) return null;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select("*")
         .eq("id", customerId)
@@ -141,7 +141,7 @@ export default function CustomerDetail() {
     queryKey: ["customer-transactions", customerId, "unpaid"],
     queryFn: async () => {
       if (!customerId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .select("*, settlement_invoice:settlement_invoices(status, invoice_number), sales_items(*, menu_items(name))")
         .eq("customer_id", customerId)
@@ -164,7 +164,7 @@ export default function CustomerDetail() {
     queryKey: ["settlement-invoices", customerId],
     queryFn: async () => {
       if (!customerId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("settlement_invoices")
         .select("*")
         .eq("customer_id", customerId)
@@ -180,7 +180,7 @@ export default function CustomerDetail() {
     queryKey: ["customer-adjustments", customerId],
     queryFn: async () => {
       if (!customerId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customer_balance_adjustments")
         .select("*")
         .eq("customer_id", customerId)
@@ -249,7 +249,7 @@ export default function CustomerDetail() {
       const invoiceNumber = `INV-${customer.name.substring(0, 3).toUpperCase()}-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
 
       // Create settlement invoice
-      const { data: invoice, error: invoiceError } = await supabase
+      const { data: invoice, error: invoiceError } = await db
         .from("settlement_invoices")
         .insert({
           restaurant_id: restaurant.id,
@@ -270,7 +270,7 @@ export default function CustomerDetail() {
       // Link transactions to the invoice (only for non-custom modes)
       if (transactionsToSettle.length > 0) {
         const transactionIds = transactionsToSettle.map((t) => t.id);
-        const { error: updateError } = await supabase
+        const { error: updateError } = await db
           .from("sales_transactions")
           .update({ settlement_invoice_id: invoice.id })
           .in("id", transactionIds);
@@ -279,7 +279,7 @@ export default function CustomerDetail() {
       }
 
       // Log audit
-      await supabase.from("settlement_audit_logs").insert({
+      await db.from("settlement_audit_logs").insert({
         restaurant_id: restaurant.id,
         settlement_invoice_id: invoice.id,
         customer_id: customer.id,
@@ -318,7 +318,7 @@ export default function CustomerDetail() {
       if (amount > remaining) throw new Error("Payment exceeds remaining balance");
 
       // Record the payment
-      const { data: payment, error: paymentError } = await supabase
+      const { data: payment, error: paymentError } = await db
         .from("settlement_payments")
         .insert({
           restaurant_id: restaurant.id,
@@ -338,7 +338,7 @@ export default function CustomerDetail() {
       const isFullyPaid = newAmountPaid >= selectedInvoice.total_amount;
       const newStatus: SettlementStatus = isFullyPaid ? "settled" : "partial";
 
-      const { error: updateError } = await supabase
+      const { error: updateError } = await db
         .from("settlement_invoices")
         .update({
           amount_paid: newAmountPaid,
@@ -352,7 +352,7 @@ export default function CustomerDetail() {
       // Allocate this payment across linked transactions (oldest first) so
       // partial payments correctly reduce each transaction's outstanding
       // balance, not just the parent invoice.
-      const { data: linkedTx, error: linkedTxError } = await supabase
+      const { data: linkedTx, error: linkedTxError } = await db
         .from("sales_transactions")
         .select("id, total, paid_amount, settlement_status")
         .eq("settlement_invoice_id", selectedInvoice.id)
@@ -375,7 +375,7 @@ export default function CustomerDetail() {
           const apply = Math.min(toApply, txRemaining);
           const newPaid = txPaid + apply;
           const fully = newPaid + 0.0001 >= txTotal;
-          const { error: txErr } = await supabase
+          const { error: txErr } = await db
             .from("sales_transactions")
             .update({
               paid_amount: newPaid,
@@ -396,7 +396,7 @@ export default function CustomerDetail() {
         if (isFullyPaid) {
           const nowIso2 = new Date().toISOString();
           for (const tx of linkedTx) {
-            const { error: forceSettleError } = await supabase
+            const { error: forceSettleError } = await db
               .from("sales_transactions")
               .update({
                 paid_amount: Number(tx.total) || 0,
@@ -411,7 +411,7 @@ export default function CustomerDetail() {
       }
 
       if (isFullyPaid) {
-          const { data: existingAdjustment, error: existingAdjustmentError } = await supabase
+          const { data: existingAdjustment, error: existingAdjustmentError } = await db
             .from("customer_balance_adjustments")
             .select("id, ledger_posted")
             .eq("customer_id", selectedInvoice.customer_id)
@@ -424,7 +424,7 @@ export default function CustomerDetail() {
           if (existingAdjustment?.id) {
             settlementAdjustmentId = existingAdjustment.id;
             if (!existingAdjustment.ledger_posted) {
-              const { error: markExistingPostedError } = await supabase
+              const { error: markExistingPostedError } = await db
                 .from("customer_balance_adjustments")
                 .update({
                   ledger_posted: true,
@@ -434,7 +434,7 @@ export default function CustomerDetail() {
               if (markExistingPostedError) throw markExistingPostedError;
             }
           } else {
-            const { data: adjustmentData, error: adjustmentError } = await supabase
+            const { data: adjustmentData, error: adjustmentError } = await db
             .from("customer_balance_adjustments")
             .insert({
               restaurant_id: restaurant.id,
@@ -464,7 +464,7 @@ export default function CustomerDetail() {
         }
 
       // Log audit
-      await supabase.from("settlement_audit_logs").insert({
+      await db.from("settlement_audit_logs").insert({
         restaurant_id: restaurant.id,
         settlement_invoice_id: selectedInvoice.id,
         customer_id: selectedInvoice.customer_id,
@@ -498,7 +498,7 @@ export default function CustomerDetail() {
       if (!restaurant?.id) throw new Error("Missing restaurant context");
 
       // Unlink all transactions from this invoice
-      const { error: unlinkError } = await supabase
+      const { error: unlinkError } = await db
         .from("sales_transactions")
         .update({ settlement_invoice_id: null })
         .eq("settlement_invoice_id", invoice.id);
@@ -506,7 +506,7 @@ export default function CustomerDetail() {
       if (unlinkError) throw unlinkError;
 
       // Delete related payments
-      const { error: paymentsError } = await supabase
+      const { error: paymentsError } = await db
         .from("settlement_payments")
         .delete()
         .eq("settlement_invoice_id", invoice.id);
@@ -514,7 +514,7 @@ export default function CustomerDetail() {
       if (paymentsError) throw paymentsError;
 
       // Delete audit logs for this invoice
-      const { error: auditError } = await supabase
+      const { error: auditError } = await db
         .from("settlement_audit_logs")
         .delete()
         .eq("settlement_invoice_id", invoice.id);
@@ -522,7 +522,7 @@ export default function CustomerDetail() {
       if (auditError) throw auditError;
 
       // Delete linked balance adjustments referencing this invoice number
-      const { error: adjError } = await supabase
+      const { error: adjError } = await db
         .from("customer_balance_adjustments")
         .delete()
         .eq("restaurant_id", restaurant.id)
@@ -531,7 +531,7 @@ export default function CustomerDetail() {
       if (adjError) throw adjError;
 
       // Delete the invoice itself
-      const { error: invoiceError } = await supabase
+      const { error: invoiceError } = await db
         .from("settlement_invoices")
         .delete()
         .eq("id", invoice.id);
@@ -560,12 +560,11 @@ export default function CustomerDetail() {
       if (!restaurant?.id) throw new Error("Missing restaurant context");
 
       // Delete items directly
-      const itemDelete = supabase.from("sales_items");
-      // @ts-expect-error - Supabase type recursion workaround
+      const itemDelete = db.from("sales_items");
       await itemDelete.delete().eq("sale_id", transactionId);
 
       // Delete transaction
-      const txDelete = supabase.from("sales_transactions");
+      const txDelete = db.from("sales_transactions");
       const { error: txError } = await txDelete.delete().eq("id", transactionId);
       
       if (txError) throw txError;
@@ -588,7 +587,7 @@ export default function CustomerDetail() {
       if (!restaurant?.id || !user?.id || !customer?.id) throw new Error("Missing context");
 
       // Create a write_off balance adjustment for the transaction amount
-      const { error } = await supabase.from("customer_balance_adjustments").insert({
+      const { error } = await db.from("customer_balance_adjustments").insert({
         restaurant_id: restaurant.id,
         tenant_id: restaurant.tenant_id,
         customer_id: customer.id,
@@ -602,7 +601,7 @@ export default function CustomerDetail() {
       if (error) throw error;
 
       // Mark the transaction as settled (written off)
-      const { error: updateError } = await supabase
+      const { error: updateError } = await db
         .from("sales_transactions")
         .update({ 
           settlement_status: "settled", 
@@ -633,7 +632,7 @@ export default function CustomerDetail() {
       }
 
       // Create a reversing debit adjustment
-      const { error } = await supabase.from("customer_balance_adjustments").insert({
+      const { error } = await db.from("customer_balance_adjustments").insert({
         restaurant_id: restaurant.id,
         tenant_id: restaurant.tenant_id,
         customer_id: customer.id,
@@ -682,7 +681,7 @@ export default function CustomerDetail() {
       const isFullyPaid = newPaidAmount >= transactionToPartialPay.total;
 
       // Update the transaction's paid_amount
-      const { error: updateError } = await supabase
+      const { error: updateError } = await db
         .from("sales_transactions")
         .update({ 
           paid_amount: newPaidAmount,
@@ -696,7 +695,7 @@ export default function CustomerDetail() {
       if (updateError) throw updateError;
 
       // Create a credit balance adjustment to reduce customer balance
-      const { error: adjustmentError } = await supabase
+      const { error: adjustmentError } = await db
         .from("customer_balance_adjustments")
         .insert({
           restaurant_id: restaurant.id,
@@ -741,7 +740,7 @@ export default function CustomerDetail() {
       const taxRateNum = parseFloat(editTaxRate) || 0;
       const { net: subtotal, vat: tax, gross: total } = splitInclusive(gross, taxRateNum / 100);
 
-      const { error } = await supabase
+      const { error } = await db
         .from("sales_transactions")
         .update({
           subtotal,

@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTerminalId } from "@/lib/offline/terminal";
 import { exitKioskMode, isNativeKioskAvailable } from "@/lib/kiosk";
@@ -33,7 +33,7 @@ export function KioskUnlockListener() {
       if (cancelled || handling.current) return;
       try {
         const terminalId = await getTerminalId();
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("kiosk_unlock_requests" as never)
           .select("id, reason, expires_at")
           .eq("restaurant_id", restaurantId)
@@ -49,7 +49,7 @@ export function KioskUnlockListener() {
         handling.current = true;
 
         if (new Date(req.expires_at).getTime() < Date.now()) {
-          await supabase
+          await db
             .from("kiosk_unlock_requests" as never)
             .update({ status: "expired" } as never)
             .eq("id", req.id);
@@ -59,7 +59,7 @@ export function KioskUnlockListener() {
 
         const res = await exitKioskMode();
         if (res.ok) {
-          await supabase
+          await db
             .from("kiosk_unlock_requests" as never)
             .update({
               status: "acknowledged",
@@ -83,7 +83,7 @@ export function KioskUnlockListener() {
     void check();
     timer = window.setInterval(check, POLL_MS);
 
-    const channel = supabase
+    const channel = db
       .channel(`kiosk-unlock-${restaurantId}`)
       .on(
         "postgres_changes",
@@ -95,7 +95,7 @@ export function KioskUnlockListener() {
     return () => {
       cancelled = true;
       if (timer) window.clearInterval(timer);
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [restaurantId]);
 

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -66,7 +66,7 @@ export function DayEndAdjustmentBreakdown({
     queryKey: ["day-end-adjustment-breakdown", restaurantId, dateFrom, dateTo, scope],
     enabled: !!restaurantId && !!dateFrom && !!dateTo,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("day_end_adjustments")
         .select(
           "id, branch_id, business_date, amount, reason, notes, scope, reversed_at, reversal_of_id, created_at",

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -68,7 +68,7 @@ export function TopSellersCard({ dateRange }: TopSellersCardProps = {}) {
     enabled: !!restaurant?.id && isBranchReady,
     staleTime: 60 * 1000,
     queryFn: async (): Promise<TopSeller[]> => {
-      let query = supabase
+      let query = db
         .from("sales_items")
         .select("menu_item_id, quantity, total_price, menu_items(name, category)")
         .eq("restaurant_id", restaurant!.id)
@@ -105,14 +105,14 @@ export function TopSellersCard({ dateRange }: TopSellersCardProps = {}) {
   useEffect(() => {
     if (!restaurant?.id) return;
     const filter = `restaurant_id=eq.${restaurant.id}`;
-    const channel = supabase
+    const channel = db
       .channel(`top-sellers-rt-${restaurant.id}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "sales_items", filter }, () => {
         qc.invalidateQueries({ queryKey: ["top-sellers", restaurant.id] });
       })
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [restaurant?.id, qc]);
 

@@ -30,7 +30,7 @@ export async function prefetchImages(urls: Array<string | null | undefined>): Pr
         try {
           const existing = await cache.match(url);
           if (existing) return;
-          // no-cors so cross-origin (Supabase storage) responses can still be stored as opaque
+          // no-cors so cross-origin (object storage) responses can still be stored as opaque
           const res = await fetch(url, { mode: "no-cors" });
           await cache.put(url, res);
         } catch {

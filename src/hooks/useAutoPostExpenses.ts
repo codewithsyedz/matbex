@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -28,7 +28,6 @@ export function usePendingExpensePostings(
     enabled: !!restaurant?.id && !!fromDate && !!toDate,
     staleTime: 15_000,
     queryFn: async () => {
-      const db = supabase as any;
       let q = db
         .from("expenses")
         .select(
@@ -70,7 +69,6 @@ export function useAutoPostExpenses(branchId: string | null) {
 
   return useMutation({
     mutationFn: async (categories: PendingExpenseCategory[]) => {
-      const db = supabase as any;
       let posted = 0;
       const failures: string[] = [];
       for (const cat of categories) {

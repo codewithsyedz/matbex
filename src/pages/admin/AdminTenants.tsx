@@ -40,7 +40,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useSuperAdmin } from "@/contexts/SuperAdminContext";
 import { useSuperAdminAudit } from "@/hooks/useSuperAdminAudit";
 import { useAuth } from "@/contexts/AuthContext";
@@ -162,7 +162,7 @@ export default function AdminTenants() {
   };
 
   const fetchPlans = async () => {
-    const { data } = await supabase
+    const { data } = await db
       .from("plans")
       .select("*")
       .eq("is_active", true)
@@ -178,7 +178,7 @@ export default function AdminTenants() {
 
   const fetchTenants = async () => {
     try {
-      const { data: tenantsData, error } = await supabase
+      const { data: tenantsData, error } = await db
         .from("tenants")
         .select("*")
         .order("created_at", { ascending: false });
@@ -189,13 +189,13 @@ export default function AdminTenants() {
       const tenantsWithDetails = await Promise.all(
         (tenantsData || []).map(async (tenant) => {
           // User count
-          const { count: userCount } = await supabase
+          const { count: userCount } = await db
             .from("user_tenant_roles")
             .select("*", { count: "exact", head: true })
             .eq("tenant_id", tenant.id);
 
           // Restaurant count and list
-          const { data: restaurants } = await supabase
+          const { data: restaurants } = await db
             .from("restaurants")
             .select("id, name, status")
             .eq("tenant_id", tenant.id);
@@ -203,7 +203,7 @@ export default function AdminTenants() {
           // Plan details
           let planData = null;
           if (tenant.plan_id) {
-            const { data } = await supabase
+            const { data } = await db
               .from("plans")
               .select("*")
               .eq("id", tenant.plan_id)
@@ -217,7 +217,7 @@ export default function AdminTenants() {
           }
 
           // Tenant features
-          const { data: features } = await supabase
+          const { data: features } = await db
             .from("tenant_features")
             .select("*")
             .eq("tenant_id", tenant.id);
@@ -252,7 +252,7 @@ export default function AdminTenants() {
     setActionLoading(true);
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenants")
         .update({
           status: "suspended",
@@ -280,7 +280,7 @@ export default function AdminTenants() {
     setActionLoading(true);
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenants")
         .update({
           status: "active",
@@ -352,7 +352,7 @@ export default function AdminTenants() {
     if (selectedTenant && finalSlug && finalSlug !== (selectedTenant.slug || "")) {
       setSlugChecking(true);
       try {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("tenants")
           .select("id", { count: "exact", head: true })
           .eq("slug", finalSlug);
@@ -379,7 +379,7 @@ export default function AdminTenants() {
 
     setActionLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenants")
         .update({ name: trimmedName, slug: finalSlug })
         .eq("id", selectedTenant.id);
@@ -455,7 +455,7 @@ export default function AdminTenants() {
     }
     setActionLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("create-branch", {
+      const { data, error } = await db.functions.invoke("create-branch", {
         body: {
           restaurant_id: branchRestaurantId,
           name: branchForm.name.trim(),
@@ -495,7 +495,7 @@ export default function AdminTenants() {
     try {
       // Update tenant plan
       if (editedPlanId !== selectedTenant.plan_id) {
-        const { error } = await supabase
+        const { error } = await db
           .from("tenants")
           .update({ plan_id: editedPlanId })
           .eq("id", selectedTenant.id);
@@ -507,12 +507,12 @@ export default function AdminTenants() {
         const existing = selectedTenant.features?.find(f => f.feature_key === key);
         
         if (existing) {
-          await supabase
+          await db
             .from("tenant_features")
             .update({ enabled })
             .eq("id", existing.id);
         } else {
-          await supabase
+          await db
             .from("tenant_features")
             .insert({
               tenant_id: selectedTenant.id,

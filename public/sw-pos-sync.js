@@ -2,7 +2,7 @@
 // Background Sync Service Worker for offline POS
 // ---------------------------------------------------------------------
 // Drains the IndexedDB sync_queue by POSTing batches to the
-// pos-sync Supabase Edge Function - even when the POS tab is closed.
+// pos-sync server function - even when the POS tab is closed.
 //
 // Scope of intentional behavior:
 //   - DOES NOT intercept any `fetch` events (no caching, no offline shell).
@@ -18,8 +18,8 @@
 //   Keys:  kv["pos.auth_token"]      = { access_token, refreshed_at }
 //          kv["pos.terminal_id"]     = string
 //          kv["pos.branch_id"]       = string
-//          kv["pos.supabase_url"]    = string
-//          kv["pos.supabase_anon"]   = string
+//          kv["pos.api_url"]        = string
+//          kv["pos.api_key"]        = string
 //          kv["pos.aes_key.v1"]      = JsonWebKey
 //
 // This worker is safe to run repeatedly: every batch item carries an
@@ -200,16 +200,16 @@ async function drainQueueSafely(trigger) {
 async function drainQueue() {
   const db = await openDB();
 
-  const [token, terminalId, branchId, supabaseUrl, anonKey, jwk] = await Promise.all([
+  const [token, terminalId, branchId, apiUrl, anonKey, jwk] = await Promise.all([
     kv(db, "pos.auth_token"),
     kv(db, "pos.terminal_id"),
     kv(db, "pos.branch_id"),
-    kv(db, "pos.supabase_url"),
-    kv(db, "pos.supabase_anon"),
+    kv(db, "pos.api_url"),
+    kv(db, "pos.api_key"),
     kv(db, "pos.aes_key.v1"),
   ]);
 
-  if (!token || !token.access_token || !terminalId || !branchId || !supabaseUrl || !anonKey) {
+  if (!token || !token.access_token || !terminalId || !branchId || !apiUrl || !anonKey) {
     return { skipped: "missing-credentials" };
   }
 
@@ -261,7 +261,7 @@ async function drainQueue() {
   const requestId = (crypto.randomUUID && crypto.randomUUID()) || String(Date.now());
   let results;
   try {
-    const res = await fetch(`${supabaseUrl}/functions/v1/pos-sync`, {
+    const res = await fetch(`${apiUrl}/functions/v1/pos-sync`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

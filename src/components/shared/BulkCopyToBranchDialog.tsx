@@ -23,7 +23,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 type Entity = "expense_category" | "supplier";
 
@@ -82,7 +82,7 @@ export function BulkCopyToBranchDialog({
     queryKey: ["branches-for-bulk-copy", restaurantId, sourceBranchId],
     enabled: !!restaurantId && open,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branches")
         .select("id, name, code, is_primary")
         .eq("restaurant_id", restaurantId)
@@ -100,7 +100,7 @@ export function BulkCopyToBranchDialog({
     queryKey: ["bulk-copy-items", entity, restaurantId],
     enabled: !!restaurantId && open,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from(TABLE[entity])
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -217,7 +217,7 @@ export function BulkCopyToBranchDialog({
         return;
       }
 
-      const { error } = await supabase.from(TABLE[entity]).insert(rows as any);
+      const { error } = await db.from(TABLE[entity]).insert(rows as any);
       if (error) throw error;
 
       const targetCount = targetBranch === "__ALL__" ? targetBranches.length : 1;

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -10,10 +10,10 @@ import { Loader2, Eye, EyeOff, KeyRound, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 
 /**
- * Handles the Supabase password recovery flow.
+ * Handles the the API password recovery flow.
  *
- * Supabase's recovery link drops the user on this route with a recovery
- * token in the URL hash. The supabase-js client auto-exchanges that token
+ * the API's recovery link drops the user on this route with a recovery
+ * token in the URL hash. The db-js client auto-exchanges that token
  * for a temporary session and emits a PASSWORD_RECOVERY event. We must
  * NOT redirect away - we capture the event, let the user set a new
  * password, then sign them out so they re-login with the new credentials.
@@ -38,7 +38,7 @@ export default function ResetPassword() {
       return;
     }
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = db.auth.onAuthStateChange((event, session) => {
       if (event === "PASSWORD_RECOVERY" || (event === "SIGNED_IN" && session)) {
         setRecoveryReady(true);
         setChecking(false);
@@ -46,7 +46,7 @@ export default function ResetPassword() {
     });
 
     // If session is already established (e.g. revisit), allow update too.
-    supabase.auth.getSession().then(({ data }) => {
+    db.auth.getSession().then(({ data }) => {
       if (data.session) {
         setRecoveryReady(true);
       }
@@ -68,10 +68,10 @@ export default function ResetPassword() {
     }
     setSubmitting(true);
     try {
-      const { error } = await supabase.auth.updateUser({ password });
+      const { error } = await db.auth.updateUser({ password });
       if (error) throw error;
       toast.success("Password updated. Please sign in with your new password.");
-      await supabase.auth.signOut();
+      await db.auth.signOut();
       navigate("/auth", { replace: true });
     } catch (err: any) {
       toast.error(err?.message || "Failed to update password");

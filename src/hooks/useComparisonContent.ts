@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useToast } from "@/hooks/use-toast";
 
 export type ComparisonCellValue = boolean | "addon" | string;
@@ -48,7 +48,7 @@ export const useComparisonContent = () => {
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ["landing-comparison-settings"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_comparison_settings")
         .select("*")
         .limit(1)
@@ -61,7 +61,7 @@ export const useComparisonContent = () => {
   const { data: columns = [], isLoading: columnsLoading } = useQuery({
     queryKey: ["landing-comparison-columns"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_comparison_columns")
         .select("*")
         .order("sort_order");
@@ -73,7 +73,7 @@ export const useComparisonContent = () => {
   const { data: rows = [], isLoading: rowsLoading } = useQuery({
     queryKey: ["landing-comparison-rows"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_comparison_rows")
         .select("*")
         .order("sort_order");
@@ -88,7 +88,7 @@ export const useComparisonContent = () => {
   const updateSettings = useMutation({
     mutationFn: async (updates: Partial<ComparisonSettings>) => {
       if (!settings?.id) throw new Error("Settings not initialized");
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_comparison_settings")
         .update(updates)
         .eq("id", settings.id);
@@ -103,7 +103,7 @@ export const useComparisonContent = () => {
 
   const updateColumn = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<ComparisonColumn> & { id: string }) => {
-      const { error } = await supabase.from("landing_comparison_columns").update(updates).eq("id", id);
+      const { error } = await db.from("landing_comparison_columns").update(updates).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -115,7 +115,7 @@ export const useComparisonContent = () => {
 
   const createColumn = useMutation({
     mutationFn: async (col: Omit<ComparisonColumn, "id">) => {
-      const { error } = await supabase.from("landing_comparison_columns").insert(col);
+      const { error } = await db.from("landing_comparison_columns").insert(col);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -127,7 +127,7 @@ export const useComparisonContent = () => {
 
   const deleteColumn = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("landing_comparison_columns").delete().eq("id", id);
+      const { error } = await db.from("landing_comparison_columns").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -139,7 +139,7 @@ export const useComparisonContent = () => {
 
   const updateRow = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<ComparisonRow> & { id: string }) => {
-      const { error } = await supabase.from("landing_comparison_rows").update(updates).eq("id", id);
+      const { error } = await db.from("landing_comparison_rows").update(updates).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -151,7 +151,7 @@ export const useComparisonContent = () => {
 
   const createRow = useMutation({
     mutationFn: async (row: Omit<ComparisonRow, "id">) => {
-      const { error } = await supabase.from("landing_comparison_rows").insert(row);
+      const { error } = await db.from("landing_comparison_rows").insert(row);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -163,7 +163,7 @@ export const useComparisonContent = () => {
 
   const deleteRow = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("landing_comparison_rows").delete().eq("id", id);
+      const { error } = await db.from("landing_comparison_rows").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

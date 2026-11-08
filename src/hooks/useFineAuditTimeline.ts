@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface FineTimelineEvent {
   id: string;
@@ -60,14 +60,14 @@ export function useFineAuditTimeline(fineId?: string) {
     enabled: !!fineId,
     queryFn: async () => {
       const [{ data: fine }, { data: auditRows, error: auditError }] = await Promise.all([
-        supabase
+        db
           .from("employee_fines")
           .select(
             "id, amount, original_amount, status, created_by, created_at, submitted_at, reviewed_by, reviewed_at, approved_by, approved_at, applied_payroll_id, applied_at, rejection_reason, cancellation_reason"
           )
           .eq("id", fineId!)
           .maybeSingle(),
-        supabase
+        db
           .from("employee_fine_audit")
           .select("*")
           .eq("fine_id", fineId!)
@@ -91,7 +91,7 @@ export function useFineAuditTimeline(fineId?: string) {
       );
       const nameById = new Map<string, string>();
       if (actorIds.length) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", actorIds);
@@ -100,7 +100,7 @@ export function useFineAuditTimeline(fineId?: string) {
 
       let payroll: FineAuditTimeline["payroll"] = null;
       if (f?.applied_payroll_id) {
-        const { data: pr } = await supabase
+        const { data: pr } = await db
           .from("payroll_records")
           .select("id, period_start, period_end, payment_date, gross_wage, fines_deducted, amount")
           .eq("id", f.applied_payroll_id)

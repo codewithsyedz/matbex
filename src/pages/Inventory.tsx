@@ -33,7 +33,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { PurchaseTracker } from "@/components/inventory/PurchaseTracker";
@@ -142,18 +142,18 @@ export default function Inventory() {
     
     try {
       const [itemsRes, suppliersRes, categoriesRes] = await Promise.all([
-        supabase
+        db
           .from("inventory_items")
           .select("*")
           .eq("restaurant_id", restaurant.id)
           .order("name"),
-        supabase
+        db
           .from("suppliers")
           .select("id, name")
           .eq("restaurant_id", restaurant.id)
           .eq("is_active", true)
           .order("name"),
-        supabase
+        db
           .from("inventory_categories")
           .select("*")
           .eq("restaurant_id", restaurant.id)
@@ -206,7 +206,7 @@ export default function Inventory() {
       };
 
       if (editingItem) {
-        const { error } = await supabase
+        const { error } = await db
           .from("inventory_items")
           .update(itemData)
           .eq("id", editingItem.id);
@@ -214,7 +214,7 @@ export default function Inventory() {
         if (error) throw error;
         toast({ title: t("app.inventory.toasts.updated") });
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("inventory_items")
           .insert({ ...itemData, branch_id: activeBranchId && activeBranchId !== "all" ? activeBranchId : null });
 
@@ -236,7 +236,7 @@ export default function Inventory() {
     if (!confirm(t("app.inventory.confirmDelete", { name: item.name }))) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("inventory_items")
         .delete()
         .eq("id", item.id);
@@ -300,7 +300,7 @@ export default function Inventory() {
 
     setSeeding(true);
     try {
-      const { error } = await supabase.rpc('seed_sample_inventory_items', {
+      const { error } = await db.rpc('seed_sample_inventory_items', {
         p_restaurant_id: restaurant.id
       });
       

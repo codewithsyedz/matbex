@@ -28,7 +28,7 @@ import { Calendar } from "@/components/ui/calendar";
 import { CalendarIcon } from "lucide-react";
 import type { DateRange } from "react-day-picker";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -63,7 +63,7 @@ export function BranchCashClosureSummary() {
     queryKey: ["branch-cash-closure", restaurant?.id, branchKey, fromIso, toIso],
     enabled: !!restaurant?.id && !!fromIso && !!toIso,
     queryFn: async () => {
-      let shiftQ = supabase
+      let shiftQ = db
         .from("shifts")
         .select(
           "id, branch_id, opening_float, counted_cash, expected_cash, variance, opened_at, closed_at, status"
@@ -75,7 +75,7 @@ export function BranchCashClosureSummary() {
       const { data: shifts, error: sErr } = await shiftQ;
       if (sErr) throw sErr;
 
-      let eventQ = supabase
+      let eventQ = db
         .from("cash_events")
         .select("shift_id, branch_id, event_type, amount, created_at")
         .eq("restaurant_id", restaurant!.id)

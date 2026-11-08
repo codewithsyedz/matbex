@@ -13,7 +13,7 @@
 // device row update) is correct as-is and won't need to change.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import type { ZatcaReceiptSnapshot } from "@/lib/printUtils";
 
 function sortedStringify(value: unknown): string {
@@ -81,7 +81,7 @@ export async function advanceZatcaChain(
   if (!deviceId) return null;
   const uuid = input.uuid ?? crypto.randomUUID();
   const invoiceHash = await computeInvoiceHash({ ...input, uuid });
-  const { data, error } = await supabase.rpc("next_zatca_chain" as never, {
+  const { data, error } = await db.rpc("next_zatca_chain" as never, {
     _device_id: deviceId,
     _invoice_hash: invoiceHash,
   } as never);
@@ -97,7 +97,7 @@ export async function writeZatcaChainToSale(args: {
   deviceId: string;
   chain: AdvanceChainResult;
 }): Promise<void> {
-  const { error } = await supabase
+  const { error } = await db
     .from("sales_transactions")
     .update(({
       zatca_device_id: args.deviceId,

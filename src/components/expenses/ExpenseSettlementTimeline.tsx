@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   Dialog,
   DialogContent,
@@ -102,7 +102,7 @@ export function ExpenseSettlementTimeline({ expenseId, expenseDescription, open,
     queryKey: ["expense-settlement-timeline", expenseId],
     enabled: !!expenseId && open,
     queryFn: async () => {
-      const { data: legs, error } = await supabase
+      const { data: legs, error } = await db
         .from("account_transactions")
         .select(
           "id, account_id, transaction_date, debit, credit, description, branch_id, batch_id, is_voided, void_reason, created_at"
@@ -115,7 +115,7 @@ export function ExpenseSettlementTimeline({ expenseId, expenseDescription, open,
 
       const rows = (legs || []) as Leg[];
 
-      const { data: auditRows, error: auditError } = await supabase
+      const { data: auditRows, error: auditError } = await db
         .from("expense_posting_audit")
         .select(
           "id, action, outcome, reason_code, reason_detail, batch_id, transaction_ids, dr_total, cr_total, trigger_source, branch_id, created_at"
@@ -135,15 +135,15 @@ export function ExpenseSettlementTimeline({ expenseId, expenseDescription, open,
 
       const [accountsRes, batchesRes, branchesRes] = await Promise.all([
         accountIds.length
-          ? supabase.from("chart_of_accounts").select("id, account_code, account_name").in("id", accountIds)
+          ? db.from("chart_of_accounts").select("id, account_code, account_name").in("id", accountIds)
           : Promise.resolve({ data: [], error: null } as any),
         batchIds.length
-          ? supabase
+          ? db
               .from("journal_entry_batches")
               .select("id, reference_number, entry_type, batch_date, description")
               .in("id", batchIds)
           : Promise.resolve({ data: [], error: null } as any),
-        supabase.from("branches").select("id, name"),
+        db.from("branches").select("id, name"),
       ]);
 
       const accounts: Record<string, { code: string; name: string }> = {};

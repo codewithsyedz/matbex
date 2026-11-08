@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -128,7 +128,7 @@ export function StaffManager() {
     queryKey: ["staff-types", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_types")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -151,7 +151,7 @@ export function StaffManager() {
     queryKey: ["cashier-team-users", restaurant?.tenant_id],
     queryFn: async () => {
       if (!restaurant?.tenant_id) return [];
-      const { data: roles, error } = await supabase
+      const { data: roles, error } = await db
         .from("user_tenant_roles")
         .select("user_id")
         .eq("tenant_id", restaurant.tenant_id)
@@ -159,7 +159,7 @@ export function StaffManager() {
       if (error) throw error;
       const ids = (roles ?? []).map((r) => r.user_id);
       if (ids.length === 0) return [] as { id: string; full_name: string | null }[];
-      const { data: profiles, error: pErr } = await supabase
+      const { data: profiles, error: pErr } = await db
         .from("profiles")
         .select("id, full_name")
         .in("id", ids);
@@ -173,7 +173,7 @@ export function StaffManager() {
     queryKey: ["staff-full", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -195,7 +195,7 @@ export function StaffManager() {
   const createMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { error } = await supabase.from("staff").insert({
+      const { error } = await db.from("staff").insert({
         restaurant_id: restaurant.id,
         name: data.name,
         phone: data.phone || null,
@@ -224,7 +224,7 @@ export function StaffManager() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: typeof formData & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("staff")
         .update({
           name: data.name,
@@ -256,7 +256,7 @@ export function StaffManager() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("staff").delete().eq("id", id);
+      const { error } = await db.from("staff").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -285,7 +285,7 @@ export function StaffManager() {
         updateData.termination_date = null;
       }
       
-      const { error } = await supabase.from("staff").update(updateData).eq("id", id);
+      const { error } = await db.from("staff").update(updateData).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -301,7 +301,7 @@ export function StaffManager() {
   const addStaffTypeMutation = useMutation({
     mutationFn: async (name: string) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { error } = await supabase.from("staff_types").insert({
+      const { error } = await db.from("staff_types").insert({
         restaurant_id: restaurant.id,
         name: name.trim(),
       });
@@ -325,7 +325,7 @@ export function StaffManager() {
 
   const deleteStaffTypeMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("staff_types").delete().eq("id", id);
+      const { error } = await db.from("staff_types").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -350,7 +350,7 @@ export function StaffManager() {
     }
     setIsInlineInviting(true);
     try {
-      const { error } = await supabase.functions.invoke("send-invite", {
+      const { error } = await db.functions.invoke("send-invite", {
         body: {
           email,
           role: "cashier",

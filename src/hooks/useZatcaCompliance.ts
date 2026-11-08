@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 
@@ -39,7 +39,7 @@ export function useZatcaCompliance() {
     enabled: !!restaurantId,
     queryFn: async (): Promise<ZatcaComplianceMetrics> => {
       const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select(
           "id, created_at, zatca_clearance_status, zatca_cleared_at, zatca_clearance_response, zatca_invoice_subtype",
@@ -132,7 +132,7 @@ export function useZatcaAuditTrail(limit = 100, filters: AuditFilters = {}) {
     queryKey: ["zatca", "audit", tenantId, limit, entityTypes, actions, search, fromDate, toDate],
     enabled: !!tenantId,
     queryFn: async (): Promise<ZatcaAuditRow[]> => {
-      let q = supabase
+      let q = db
         .from("zatca_audit_trail" as never)
         .select("id, entity_type, entity_id, action, actor_user_id, payload, payload_hash, prev_hash, sequence_no, created_at")
         .eq("tenant_id", tenantId!);
@@ -181,7 +181,7 @@ export function useZatcaChainIntegrity() {
     enabled: !!tenantId,
     staleTime: 30_000,
     queryFn: async (): Promise<ChainIntegrityResult> => {
-      const { data, error } = await supabase.rpc(
+      const { data, error } = await db.rpc(
         "verify_zatca_audit_chain" as never,
         { _tenant_id: tenantId! } as never,
       );
@@ -224,7 +224,7 @@ export function useZatcaChainBreakDetail(enabled: boolean) {
     enabled: enabled && !!tenantId,
     staleTime: 30_000,
     queryFn: async (): Promise<ChainBreakDetail | null> => {
-      const { data, error } = await supabase.rpc(
+      const { data, error } = await db.rpc(
         "inspect_zatca_audit_break" as never,
         { _tenant_id: tenantId! } as never,
       );

@@ -34,6 +34,10 @@ jobs:
 
       - name: Build web bundle
         run: npm run build
+        env:
+          # Repository variables (Settings → Secrets and variables → Actions → Variables)
+          VITE_API_URL: ${{ vars.VITE_API_URL }}
+          VITE_API_KEY: ${{ vars.VITE_API_KEY }}
 
       - name: Add Android platform
         run: |

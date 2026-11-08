@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -171,7 +171,7 @@ export function TenantBranchesManager({ restaurants }: Props) {
       return;
     }
     setLoading(true);
-    const query = supabase
+    const query = db
       .from("branches" as any)
       .select("id, restaurant_id, name, code, address, phone, is_primary, is_active, created_at, deleted_at")
       .in("restaurant_id", restaurantIds)
@@ -235,7 +235,7 @@ export function TenantBranchesManager({ restaurants }: Props) {
     }
     setSaving(true);
     try {
-      const { data, error } = await supabase.functions.invoke("create-branch", {
+      const { data, error } = await db.functions.invoke("create-branch", {
         body: {
           restaurant_id: restaurantId,
           name: form.name.trim(),
@@ -264,7 +264,7 @@ export function TenantBranchesManager({ restaurants }: Props) {
     }
     setSaving(true);
     try {
-      const { data, error } = await supabase.rpc("update_branch", {
+      const { data, error } = await db.rpc("update_branch", {
         _branch_id: editingBranch.id,
         _name: form.name.trim(),
         _code: form.code.trim() || null,
@@ -288,7 +288,7 @@ export function TenantBranchesManager({ restaurants }: Props) {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("branches" as any)
         .update({ deleted_at: new Date().toISOString(), is_active: false })
         .eq("id", deleteTarget.id);
@@ -305,7 +305,7 @@ export function TenantBranchesManager({ restaurants }: Props) {
 
   const restoreBranch = async (b: Branch) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("branches" as any)
         .update({ deleted_at: null, is_active: true })
         .eq("id", b.id);

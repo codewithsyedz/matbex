@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import { z } from "zod";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -347,7 +347,7 @@ export function DayEndAdjustmentDialog({
     enabled: open && !!tenant?.id && !!businessDate,
     staleTime: 10_000,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("day_end_adjustments")
         .select("id, amount, reason, notes, created_at, created_by")
         .eq("scope", scope)
@@ -813,7 +813,7 @@ export function DayEndAdjustmentDialog({
 
     setSubmitting(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("day_end_adjustments")
         .insert({
           tenant_id: tenant.id,
@@ -839,7 +839,7 @@ export function DayEndAdjustmentDialog({
 
       if (error) throw error;
 
-      const { error: postError } = await supabase.rpc(
+      const { error: postError } = await db.rpc(
         "post_day_end_adjustment_to_ledger" as never,
         { p_adjustment_id: data!.id } as never
       );

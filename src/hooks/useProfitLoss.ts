@@ -1,7 +1,7 @@
 import { useCachedQuery } from "@/lib/redisCache";
 import { dashboardQueryOptions } from "@/lib/query/queryPolicy";
 import { qk } from "@/lib/query/queryKeys";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format, eachDayOfInterval, startOfWeek, endOfWeek, startOfMonth, endOfMonth, subWeeks, subMonths, startOfDay } from "date-fns";
 import { getRestaurantDayBoundsUTC, formatZonedYMD } from "@/lib/timezone";
@@ -170,7 +170,7 @@ export function useProfitLoss(
       endDateAdjusted.setDate(endDateAdjusted.getDate() + 1);
       const { start: endExclusive } = getRestaurantDayBoundsUTC(endDateAdjusted, tz);
       
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -195,7 +195,7 @@ export function useProfitLoss(
       endDateAdjusted.setDate(endDateAdjusted.getDate() + 1);
       const { start: endExclusive } = getRestaurantDayBoundsUTC(endDateAdjusted, tz);
       
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -215,7 +215,7 @@ export function useProfitLoss(
     ...dashboardQueryOptions(),
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("*, expense_categories(*)")
         .eq("restaurant_id", restaurant.id)
@@ -240,7 +240,7 @@ export function useProfitLoss(
     ...dashboardQueryOptions(),
     queryFn: async () => {
       if (!restaurant?.id || !compareWithPrevious) return [];
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("*, expense_categories(*)")
         .eq("restaurant_id", restaurant.id)
@@ -265,7 +265,7 @@ export function useProfitLoss(
     ...dashboardQueryOptions(),
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("daily_cogs_submissions")
         .select("*, cogs_purchases(*)")
         .eq("restaurant_id", restaurant.id)
@@ -299,7 +299,7 @@ export function useProfitLoss(
     ...dashboardQueryOptions(),
     queryFn: async () => {
       if (!restaurant?.id || !compareWithPrevious) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("daily_cogs_submissions")
         .select("*, cogs_purchases(*)")
         .eq("restaurant_id", restaurant.id)
@@ -331,7 +331,7 @@ export function useProfitLoss(
     ...dashboardQueryOptions(),
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("overhead_allocation")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -353,7 +353,7 @@ export function useProfitLoss(
     ...dashboardQueryOptions(),
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("staff")
         .select("name, monthly_salary, hourly_rate, joined_date, termination_date, is_active, assigned_branch_id")
         .eq("restaurant_id", restaurant.id);
@@ -373,7 +373,7 @@ export function useProfitLoss(
       ...dashboardQueryOptions(),
       queryFn: async () => {
         if (!restaurant?.id) return [] as any[];
-        let q = supabase
+        let q = db
           .from("payroll_records")
           .select(
             "id, amount, gross_wage, deductions, advance_recovered, fines_deducted, period_start, period_end, branch_id, staff:staff_id(name)",
@@ -404,13 +404,13 @@ export function useProfitLoss(
       ...dashboardQueryOptions(),
       queryFn: async () => {
         if (!restaurant?.id) return { summaries: [] as any[], adjustments: [] as any[] };
-        let sq = supabase
+        let sq = db
           .from("daily_sales_summary")
           .select("sales_date, total_sales, status, branch_id")
           .eq("restaurant_id", restaurant.id)
           .gte("sales_date", fromStr)
           .lte("sales_date", toStr);
-        let aq = supabase
+        let aq = db
           .from("day_end_adjustments")
           .select("business_date, amount, scope, reversed_at, branch_id")
           .eq("restaurant_id", restaurant.id)

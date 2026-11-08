@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -43,7 +43,7 @@ export function StaffTransferDialog({ open, onOpenChange, staff }: Props) {
   const transferMutation = useMutation({
     mutationFn: async () => {
       if (!staff || !restaurant?.id || !toBranchId) throw new Error("Missing fields");
-      const { error } = await supabase.from("staff_branch_transfers" as any).insert({
+      const { error } = await db.from("staff_branch_transfers" as any).insert({
         restaurant_id: restaurant.id,
         staff_id: staff.id,
         from_branch_id: staff.assigned_branch_id,

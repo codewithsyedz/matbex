@@ -4,7 +4,7 @@ import { CalendarIcon, Banknote, CreditCard, Loader2, FileText, Calculator, Exte
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -100,7 +100,7 @@ export default function EndOfDaySummary() {
     setShiftQueryDone(false);
     if (!restaurant?.id || !branchId || noPosMode) return;
     (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select(
           "id, opened_at, expected_cash, expected_card, counted_cash, counted_card, opening_float",
@@ -233,7 +233,7 @@ export default function EndOfDaySummary() {
     }
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("sales_transactions")
         .insert(rows as never);
       if (error) throw error;
@@ -246,7 +246,7 @@ export default function EndOfDaySummary() {
           //    Use a unique shift_type label so it won't collide with the
           //    daily morning/night submissions on the same date.
           const submissionShiftType = `eod_estimate_${Date.now()}`;
-          const { data: sub, error: subErr } = await supabase
+          const { data: sub, error: subErr } = await db
             .from("daily_cogs_submissions")
             .insert({
               restaurant_id: restaurant.id,
@@ -270,7 +270,7 @@ export default function EndOfDaySummary() {
           if (subErr) throw subErr;
 
           // 2) Create a single COGS purchase row to carry the estimated amount
-          const { data: pur, error: purErr } = await supabase
+          const { data: pur, error: purErr } = await db
             .from("cogs_purchases")
             .insert({
               submission_id: sub!.id,
@@ -289,7 +289,7 @@ export default function EndOfDaySummary() {
           if (purErr) throw purErr;
 
           // 3) Post it to the ledger
-          const { error: postErr } = await supabase.rpc(
+          const { error: postErr } = await db.rpc(
             "post_purchase_to_cogs" as never,
             {
               p_purchase_id: pur!.id,

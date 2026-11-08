@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   Dialog,
   DialogContent,
@@ -99,18 +99,18 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
     setLoadingData(true);
     try {
       const [templatesRes, drawersRes, staffRes] = await Promise.all([
-        supabase
+        db
           .from("shift_templates")
           .select("*")
           .eq("restaurant_id", restaurant!.id)
           .order("name"),
-        supabase
+        db
           .from("drawers")
           .select("*")
           .eq("restaurant_id", restaurant!.id)
           .eq("is_active", true)
           .order("name"),
-        supabase
+        db
           .from("staff")
           .select("id, name, role, is_active")
           .eq("restaurant_id", restaurant!.id)
@@ -140,7 +140,7 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
   };
 
   const checkConflictingShift = async () => {
-    const { data } = await supabase
+    const { data } = await db
       .from("shifts")
       .select("id, opened_at")
       .eq("drawer_id", selectedDrawer)
@@ -167,7 +167,7 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
 
     setLoading(true);
     try {
-      const { error } = await supabase.from("shifts").insert({
+      const { error } = await db.from("shifts").insert({
         restaurant_id: restaurant.id,
         drawer_id: selectedDrawer,
         template_id: selectedTemplate || null,

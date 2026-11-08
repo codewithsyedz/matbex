@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -43,7 +43,7 @@ export function useAggregatorSettlements() {
     enabled: !!tenantId,
     staleTime: 2 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("aggregator_settlements")
         .select("*")
         .is("deleted_at", null)
@@ -56,7 +56,7 @@ export function useAggregatorSettlements() {
   const create = useMutation({
     mutationFn: async (input: NewSettlement) => {
       if (!tenantId) throw new Error("No tenant");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("aggregator_settlements")
         .insert({
           tenant_id: tenantId,
@@ -83,7 +83,7 @@ export function useAggregatorSettlements() {
 
   const reconcile = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("aggregator_settlements")
         .update({ status: "reconciled" })
         .eq("id", id);
@@ -99,7 +99,7 @@ export function useAggregatorSettlements() {
 
   const softDelete = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("aggregator_settlements")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", id);

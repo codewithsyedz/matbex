@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { zatcaReminderDue } from "@/lib/zatcaApplicationReminder";
 
 type TrackedApp = {
@@ -32,7 +32,7 @@ export function ZatcaStatusTracker({ app, L, statusLabel, portalUrl, locale }: {
   const events = useQuery({
     queryKey: ["zatca-status-events", app.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from("zatca_application_status_events")
+      const { data, error } = await db.from("zatca_application_status_events")
         .select("id, old_status, new_status, note, changed_at").eq("application_id", app.id).order("changed_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as Ev[];
@@ -44,7 +44,7 @@ export function ZatcaStatusTracker({ app, L, statusLabel, portalUrl, locale }: {
       const n = Number(days);
       if (!Number.isInteger(n) || n < 1 || n > 90) throw new Error(L("Reminder must be 1–90 days", "التذكير من 1 إلى 90 يوماً"));
       const final = status === "approved" || status === "rejected";
-      const { error } = await supabase.from("zatca_provider_applications").update({
+      const { error } = await db.from("zatca_provider_applications").update({
         status, zatca_reply: reply.trim().slice(0, 2000) || null, reminder_days: n,
         decision_at: final ? (decision ? new Date(`${decision}T12:00:00+03:00`).toISOString() : null) : null,
         updated_at: new Date().toISOString(),
