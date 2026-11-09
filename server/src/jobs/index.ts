@@ -5,11 +5,15 @@
 import type { FastifyBaseLogger } from "fastify";
 import { config } from "../config.js";
 import { startQueueJobs, stopQueueJobs } from "./queues.js";
+import { startOutboxPublisher, stopOutboxPublisher } from "../realtime/outbox.js";
 import { startJobs as startInProcessJobs, stopJobs as stopInProcessJobs } from "./scheduler.js";
 
 let mode: "queue" | "in-process" | "off" = "off";
 
 export async function startJobs(log: FastifyBaseLogger) {
+  // The outbox publisher runs wherever background work runs (worker, or ROLE=all). It is not
+  // tied to JOBS_ENABLED: kitchen displays need events even when schedules are switched off.
+  await startOutboxPublisher(log);
   if (!config.JOBS_ENABLED) {
     log.info("jobs disabled (JOBS_ENABLED=false)");
     return;
@@ -25,6 +29,7 @@ export async function startJobs(log: FastifyBaseLogger) {
 }
 
 export async function stopJobs() {
+  stopOutboxPublisher();
   if (mode === "queue") await stopQueueJobs();
   if (mode === "in-process") stopInProcessJobs();
 }

@@ -30,7 +30,7 @@ Cloudflare (DNS · WAF · CDN · edge rate limits)                         CLOUD
 | Multi-tenancy | `tenant_id` on tenant-owned tables, `branch_id` where branch-specific, composite foreign keys against cross-tenant references | Partly: RLS everywhere; some tables are keyed by `restaurant_id`. Composite keys go in for new tables and as each domain moves. |
 | Authentication | Dedicated auth module (passwords, refresh rotation, TOTP MFA) | In place (`server/src/auth`) |
 | Authorization | RBAC in the application plus PostgreSQL RLS | RLS in place; SECURITY DEFINER functions now check tenant access (FUNCTION_ACCESS_REVIEW.md). Role checks are added per module. |
-| Realtime | Socket.IO fed by a transactional outbox through Redis (POS → kitchen, other terminals) | Planned. Today: websocket change feed from Postgres NOTIFY, RLS-filtered (`server/src/realtime`). |
+| Realtime | Socket.IO fed by a transactional outbox through Redis (POS → kitchen, other terminals) | **Done for the kitchen display** (see below). Other screens still use the RLS-filtered change feed (`/realtime/v1`) until they move. |
 | Background processing | BullMQ + Redis in a separate worker service | **Done** (see below) |
 | Cache | Redis | **Done** (`cache-proxy`, shared rate limits) |
 | Storage | S3-compatible: MinIO in compose, Cloudflare R2 or AWS S3 in production | Driver ready; R2 needs only settings (`S3_ENDPOINT=https://<account>.r2.cloudflarestorage.com`, `S3_REGION=auto`) |
@@ -78,10 +78,52 @@ Verified locally with two worker replicas:
 Metrics: `matbex_queue_jobs{queue,state}` and `matbex_job_runs_total`, under the Prometheus job
 `matbex-worker`.
 
+## Realtime events (outbox + Socket.IO)
+
+```
+POS sale / guest order / KDS update ── one Postgres transaction ──► row change + platform.outbox_events
+                                                                     │ NOTIFY on commit
+worker: outbox publisher (FOR UPDATE SKIP LOCKED) ──► Redis channel matbex:events ──► marks published
+API (every instance): Socket.IO /socket.io ──► room "kds:<restaurant_id>" ──► kitchen displays, POS
+```
+
+* **Producing events.** Triggers on `pos_kds_tickets` and `pos_kds_ticket_items` call
+  `platform.emit_event()`, so every path that creates or changes a ticket emits events, including
+  the POS-sale and guest-order database triggers. New modules call `platform.emit_event(topic,
+  type, restaurant_id, aggregate_id, payload)` inside their own transaction. An event exists only
+  if its transaction committed. `platform` is not exposed through `/rest/v1`.
+* **Publishing.** Rows are marked published only after the Redis publish succeeded, in the same
+  transaction. If Redis is down, events wait in the table and go out when it is back (tested:
+  delivered about 2 s after Redis returned). Published rows are deleted after
+  `OUTBOX_RETENTION_HOURS` (72).
+* **Delivering.** Clients connect to `/socket.io` with their access token (websocket transport
+  only, so API replicas need no sticky sessions) and `subscribe` to `{ topic: "kds",
+  restaurantId }`. The server joins the room only if `public.can_access_restaurant()` is true
+  for that user, checked in Postgres as the caller. The connection closes when the token expires,
+  and the client reconnects with the refreshed token.
+* **Client.** `subscribeEvents()` in `src/integrations/db/events.ts`. Events mean "this changed,
+  refresh". After every reconnect the client refetches, because events sent while it was offline
+  are not replayed. The kitchen display uses it (`src/hooks/useKDS.ts`) and keeps a 30-second
+  refetch as a safety net (it was 10 seconds of polling).
+* **Data move.** `migrate-from-supabase.mjs` copies with triggers off, so importing production
+  does not flood the outbox.
+* **Metrics.** `matbex_outbox_pending`, `matbex_outbox_published_total`,
+  `matbex_outbox_publish_lag_seconds`, `matbex_socket_connections` and
+  `matbex_socket_events_emitted_total`.
+
+Verified locally:
+* no token is refused;
+* a user can join their own restaurant's room but not another tenant's;
+* ticket created and status changed both arrive, with nothing from the other tenant;
+* the kitchen display shows a new ticket in under a second;
+* events survive a Redis outage;
+* `/realtime/v1` still works alongside Socket.IO (both share the HTTP server through an upgrade
+  dispatcher in `server/src/realtime/socket.ts`).
+
 ## Next steps, in order
 
-1. Transactional outbox plus Socket.IO for POS → kitchen display and terminal-to-terminal events
-   (Redis adapter, so it works across API replicas).
+1. Move the POS terminal's own live updates (ticket ready, table status) onto events, then retire
+   the matching `/realtime/v1` subscriptions screen by screen.
 2. First `/api/v1` domain module (Orders/POS): routes, AJV schemas, service, Drizzle repository,
    role checks, outbox events. Block its tables from `/rest/v1` once the app uses it.
 3. R2 and managed PostgreSQL/Redis: settings and a test run.

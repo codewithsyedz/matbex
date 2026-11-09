@@ -68,7 +68,7 @@ option.
 | Everything else on the API | host `API_DOMAIN` | **Bypass cache.** Responses are per user. |
 
 Never cache `/auth/v1`, `/rest/v1`, `/functions/v1`, `/storage/v1/object/authenticated`,
-`/storage/v1/object/sign` or `/realtime/v1`.
+`/storage/v1/object/sign`, `/realtime/v1` or `/socket.io`.
 
 ## 6. WAF and bot rules
 
@@ -81,7 +81,7 @@ Never cache `/auth/v1`, `/rest/v1`, `/functions/v1`, `/storage/v1/object/authent
     `/functions/v1/payments-webhook`, `/functions/v1/delivery-webhook`,
     `/functions/v1/twilio-status-webhook`
   * POS terminals and the Android app: `/functions/v1/terminal-api`, `/functions/v1/pos-sync`
-  * the realtime websocket: `/realtime/v1/websocket`
+  * the realtime websockets: `/realtime/v1/websocket` and `/socket.io/`
 
   These clients cannot solve a JavaScript challenge. Each of them authenticates itself (webhook
   signatures, terminal keys, JWTs).

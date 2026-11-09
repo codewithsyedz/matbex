@@ -5,6 +5,7 @@
 - New SQL functions are not callable by logged-out users (anon) by default; grant `EXECUTE ... TO anon` explicitly only for public flows, and make every SECURITY DEFINER function check the caller's tenant/restaurant access before touching tenant data (see docs/self-hosting/FUNCTION_ACCESS_REVIEW.md).
 - Schema changes: `npm run db:new <name>` → write SQL in db/migrations → `npm run db:migrate` → `npm run db:types`. Never edit an applied migration.
 - Server functions live in server/functions/<name>/index.ts and call `serve(handler)` from `_runtime/serve.ts`; read config with `env()` from `_runtime/env.ts`. Public (no-JWT) functions must be listed in functions.config.json and pass `npm run lint:edge-auth`.
+- Live business events: write them with `platform.emit_event()` inside the same transaction (transactional outbox); browsers receive them via `subscribeEvents()` from `@/integrations/db/events` (Socket.IO). Prefer this over new `/realtime/v1` table subscriptions.
 - New backend features should prefer typed routes under /api/v1 in server/src (strangler target) over new direct table access from the browser.
 - AI calls go through server/functions/_runtime/ai.ts (Anthropic). Email goes through server/src/email/send.ts (Resend). Twilio via _shared/twilio.ts.
 

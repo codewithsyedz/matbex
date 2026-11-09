@@ -15,11 +15,6 @@ import { closeRedis } from "./lib/redis.js";
 const app = Fastify({ logger: { level: config.LOG_LEVEL } });
 const log = app.log.child({ role: "worker" });
 
-if (!config.JOBS_ENABLED) {
-  log.warn("JOBS_ENABLED=false: worker has nothing to do, exiting");
-  process.exit(0);
-}
-
 await loadFunctions(log);
 startMetricsServer(log);
 await startJobs(log);

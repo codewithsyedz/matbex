@@ -50,6 +50,8 @@ const schema = z.object({
   /** api = HTTP only, worker = jobs only (src/worker.ts), all = both in one process (dev, small installs). */
   ROLE: z.enum(["all", "api", "worker"]).default("all"),
   JOBS_CONCURRENCY: z.coerce.number().default(5),
+  /** Hours to keep published outbox events (platform.outbox_events) for audit/debugging. */
+  OUTBOX_RETENTION_HOURS: z.coerce.number().default(72),
   CRON_SECRET: z.string().optional(),
   /** JSON object {functionName: cronExpr} overriding jobs/schedules.ts */
   JOB_SCHEDULES_JSON: z.string().optional(),

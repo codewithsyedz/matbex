@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
 import { db } from "@/integrations/db/client";
+import { subscribeEvents } from "@/integrations/db/events";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type KdsTicketStatus = "new" | "in_progress" | "ready" | "served" | "cancelled";
@@ -137,24 +138,16 @@ export function useKdsTickets(stationId?: string | "all") {
       return result;
     },
     enabled: !!rid,
-    refetchInterval: 10000,
+    // Safety net only; changes arrive as events.
+    refetchInterval: 30000,
   });
 
-  // Realtime subscription
+  // Live updates: outbox events over Socket.IO (src/integrations/db/events.ts). Any ticket or
+  // item change refetches; reconnecting also refetches, covering events missed while offline.
   useEffect(() => {
     if (!rid) return;
-    const channel = db
-      .channel(`kds-${rid}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "pos_kds_tickets", filter: `restaurant_id=eq.${rid}` }, () => {
-        qc.invalidateQueries({ queryKey: ["kds-tickets", rid] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "pos_kds_ticket_items", filter: `restaurant_id=eq.${rid}` }, () => {
-        qc.invalidateQueries({ queryKey: ["kds-tickets", rid] });
-      })
-      .subscribe();
-    return () => {
-      db.removeChannel(channel);
-    };
+    const refresh = () => qc.invalidateQueries({ queryKey: ["kds-tickets", rid] });
+    return subscribeEvents("kds", rid, refresh, refresh);
   }, [rid, qc]);
 
   const setTicketStatus = useMutation({

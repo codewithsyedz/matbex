@@ -5,6 +5,7 @@
  *   /rest/v1/*        data API gateway           (src/rest → PostgREST)
  *   /storage/v1/*     object storage             (src/storage)
  *   /realtime/v1/*    websocket change feed      (src/realtime)
+ *   /socket.io        Socket.IO outbox events    (src/realtime/socket.ts)
  *   /functions/v1/*   server functions           (server/functions/*)
  *   /mcp              MCP tools endpoint         (src/mcp)
  *   /api/v1/*         typed endpoints (strangler target — add domains here)
@@ -23,6 +24,7 @@ import { authRoutes } from "./auth/routes.js";
 import { restGateway } from "./rest/gateway.js";
 import { storageRoutes } from "./storage/routes.js";
 import { realtimeRoutes } from "./realtime/hub.js";
+import { startSocketServer } from "./realtime/socket.js";
 import { functionRoutes, loadFunctions } from "./functions/host.js";
 import { mcpRoutes } from "./mcp/server.js";
 import { startJobs, stopJobs } from "./jobs/index.js";
@@ -78,6 +80,7 @@ await app.register(functionRoutes, { prefix: "/functions/v1" });
 await app.register(mcpRoutes, { prefix: "/mcp" });
 
 await loadFunctions(app.log);
+await startSocketServer(app);
 await app.listen({ port: config.PORT, host: config.HOST });
 startMetricsServer(app.log);
 // ROLE=api leaves jobs to the separate worker service (src/worker.ts).
