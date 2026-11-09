@@ -166,6 +166,18 @@ await check("functions: non-2xx surfaces FunctionsHttpError with context", async
   assert(body.error === "Tenant code not found", JSON.stringify(body));
 });
 
+// cache-proxy builds a client with the caller's token in global headers and calls
+// auth.getUser(): guards the bug where the anon key overrode that header (403).
+await check("functions: act-as-user client + Redis cache round trip", async () => {
+  const key = `smoke-${uid}`;
+  const set = await user.functions.invoke("cache-proxy", { body: { op: "set", key, value: { ok: 1 }, ttl: 10 } });
+  assert(!set.error, `set failed: ${set.error?.message}`);
+  const got = await user.functions.invoke("cache-proxy", { body: { op: "get", key } });
+  assert(!got.error, `get failed: ${got.error?.message}`);
+  await user.functions.invoke("cache-proxy", { body: { op: "del", key } });
+  return (got.data as any)?.hit ? "redis hit" : "no Redis configured (miss)";
+});
+
 await check("realtime: RLS-filtered postgres_changes", async () => {
   const got: any[] = [];
   const ch = user

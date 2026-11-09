@@ -13,6 +13,8 @@
 import Fastify from "fastify";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
+import { closeRedis, redis, redisStatus } from "./lib/redis.js";
+import { registerHttpMetrics, startMetricsServer } from "./lib/metrics.js";
 import websocket from "@fastify/websocket";
 import { config, isAllowedOrigin } from "./config.js";
 import { sql } from "./db.js";
@@ -43,8 +45,15 @@ await app.register(cors, {
   exposedHeaders: ["content-range", "x-request-id", "content-profile", "x-ai-run-id"],
   maxAge: 86400,
 });
-await app.register(rateLimit, { global: false });
+// Rate-limit counters live in Redis when configured, so limits hold across API replicas.
+// skipOnError: a Redis outage must not lock users out of login.
+await app.register(rateLimit, {
+  global: false,
+  ...(redis ? { redis, nameSpace: "rl:", skipOnError: true } : {}),
+});
 await app.register(websocket);
+
+registerHttpMetrics(app);
 
 app.setErrorHandler((err: any, req, reply) => {
   if (err instanceof HttpError) {
@@ -57,7 +66,8 @@ app.setErrorHandler((err: any, req, reply) => {
 
 app.get("/health", async () => {
   await sql`select 1`;
-  return { ok: true, service: "matbex-api", time: new Date().toISOString() };
+  // Redis is a cache: report it, but a Redis outage does not make the API unhealthy.
+  return { ok: true, service: "matbex-api", redis: await redisStatus(), time: new Date().toISOString() };
 });
 
 await app.register(authRoutes, { prefix: "/auth/v1" });
@@ -69,6 +79,7 @@ await app.register(mcpRoutes, { prefix: "/mcp" });
 
 await loadFunctions(app.log);
 await app.listen({ port: config.PORT, host: config.HOST });
+startMetricsServer(app.log);
 await startJobs(app.log);
 
 const shutdown = async (signal: string) => {
@@ -76,6 +87,7 @@ const shutdown = async (signal: string) => {
   stopJobs();
   await app.close();
   await sql.end({ timeout: 5 });
+  await closeRedis();
   process.exit(0);
 };
 process.on("SIGTERM", () => void shutdown("SIGTERM"));

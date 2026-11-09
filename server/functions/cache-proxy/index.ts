@@ -1,14 +1,14 @@
 import { serve } from "../_runtime/serve.ts";
 import { env } from "../_runtime/env.ts";
-// Redis cache proxy backed by Upstash Redis REST API.
-// Validates the caller's JWT and namespaces every key by their tenant so
-// users can never read another tenant's cached payload.
+import { getRedis } from "../_runtime/redis.ts";
+// Redis cache proxy for dashboard/report queries (src/lib/redisCache.ts).
+// Validates the caller's JWT and namespaces every key by their tenant and user so
+// users can never read another tenant's cached payload. Uses the API's shared Redis
+// connection (REDIS_URL); without Redis every read is a miss and writes are no-ops.
 import { createClient } from "@matbex/client";
 
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { withMetrics } from "../_shared/metrics.ts";
-const UPSTASH_URL = env("UPSTASH_REDIS_REST_URL");
-const UPSTASH_TOKEN = env("UPSTASH_REDIS_REST_TOKEN");
 const API_URL = env("API_URL")!;
 const ANON_KEY = env("ANON_KEY")!;
 
@@ -18,21 +18,8 @@ type Body =
   | { op: "del"; key: string }
   | { op: "mget"; keys: string[] };
 
-async function upstash(path: string, init?: RequestInit) {
-  const res = await fetch(`${UPSTASH_URL}${path}`, {
-    ...init,
-    headers: {
-      Authorization: `Bearer ${UPSTASH_TOKEN}`,
-      "Content-Type": "application/json",
-      ...(init?.headers || {}),
-    },
-  });
-  if (!res.ok) {
-    const txt = await res.text();
-    throw new Error(`Upstash ${res.status}: ${txt}`);
-  }
-  return res.json();
-}
+const MAX_KEYS = 50;
+const MAX_VALUE_BYTES = 512 * 1024;
 
 serve(withMetrics("cache-proxy", async (req) => {
   const corsHeaders = buildCorsHeaders(req);
@@ -41,12 +28,7 @@ serve(withMetrics("cache-proxy", async (req) => {
   }
 
   try {
-    if (!UPSTASH_URL || !UPSTASH_TOKEN) {
-      return new Response(
-        JSON.stringify({ error: "Redis not configured" }),
-        { status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" } },
-      );
-    }
+    const redis = getRedis();
 
     const authHeader = req.headers.get("Authorization") ?? "";
     if (!authHeader.startsWith("Bearer ")) {
@@ -78,48 +60,36 @@ serve(withMetrics("cache-proxy", async (req) => {
     const tenantId = (tenantRow as any)?.tenant_id ?? "no-tenant";
 
     const body = (await req.json()) as Body;
-    const ns = `t:${tenantId}:u:${userId}`;
+    const ns = `cache:t:${tenantId}:u:${userId}`;
     const scope = (k: string) => `${ns}:${k}`;
 
+    const json = (data: unknown) =>
+      new Response(JSON.stringify(data), { headers: { ...corsHeaders, "Content-Type": "application/json" } });
+    // Redis not configured or unreachable: behave as an empty cache.
+    const live = redis && redis.status === "ready" ? redis : null;
+
     if (body.op === "get") {
-      const r = await upstash(`/get/${encodeURIComponent(scope(body.key))}`);
-      const value = r?.result ? JSON.parse(r.result as string) : null;
-      return new Response(JSON.stringify({ hit: value !== null, value }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const raw = live ? await live.get(scope(body.key)) : null;
+      const value = raw ? JSON.parse(raw) : null;
+      return json({ hit: value !== null, value });
     }
 
     if (body.op === "mget") {
-      const keys = body.keys.map(scope);
-      const path = `/mget/${keys.map(encodeURIComponent).join("/")}`;
-      const r = await upstash(path);
-      const arr = (r?.result as (string | null)[]) || [];
-      const values = arr.map((v) => (v ? JSON.parse(v) : null));
-      return new Response(JSON.stringify({ values }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const keys = (body.keys ?? []).slice(0, MAX_KEYS).map(scope);
+      const arr = live && keys.length ? await live.mget(...keys) : keys.map(() => null);
+      return json({ values: arr.map((v) => (v ? JSON.parse(v) : null)) });
     }
 
     if (body.op === "set") {
       const ttl = Math.max(5, Math.min(body.ttl ?? 45, 3600));
-      // Send the value in the request body - putting it in the URL path
-      // overflows Upstash's URL length limit for large payloads.
-      await upstash(
-        `/set/${encodeURIComponent(scope(body.key))}?EX=${ttl}`,
-        { method: "POST", body: JSON.stringify(body.value) },
-      );
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      const payload = JSON.stringify(body.value ?? null);
+      if (live && payload.length <= MAX_VALUE_BYTES) await live.set(scope(body.key), payload, "EX", ttl);
+      return json({ ok: true });
     }
 
     if (body.op === "del") {
-      await upstash(`/del/${encodeURIComponent(scope(body.key))}`, {
-        method: "POST",
-      });
-      return new Response(JSON.stringify({ ok: true }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (live) await live.del(scope(body.key));
+      return json({ ok: true });
     }
 
     return new Response(JSON.stringify({ error: "Invalid op" }), {

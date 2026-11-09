@@ -47,9 +47,13 @@ export class MatbexClient<_Database = any> {
     if (key) this.baseHeaders["apikey"] = key;
 
     const host = typeof window !== "undefined" ? window.location?.hostname ?? "app" : "server";
+    // A caller-supplied Authorization (server functions acting as the user via
+    // global.headers) wins over the static key; otherwise auth.getUser()/getClaims()
+    // would check the anon/service key instead of the user's token.
+    const callerAuth = Object.keys(this.baseHeaders).some((h) => h.toLowerCase() === "authorization");
     this.auth = new AuthClient({
       url: `${this.url}/auth/v1`,
-      headers: this.staticKey ? { ...this.baseHeaders, Authorization: `Bearer ${this.staticKey}` } : this.baseHeaders,
+      headers: this.staticKey && !callerAuth ? { ...this.baseHeaders, Authorization: `Bearer ${this.staticKey}` } : this.baseHeaders,
       fetch: this.fetchImpl,
       storage: opts.auth?.storage,
       storageKey: opts.auth?.storageKey ?? `matbex-auth-${host}`,

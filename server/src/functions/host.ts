@@ -8,6 +8,7 @@
  * All others require a valid Matbex JWT when an Authorization header is
  * present; anonymous callers get the anon key so legacy code paths behave.
  */
+import { functionDuration, functionInvocations, statusClass } from "../lib/metrics.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -120,12 +121,17 @@ export async function functionRoutes(app: FastifyInstance) {
     });
 
     let res: Response;
+    const endTimer = functionDuration.startTimer({ function: name });
     try {
       res = await fn(webReq);
     } catch (err) {
+      endTimer();
+      functionInvocations.inc({ function: name, status: "threw" });
       req.log.error({ err, fn: name }, "function threw");
       return reply.code(500).send({ error: "Internal function error" });
     }
+    endTimer();
+    functionInvocations.inc({ function: name, status: statusClass(res.status) });
     reply.code(res.status);
     res.headers.forEach((value, key) => {
       if (key !== "content-length" && key !== "transfer-encoding") reply.header(key, value);

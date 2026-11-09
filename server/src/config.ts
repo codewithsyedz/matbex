@@ -51,6 +51,14 @@ const schema = z.object({
   /** JSON object {functionName: cronExpr} overriding jobs/schedules.ts */
   JOB_SCHEDULES_JSON: z.string().optional(),
 
+  /** Internal Prometheus endpoint (/metrics). 0 disables it. Never expose it publicly. */
+  METRICS_PORT: z.coerce.number().default(9464),
+  METRICS_HOST: z.string().default("127.0.0.1"),
+
+  /** redis://[:password@]host:6379/0 — cache + shared rate-limit counters. Optional. */
+  REDIS_URL: z.string().optional(),
+  REDIS_KEY_PREFIX: z.string().default("matbex:"),
+
   ANTHROPIC_API_KEY: z.string().optional(),
   ANTHROPIC_MODEL: z.string().default("claude-sonnet-4-5"),
 });

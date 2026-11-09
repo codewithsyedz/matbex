@@ -11,6 +11,7 @@
  *
  * Only one API instance runs jobs at a time (Postgres advisory lock).
  */
+import { httpQueueDeliveries, jobRuns, statusClass } from "../lib/metrics.js";
 import { Cron } from "croner";
 import { randomBytes } from "node:crypto";
 import type { FastifyBaseLogger } from "fastify";
@@ -91,6 +92,7 @@ async function runSqlJob(jobid: number, name: string | null, command: string) {
     message = err?.message ?? String(err);
     log.error({ job: name ?? jobid, err: message }, "cron job failed");
   }
+  jobRuns.inc({ job: name ?? `job-${jobid}`, kind: "sql", result: status });
   await sql`
     insert into cron.job_run_details (jobid, status, return_message, start_time, end_time)
     values (${jobid}, ${status}, ${message}, ${started}, now())`.catch(() => undefined);
@@ -111,8 +113,10 @@ async function scheduleFunctionDefaults() {
             headers: { "content-type": "application/json", "x-cron-secret": process.env.CRON_SECRET! },
             body: JSON.stringify({ source: "cron" }),
           });
+          jobRuns.inc({ job: fn, kind: "function", result: res.ok ? "succeeded" : "failed" });
           if (!res.ok) log.warn({ fn, status: res.status, body: (await res.text()).slice(0, 300) }, "scheduled function returned error");
         } catch (err) {
+          jobRuns.inc({ job: fn, kind: "function", result: "failed" });
           log.error({ err, fn }, "scheduled function failed");
         }
       }),
@@ -160,6 +164,7 @@ async function sendQueued(r: { id: number; method: string; url: string; headers:
   } catch (err: any) {
     error = err?.message ?? String(err);
   }
+  httpQueueDeliveries.inc({ status: error ? "error" : statusClass(status) });
   await sql`update net.http_request_queue set status_code = ${status}, error = ${error} where id = ${r.id}`;
 }
 

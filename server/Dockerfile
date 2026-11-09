@@ -18,4 +18,6 @@ COPY db db
 RUN ln -s /app/server/node_modules /app/node_modules
 USER node
 EXPOSE 8000
-CMD ["node", "server/dist/index.mjs"]
+EXPOSE 9464
+# otel.mjs only starts tracing when OTEL_EXPORTER_OTLP_ENDPOINT is set.
+CMD ["node", "--import", "./server/dist/otel.mjs", "server/dist/index.mjs"]

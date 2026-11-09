@@ -41,3 +41,6 @@ server/dist
 # production move (server/scripts/migrate-from-supabase.mjs)
 migration-report-*.json
 .migration-state.json
+
+# personal Claude Code settings
+.claude/settings.local.json
