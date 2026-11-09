@@ -27,6 +27,8 @@ import { realtimeRoutes } from "./realtime/hub.js";
 import { startSocketServer } from "./realtime/socket.js";
 import { functionRoutes, loadFunctions } from "./functions/host.js";
 import { mcpRoutes } from "./mcp/server.js";
+import { apiV1Routes } from "./modules/index.js";
+import { closeModuleDb } from "./modules/shared/db.js";
 import { startJobs, stopJobs } from "./jobs/index.js";
 
 const app = Fastify({
@@ -78,6 +80,7 @@ await app.register(storageRoutes, { prefix: "/storage/v1" });
 await app.register(realtimeRoutes, { prefix: "/realtime/v1" });
 await app.register(functionRoutes, { prefix: "/functions/v1" });
 await app.register(mcpRoutes, { prefix: "/mcp" });
+await app.register(apiV1Routes, { prefix: "/api/v1" });
 
 await loadFunctions(app.log);
 await startSocketServer(app);
@@ -92,6 +95,7 @@ const shutdown = async (signal: string) => {
   await stopJobs();
   await app.close();
   await sql.end({ timeout: 5 });
+  await closeModuleDb();
   await closeRedis();
   process.exit(0);
 };

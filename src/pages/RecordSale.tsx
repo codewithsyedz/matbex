@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { recordOfflineSale } from "@/lib/offline/posService";
+import { recordSale, type RecordSaleResult } from "@/lib/api/pos";
+import { ApiError } from "@/lib/api/http";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
 import { ensureOfflineBootstrapped } from "@/lib/offline/lazyBootstrap";
@@ -1297,145 +1299,45 @@ export default function RecordSale() {
         transactionTimestamp = new Date().toISOString();
       }
 
-      // Generate receipt number based on transaction date
-      const receiptDate = isUnpaidSale && isBackdated ? backdatedDate : new Date();
-      const receiptNumber = `RCP-${format(receiptDate, 'yyyyMMdd')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-
-      // Create sales transaction with settlement status
-      let transaction;
-      let txError;
+      // One server call records the sale and everything that belongs to it in a single
+      // transaction (POST /api/v1/pos/sales): sale + lines, shift cash event, recipe stock
+      // deduction (database trigger, once), reorder requests, kitchen ticket and a live event.
+      // The server assigns a sequential receipt number and recomputes totals with the branch's
+      // VAT settings. Network failures still fall back to the offline queue.
+      let saved: RecordSaleResult;
       try {
-        const response = await withOnlineWriteTimeout(
-          db
-          .from("sales_transactions")
-          .insert({
-            restaurant_id: restaurant.id,
-            shift_id: activeShift?.id || null,
-            payment_method: paymentMethod,
-            subtotal: subtotal,
-            tax: transactionVat,
-            total: transactionTotal,
-            receipt_number: receiptNumber,
-            customer_id: selectedCustomer?.id || null,
-            settlement_status: isUnpaidSale ? "unpaid" : "paid",
-            created_at: transactionTimestamp,
-            zatca_invoice_subtype: invoiceSubtype,
-            zatca_buyer_name: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,
-            zatca_buyer_vat_number: invoiceSubtype === "STANDARD" ? buyerVat.trim() : null,
-            zatca_buyer_address: invoiceSubtype === "STANDARD" ? buyerAddress.trim() || null : null,
-            table_id: linkedTable?.id ?? null,
-          } as never)
-          .select()
-          .single(),
+        saved = await withOnlineWriteTimeout(
+          recordSale(
+            {
+              restaurantId: restaurant.id,
+              branchId: activeBranchId ?? null,
+              shiftId: activeShift?.id ?? null,
+              customerId: selectedCustomer?.id ?? null,
+              tableId: linkedTable?.id ?? null,
+              paymentMethod,
+              settlement: isUnpaidSale ? "unpaid" : "paid",
+              createdAt: isUnpaidSale && isBackdated ? transactionTimestamp : null,
+              lines: cart.map((item) => ({ menuItemId: item.menuItemId, quantity: item.quantity, unitPrice: item.price })),
+              invoice: {
+                subtype: invoiceSubtype,
+                buyerName: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,
+                buyerVat: invoiceSubtype === "STANDARD" ? buyerVat.trim() || null : null,
+                buyerOtherId: invoiceSubtype === "STANDARD" ? buyerIdValue.trim() || null : null,
+                buyerAddress: invoiceSubtype === "STANDARD" ? buyerAddress.trim() || null : null,
+              },
+            },
+            { idempotencyKey: crypto.randomUUID() },
+          ),
           "Recording sale",
         );
-
-        transaction = response.data;
-        txError = response.error;
       } catch (error) {
-        if (isRecoverableNetworkError(error)) {
+        if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
           return queueSaleOffline();
         }
         throw error;
       }
 
-      if (txError) {
-        if (isRecoverableNetworkError(txError)) {
-          return queueSaleOffline();
-        }
-        throw txError;
-      }
-
-      // Create sales items
-      const salesItems = cart.map((item) => ({
-        restaurant_id: restaurant.id,
-        transaction_id: transaction.id,
-        menu_item_id: item.menuItemId,
-        quantity: item.quantity,
-        unit_price: item.price,
-        total_price: item.price * item.quantity,
-      }));
-
-      const { error: itemsError } = await db
-        .from("sales_items")
-        .insert(salesItems);
-
-      if (itemsError) throw itemsError;
-
-      // Create cash_event for shift tracking (all payment methods)
-      if (activeShift?.id) {
-        await db.from("cash_events").insert({
-          shift_id: activeShift.id,
-          restaurant_id: restaurant.id,
-          event_type: "sale",
-          amount: subtotal,
-          payment_method: paymentMethod,
-          created_by: user.id,
-          description: `POS Sale ${receiptNumber}`,
-        });
-      }
-
-      // Deduct inventory based on recipes
-      for (const cartItem of cart) {
-        const { data: recipes } = await db
-          .from("recipe_ingredients")
-          .select("*, inventory_items(*)")
-          .eq("menu_item_id", cartItem.menuItemId)
-          .eq("restaurant_id", restaurant.id);
-
-        if (recipes && recipes.length > 0) {
-          for (const recipe of recipes) {
-            const totalUsage = recipe.quantity_required * cartItem.quantity;
-            const inventoryItem = recipe.inventory_items;
-
-            if (inventoryItem) {
-              // Record usage
-              await db.from("inventory_usage").insert({
-                restaurant_id: restaurant.id,
-                inventory_item_id: recipe.inventory_item_id,
-                quantity_used: totalUsage,
-                unit_cost: inventoryItem.unit_cost,
-                total_cost: totalUsage * inventoryItem.unit_cost,
-                created_by: user.id,
-                shift_id: activeShift?.id || null,
-                notes: `Auto-deducted from sale: ${cartItem.name}`,
-              });
-
-              // Update stock
-              const newStock = Math.max(0, inventoryItem.current_stock - totalUsage);
-              await db
-                .from("inventory_items")
-                .update({ current_stock: newStock })
-                .eq("id", recipe.inventory_item_id);
-
-              // Check reorder level
-              if (
-                inventoryItem.reorder_level &&
-                newStock <= inventoryItem.reorder_level
-              ) {
-                const { data: existingRequest } = await db
-                  .from("reorder_requests")
-                  .select("id")
-                  .eq("inventory_item_id", recipe.inventory_item_id)
-                  .eq("status", "pending")
-                  .single();
-
-                if (!existingRequest) {
-                  await db.from("reorder_requests").insert({
-                    restaurant_id: restaurant.id,
-                    inventory_item_id: recipe.inventory_item_id,
-                    current_stock: newStock,
-                    reorder_level: inventoryItem.reorder_level,
-                    requested_quantity: inventoryItem.reorder_level * 2,
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-
-      return { transaction, receiptNumber, salesItems };
+      return { transaction: saved.transaction, receiptNumber: saved.receiptNumber, salesItems: saved.salesItems };
     },
     onSuccess: (data) => {
       if ("offlineReceiptNumber" in data) {

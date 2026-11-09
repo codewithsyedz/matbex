@@ -23,7 +23,7 @@ import { registry } from "../lib/metrics.js";
 import { redis } from "../lib/redis.js";
 import { EVENTS_CHANNEL, setLocalEventSink, type OutboxEvent } from "./outbox.js";
 
-const TOPICS = new Set(["kds"]);
+const TOPICS = new Set(["kds", "pos"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const emitted = new client.Counter({

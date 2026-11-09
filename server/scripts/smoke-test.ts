@@ -166,6 +166,25 @@ await check("functions: non-2xx surfaces FunctionsHttpError with context", async
   assert(body.error === "Tenant code not found", JSON.stringify(body));
 });
 
+// /api/v1 modules: route, auth, validation and role check. Writes nothing, so it is safe to
+// run against production (a successful sale is covered by the local integration test).
+await check("api/v1: pos sales validates input and refuses users without a role", async () => {
+  const { data: s } = await user.auth.getSession();
+  const post = (body: unknown, auth = true) =>
+    fetch(`${API}/api/v1/pos/sales`, {
+      method: "POST",
+      headers: { "content-type": "application/json", ...(auth ? { authorization: `Bearer ${s.session!.access_token}` } : {}) },
+      body: JSON.stringify(body),
+    });
+  const { data: r } = await admin.from("restaurants").insert({ name: "Smoke Restaurant", tenant_id: tenantId }).select("id").single();
+  const sale = { restaurantId: r!.id, paymentMethod: "cash", lines: [{ menuItemId: crypto.randomUUID(), quantity: 1, unitPrice: 1 }] };
+  assert((await post(sale, false)).status === 401, "no token should be 401");
+  assert((await post({ ...sale, lines: [] })).status === 400, "empty lines should be 400");
+  const forbidden = await post(sale);
+  assert(forbidden.status === 403, `user without a role should be 403, got ${forbidden.status}`);
+  await admin.from("restaurants").delete().eq("id", r!.id);
+});
+
 // cache-proxy builds a client with the caller's token in global headers and calls
 // auth.getUser(): guards the bug where the anon key overrode that header (403).
 await check("functions: act-as-user client + Redis cache round trip", async () => {
