@@ -131,12 +131,14 @@ serve(async (req) => {
       const userId = authData.user?.id;
 
       if (userId) {
-        await dbAdmin.from('profiles').insert({
+        // on_auth_user_created already inserted a bare profile row; fill in tenant + restaurant.
+        const { error: profileError } = await dbAdmin.from('profiles').upsert({
           id: userId,
           full_name: application.full_name,
           tenant_id: tenant.id,
           restaurant_id: restaurant.id,
-        });
+        }, { onConflict: 'id' });
+        if (profileError) throw new Error(`Failed to set up profile: ${profileError.message}`);
         await dbAdmin.from('user_tenant_roles').insert({
           user_id: userId,
           tenant_id: tenant.id,
@@ -149,7 +151,9 @@ serve(async (req) => {
         });
       }
 
-      await dbAdmin
+      // temporary_password was dropped (20260524101720: no plaintext passwords at rest); the
+      // password only goes out in the welcome email below.
+      const { error: appUpdateError } = await dbAdmin
         .from('tenant_applications')
         .update({
           status: 'approved',
@@ -157,12 +161,12 @@ serve(async (req) => {
           paid_at: new Date().toISOString(),
           tenant_id: tenant.id,
           user_id: userId,
-          temporary_password: tempPassword,
           reviewed_by: requester.id,
           reviewed_at: new Date().toISOString(),
           review_notes: review_notes || 'Trial plan - auto-provisioned',
         })
         .eq('id', application_id);
+      if (appUpdateError) throw new Error(`Tenant provisioned but application not marked approved: ${appUpdateError.message}`);
 
       // Send welcome email with credentials
       try {

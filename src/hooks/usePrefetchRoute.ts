@@ -205,11 +205,11 @@ function prefetchSales(qc: ReturnType<typeof useQueryClient>, restaurantId: stri
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const { data, error } = await db
         .from("sales_transactions")
-        .select("total_amount")
+        .select("total")
         .eq("restaurant_id", restaurantId)
         .gte("created_at", today.toISOString());
       if (error) throw error;
-      return (data || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0);
+      return (data || []).reduce((s: number, r: any) => s + Number(r.total || 0), 0);
     },
   });
 }

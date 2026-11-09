@@ -18463,6 +18463,13 @@ export type Database = {
               referencedRelation: "restaurants"
               referencedColumns: ["id"]
             },
+            {
+              foreignKeyName: "user_roles_user_id_profiles_fkey"
+              columns: ["user_id"]
+              isOneToOne: false
+              referencedRelation: "profiles"
+              referencedColumns: ["id"]
+            },
           ]
       }
       user_sessions: {
@@ -18543,6 +18550,13 @@ export type Database = {
               columns: ["tenant_id"]
               isOneToOne: false
               referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "user_tenant_roles_user_id_profiles_fkey"
+              columns: ["user_id"]
+              isOneToOne: false
+              referencedRelation: "profiles"
               referencedColumns: ["id"]
             },
           ]
@@ -21521,6 +21535,11 @@ export type Database = {
         Args: { p_account_id: string }
         Returns: boolean
       }
+      is_chat_conversation_participant:
+        | {
+        Args: { _conversation_id: string }
+        Returns: boolean
+      }
       is_demo_tenant:
         | {
         Args: { _tenant_id: string }
@@ -22291,6 +22310,11 @@ export type Database = {
         | {
         Args: { p_restaurant_id: string }
         Returns: undefined
+      }
+      seed_standard_coa_missing:
+        | {
+        Args: { p_tenant_id: string }
+        Returns: number
       }
       set_tenant_admin_pin:
         | {

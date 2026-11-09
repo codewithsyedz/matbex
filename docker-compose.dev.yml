@@ -10,6 +10,7 @@ services:
     volumes: [devpg:/var/lib/postgresql/data]
   postgrest:
     image: postgrest/postgrest:v12.2.3
+    restart: unless-stopped   # retries until migrations have created the authenticator role
     environment:
       PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD:-dev-authenticator}@db:5432/matbex
       PGRST_DB_SCHEMAS: public
@@ -17,7 +18,7 @@ services:
       PGRST_DB_EXTRA_SEARCH_PATH: public, extensions
       PGRST_DB_MAX_ROWS: "1000"
       PGRST_JWT_SECRET: ${JWT_SECRET:?run 'npm --prefix server run keys' and put JWT_SECRET in .env}
-    ports: ["3000:3000"]
+    ports: ["${POSTGREST_PORT:-3000}:3000"]
     depends_on: [db]
 volumes:
   devpg:

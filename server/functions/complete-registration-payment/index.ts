@@ -143,13 +143,14 @@ serve(async (req) => {
     logStep("User created", { userId });
 
     if (userId) {
-      // Create profile
-      await dbAdmin.from('profiles').insert({
+      // on_auth_user_created already inserted a bare profile row; fill in tenant + restaurant.
+      const { error: profileError } = await dbAdmin.from('profiles').upsert({
         id: userId,
         full_name: application.full_name,
         tenant_id: tenant.id,
         restaurant_id: restaurant.id,
-      });
+      }, { onConflict: 'id' });
+      if (profileError) throw new Error(`Failed to set up profile: ${profileError.message}`);
 
       // Assign owner role in user_tenant_roles
       await dbAdmin.from('user_tenant_roles').insert({
@@ -168,8 +169,9 @@ serve(async (req) => {
       logStep("Roles assigned");
     }
 
-    // Update application
-    await dbAdmin
+    // Update application. temporary_password was dropped (20260524101720: no plaintext
+    // passwords at rest); the password only goes out in the welcome email below.
+    const { error: appUpdateError } = await dbAdmin
       .from('tenant_applications')
       .update({
         status: 'approved',
@@ -177,9 +179,9 @@ serve(async (req) => {
         paid_at: new Date().toISOString(),
         tenant_id: tenant.id,
         user_id: userId,
-        temporary_password: tempPassword,
       })
       .eq('id', applicationId);
+    if (appUpdateError) throw new Error(`Tenant provisioned but application not marked approved: ${appUpdateError.message}`);
 
     logStep("Application updated to approved");
 
