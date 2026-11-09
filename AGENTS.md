@@ -2,6 +2,7 @@
 - Stack: React + Vite web app (src/) → Matbex API (server/, Fastify) → PostgreSQL 16. PostgREST runs privately behind the API for /rest/v1.
 - The only browser/server API client is `@matbex/client` (packages/client). Import the app instance as `import { db } from "@/integrations/db/client"`. Never add @supabase/* or lovable packages.
 - Security lives in Postgres RLS + `auth.uid()`; every new table needs RLS policies. Storage access is decided by RLS on storage.objects.
+- New SQL functions are not callable by logged-out users (anon) by default; grant `EXECUTE ... TO anon` explicitly only for public flows, and make every SECURITY DEFINER function check the caller's tenant/restaurant access before touching tenant data (see docs/self-hosting/FUNCTION_ACCESS_REVIEW.md).
 - Schema changes: `npm run db:new <name>` → write SQL in db/migrations → `npm run db:migrate` → `npm run db:types`. Never edit an applied migration.
 - Server functions live in server/functions/<name>/index.ts and call `serve(handler)` from `_runtime/serve.ts`; read config with `env()` from `_runtime/env.ts`. Public (no-JWT) functions must be listed in functions.config.json and pass `npm run lint:edge-auth`.
 - New backend features should prefer typed routes under /api/v1 in server/src (strangler target) over new direct table access from the browser.

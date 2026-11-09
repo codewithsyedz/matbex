@@ -20579,6 +20579,16 @@ export type Database = {
         Args: { p_summary_id: string }
         Returns: undefined
       }
+      assert_restaurant_access:
+        | {
+        Args: { _restaurant_id: string }
+        Returns: undefined
+      }
+      assert_tenant_access:
+        | {
+        Args: { _tenant_id: string }
+        Returns: undefined
+      }
       auto_assign_rider:
         | {
         Args: { _order_id: string }

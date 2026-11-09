@@ -151,7 +151,7 @@ Do a full dry run on a staging server with a copy of production first; time each
 | --- | --- |
 | Realtime payloads | INSERT/UPDATE deliver the full row (RLS-checked); UPDATE `old` and DELETE carry only `id`. Filters supported: `eq, neq, lt, lte, gt, gte, in`. |
 | Auth scope | No social/OAuth/SSO or phone-OTP login (none were used by the app). Customer OTP for ordering is a separate function and unchanged. |
-| SECURITY DEFINER audit | 396 `SECURITY DEFINER` functions are executable by `anon`. Most check `auth.uid()` internally, but each should be reviewed; revoke `anon` where not needed. |
+| SECURITY DEFINER audit | Done: 436 → 44 functions callable by `anon`, new functions private by default, and every definer function a logged-in page calls now checks tenant access (or is revoked); see `FUNCTION_ACCESS_REVIEW.md`. |
 | Function typing | `npm --prefix server run typecheck:functions` reports 29 loose-typing issues in the ported function code (Deno never type-checked them strictly; runtime unaffected). |
 | Docs | `docs/terminal-api*`, Android and runbook docs still mention the old host; the paths are unchanged, only the base URL differs. |
 | Image transforms | The hosted image-resize endpoint is not replicated; the app already rewrites public storage URLs to `VITE_STORAGE_CDN_HOST` (Cloudflare). |
