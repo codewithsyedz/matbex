@@ -37,3 +37,7 @@ server/.env
 server/dist
 .data
 .transfer
+
+# production move (server/scripts/migrate-from-supabase.mjs)
+migration-report-*.json
+.migration-state.json

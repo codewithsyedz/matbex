@@ -12,7 +12,8 @@
     "keys": "node scripts/generate-keys.mjs",
     "migrate": "node --env-file-if-exists=../.env ../db/migrate.mjs",
     "migrate:status": "node --env-file-if-exists=../.env ../db/migrate.mjs status",
-    "import:auth": "node scripts/import-auth-users.mjs",
+    "migrate:from-supabase": "node scripts/migrate-from-supabase.mjs",
+    "import:auth": "node scripts/migrate-from-supabase.mjs --steps auth",
     "smoke": "tsx --env-file-if-exists=../.env scripts/smoke-test.ts",
     "test": "tsx --test functions/pos-sync/eventSchema_test.ts functions/terminal-api/versionGuard_test.ts",
     "typecheck:functions": "tsc --noEmit -p tsconfig.functions.json"

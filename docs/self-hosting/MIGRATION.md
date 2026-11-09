@@ -82,38 +82,51 @@ Do a full dry run on a staging server with a copy of production first; time each
 1. **Provision** the new stack: `cp .env.example .env`, fill in, `docker compose up -d --build`.
 2. **Create the schema:** `docker compose run --rm migrate` (platform bootstrap + all migrations).
 3. **Freeze writes** on the old system (maintenance banner, stop POS sync, disable webhooks for a few minutes).
-4. **Users:** `SOURCE_DATABASE_URL=<old> DATABASE_URL=<new> npm --prefix server run import:auth`
-   (copies users with their bcrypt hashes and TOTP factors; everyone signs in again once — sessions are not copied).
-5. **Data:**
+4. **Move the data** with one script (`server/scripts/migrate-from-supabase.mjs`). Put the old project's details in
+   `.env` (see the end of `.env.example`) or the environment, then:
    ```sh
-   pg_dump "$OLD" --data-only --schema=public --no-owner --no-privileges -Fc -f public.dump
-   pg_restore -d "$NEW" --data-only --disable-triggers --no-owner public.dump
+   npm --prefix server run migrate:from-supabase                 # dry run: checks + plan, writes nothing
+   npm --prefix server run migrate:from-supabase -- --yes        # copy
    ```
-   Run `pg_restore` as the database owner so `--disable-triggers` works (posting/ledger triggers must not refire).
-6. **Storage metadata + bytes:**
-   ```sh
-   # metadata (bucket config + object rows)
-   pg_dump "$OLD" --data-only -t storage.buckets -t storage.objects --column-inserts | psql "$NEW"
-   # bytes: old storage is S3-compatible; copy into the new bucket under <bucket>/<path>
-   rclone copy old-s3:<bucket> new-s3:matbex/<bucket>   # repeat per bucket
-   ```
-   If the old dump has columns the new `storage.objects` lacks, drop them in the INSERTs (or dump with `--inserts` and edit).
-7. **Schedules:** copy production's `cron.job` rows (`pg_dump -t cron.job --data-only`) — function-calling jobs are
-   automatically routed to the in-process function. Without them, the defaults in `server/src/jobs/schedules.ts` apply.
-8. **Rewrite stored absolute URLs** that point at the old host:
-   ```sql
-   -- find candidates first
-   SELECT table_name, column_name FROM information_schema.columns
-   WHERE table_schema='public' AND data_type IN ('text','character varying','jsonb');
-   -- then e.g.
-   UPDATE public.restaurants SET logo_url = replace(logo_url, 'https://<old-ref>.supabase.co', 'https://api.matbex.com');
-   ```
-9. **Verify:** row counts per table (old vs new), `npm --prefix server run smoke` against the new API, log in as an
-   owner, cashier and accountant, run a sale on a POS terminal, post a day-end, run P&L and VAT reports.
-10. **Switch:** point DNS / `VITE_API_URL`, rebuild the web app and Android APK (`vars.VITE_API_URL`/`VITE_API_KEY`
+   It runs these steps in order and writes a JSON report (`migration-report-<time>.json`) with timings and counts:
+
+   | Step | What it does |
+   | --- | --- |
+   | `preflight` | Refuses to run if source and target are the same database, the target has no migrations, the target user cannot disable triggers, or production has tables/columns the new schema lacks (`--allow-drift` to override). Prints sizes. |
+   | `auth` | `auth.users` with their bcrypt hashes, plus TOTP factors. Sessions are not copied: everyone signs in once. |
+   | `data` | Every `public` table, streamed with `COPY`. |
+   | `sequences` | Sets every `public` sequence to production's value. |
+   | `storage` | Upserts `storage.buckets`, copies `storage.objects` rows. |
+   | `files` | Downloads each object through the old Storage API (service role key) into the new S3/MinIO bucket or local disk under `<bucket>/<name>`. Files already there with the right size are skipped. |
+   | `cron` | Copies production's `cron.job` rows (most were created in the dashboard), upserted by `jobname`. Function-calling jobs run in-process with the new service key. |
+   | `urls` | Lists stored values that still contain `https://<ref>.supabase.co`. Add `--rewrite-urls` to replace them with `API_URL`. Note that this also rewrites matching values inside `audit_logs` history. |
+   | `verify` | Exact row counts for every copied table, old against new. Also checks that every production bucket and named cron job exists. Exits non-zero on any difference. |
+
+   All writes run with `session_replication_role = replica`, so **no trigger fires**. This matters because:
+   * `on_auth_user_created` would otherwise create a `profiles` row for each imported user, and the profiles copy would then fail on duplicate keys.
+   * Posting and ledger triggers must not run again.
+   * Realtime stays quiet during the copy.
+
+   Each table copies in its own transaction. A failed or interrupted run can be rerun: finished tables are recorded in
+   `.migration-state.json` and skipped, and files are skipped when already present. Use `--fresh` to recopy everything.
+   Use `--steps`/`--skip` to run parts (e.g. `--steps files` to retry failed downloads) and `--exclude-table` to leave
+   tables out.
+
+   Connect to the old database with the **direct connection or the session pooler (port 5432)**, not the transaction
+   pooler (6543). Connect to the new one as the database owner/superuser (the same `DATABASE_URL` the migrations use).
+   No `pg_dump` is needed.
+
+5. **Rehearse first.** On staging, run the dry run, then `--yes`, and note each step's time from the report. Then
+   run `npm --prefix server run smoke` against the new API, log in as an owner, cashier and accountant, run a sale on a
+   POS terminal, post a day-end, and run P&L and VAT reports. Check the cron job list the script printed against
+   what you expect to run, and remove any that should not (`delete from cron.job where jobname = ...`).
+6. **On cutover day:** freeze writes (step 3), then run `--yes --fresh` against production's new database, then
+   `--steps urls --rewrite-urls --yes`. Do not switch DNS until `verify` passes with 0 mismatches.
+
+7. **Switch:** point DNS / `VITE_API_URL`, rebuild the web app and Android APK (`vars.VITE_API_URL`/`VITE_API_KEY`
     in GitHub), update webhook URLs at Stripe, Checkout.com, Hala, Twilio and delivery platforms to
     `https://<API_DOMAIN>/functions/v1/<name>`.
-11. Keep the old project read-only for a rollback window (e.g. 14 days), then decommission.
+8. Keep the old project read-only for a rollback window (e.g. 14 days), then decommission.
 
 ## 6. Changes to existing code worth knowing
 
