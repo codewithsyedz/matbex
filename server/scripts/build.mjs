@@ -25,6 +25,7 @@ const common = {
 };
 
 await build({ ...common, entryPoints: [join(root, "src", "index.ts")], outfile: join(out, "index.mjs") });
+await build({ ...common, entryPoints: [join(root, "src", "worker.ts")], outfile: join(out, "worker.mjs") });
 // Tracing preload (node --import ./dist/otel.mjs); a no-op unless OTEL_EXPORTER_OTLP_ENDPOINT is set.
 await build({ ...common, entryPoints: [join(root, "src", "otel.ts")], outfile: join(out, "otel.mjs") });
 

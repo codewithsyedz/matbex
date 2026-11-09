@@ -13,6 +13,11 @@ services:
       OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
       OTEL_SERVICE_NAME: matbex-api
 
+  worker:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
+      OTEL_SERVICE_NAME: matbex-worker
+
   prometheus:
     image: prom/prometheus:v3.4.1
     restart: unless-stopped

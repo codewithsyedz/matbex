@@ -47,6 +47,9 @@ const schema = z.object({
   STORAGE_MAX_UPLOAD_MB: z.coerce.number().default(50),
 
   JOBS_ENABLED: bool.default(true),
+  /** api = HTTP only, worker = jobs only (src/worker.ts), all = both in one process (dev, small installs). */
+  ROLE: z.enum(["all", "api", "worker"]).default("all"),
+  JOBS_CONCURRENCY: z.coerce.number().default(5),
   CRON_SECRET: z.string().optional(),
   /** JSON object {functionName: cronExpr} overriding jobs/schedules.ts */
   JOB_SCHEDULES_JSON: z.string().optional(),

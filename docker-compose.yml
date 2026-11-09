@@ -81,6 +81,8 @@ services:
       REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
       # /metrics on the internal network only (not published, not routed by Caddy)
       METRICS_HOST: 0.0.0.0
+      # Scheduled jobs and queues run in the worker service below.
+      ROLE: api
       PORT: "8000"
       NODE_ENV: production
     depends_on:
@@ -90,6 +92,27 @@ services:
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
       interval: 10s
+      retries: 6
+
+  worker:
+    # Same image as the API: scheduled jobs, net.http deliveries, background tasks (BullMQ).
+    # Safe to run more than one replica: BullMQ runs each scheduled tick once.
+    build: { context: ., dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    env_file: .env
+    command: ["node", "--import", "./server/dist/otel.mjs", "server/dist/worker.mjs"]
+    environment:
+      POSTGREST_URL: http://postgrest:3000
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      METRICS_HOST: 0.0.0.0
+      ROLE: worker
+      NODE_ENV: production
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9464/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
       retries: 6
 
   web:

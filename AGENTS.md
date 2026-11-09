@@ -1,5 +1,5 @@
 # Platform (self-hosted, no Supabase / Lovable)
-- Stack: React + Vite web app (src/) → Matbex API (server/, Fastify) → PostgreSQL 16. PostgREST runs privately behind the API for /rest/v1.
+- Stack: React + Vite web app (src/) → Matbex API (server/, Fastify) → PostgreSQL 16 + Redis. PostgREST runs privately behind the API for /rest/v1. Target architecture and decisions: docs/self-hosting/ARCHITECTURE.md (public website moves to Next.js; dashboard/POS/KDS stay on Vite).
 - The only browser/server API client is `@matbex/client` (packages/client). Import the app instance as `import { db } from "@/integrations/db/client"`. Never add @supabase/* or lovable packages.
 - Security lives in Postgres RLS + `auth.uid()`; every new table needs RLS policies. Storage access is decided by RLS on storage.objects.
 - New SQL functions are not callable by logged-out users (anon) by default; grant `EXECUTE ... TO anon` explicitly only for public flows, and make every SECURITY DEFINER function check the caller's tenant/restaurant access before touching tenant data (see docs/self-hosting/FUNCTION_ACCESS_REVIEW.md).
@@ -18,4 +18,4 @@
 - Expense VAT reversals use the authorized expense correction RPC; amendments offset both original expense lines and retroactive VAT correction lines before reposting, preserving balanced immutable history.
 - Accountant inventory creation is authorized at both navigation and database levels; creation respects the selected branch without granting inventory deletion.
 - Accountant-only sessions render a lazy accountant dashboard at /dashboard; queries use real restaurant-scoped data, paginated totals, separate period metrics and all-date review backlog without admin privileges.
-- Accountant pending-work emails use a dedicated authenticated function with fixed recipient/restaurant, caller-scoped reads and content-derived idempotency; dashboard refresh invokes it. Scheduled runs belong in server/src/jobs/schedules.ts (not new pg_cron migrations).
+- Accountant pending-work emails use a dedicated authenticated function with fixed recipient/restaurant, caller-scoped reads and content-derived idempotency; dashboard refresh invokes it. Scheduled runs belong in server/src/jobs/schedules.ts (not new pg_cron migrations). Background work runs in the worker service on BullMQ (server/src/jobs/queues.ts); add new background tasks to the `tasks` queue rather than running them inside API requests.

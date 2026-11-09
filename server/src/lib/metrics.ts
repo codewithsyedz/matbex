@@ -13,7 +13,7 @@ import { sql } from "../db.js";
 import { redisStatus } from "./redis.js";
 
 export const registry = new client.Registry();
-registry.setDefaultLabels({ service: "matbex-api" });
+registry.setDefaultLabels({ service: config.ROLE === "worker" ? "matbex-worker" : "matbex-api" });
 client.collectDefaultMetrics({ register: registry, prefix: "matbex_" });
 
 const httpDuration = new client.Histogram({
@@ -101,6 +101,10 @@ export function registerHttpMetrics(app: FastifyInstance) {
 export function startMetricsServer(log: FastifyInstance["log"]) {
   if (!config.METRICS_PORT) return;
   const server = createServer(async (req, res) => {
+    if (req.url === "/health") {
+      res.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ ok: true, role: config.ROLE }));
+      return;
+    }
     if (req.url !== "/metrics") {
       res.writeHead(404).end();
       return;

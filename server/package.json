@@ -16,7 +16,9 @@
     "import:auth": "node scripts/migrate-from-supabase.mjs --steps auth",
     "smoke": "tsx --env-file-if-exists=../.env scripts/smoke-test.ts",
     "test": "tsx --test functions/pos-sync/eventSchema_test.ts functions/terminal-api/versionGuard_test.ts",
-    "typecheck:functions": "tsc --noEmit -p tsconfig.functions.json"
+    "typecheck:functions": "tsc --noEmit -p tsconfig.functions.json",
+    "dev:worker": "tsx watch --clear-screen=false --import ./src/otel.ts --env-file-if-exists=../.env src/worker.ts",
+    "start:worker": "node --env-file-if-exists=../.env --import ./dist/otel.mjs dist/worker.mjs"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.0",
@@ -33,6 +35,7 @@
     "@react-email/components": "0.0.22",
     "ai": "^5.0.0",
     "bcryptjs": "^2.4.3",
+    "bullmq": "6.4.2",
     "croner": "^9.0.0",
     "fastify": "^5.1.0",
     "ioredis": "^5.11.0",

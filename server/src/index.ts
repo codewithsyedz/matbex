@@ -25,7 +25,7 @@ import { storageRoutes } from "./storage/routes.js";
 import { realtimeRoutes } from "./realtime/hub.js";
 import { functionRoutes, loadFunctions } from "./functions/host.js";
 import { mcpRoutes } from "./mcp/server.js";
-import { startJobs, stopJobs } from "./jobs/scheduler.js";
+import { startJobs, stopJobs } from "./jobs/index.js";
 
 const app = Fastify({
   logger: { level: config.LOG_LEVEL, ...(config.NODE_ENV === "development" ? { transport: undefined } : {}) },
@@ -80,11 +80,13 @@ await app.register(mcpRoutes, { prefix: "/mcp" });
 await loadFunctions(app.log);
 await app.listen({ port: config.PORT, host: config.HOST });
 startMetricsServer(app.log);
-await startJobs(app.log);
+// ROLE=api leaves jobs to the separate worker service (src/worker.ts).
+if (config.ROLE === "all") await startJobs(app.log);
+else app.log.info({ role: config.ROLE }, "jobs run in the worker service");
 
 const shutdown = async (signal: string) => {
   app.log.info({ signal }, "shutting down");
-  stopJobs();
+  await stopJobs();
   await app.close();
   await sql.end({ timeout: 5 });
   await closeRedis();
