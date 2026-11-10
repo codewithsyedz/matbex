@@ -88,7 +88,9 @@ account may read. On the server: `~/copy-files.sh` (dry run), `~/copy-files.sh -
 85 files copied 2026-11-11), `ssh -t matbex-staging '~/copy-files.sh --yes --email <you>'` (private).
 Reports go to `~/files-reports/`.
 
-Was still to do on staging: the storage files (2,667 objects, 380 MB: public `menu-images` and
-`press-assets`; private `expense-receipts` 2,564 readable by the superadmin, `invoice-images` 18
-readable only by that restaurant's users), then `--steps urls --rewrite-urls --yes` (123
-`menu_items.image_url` values still point at the old Supabase host).
+Done 2026-11-11: 2,649 of 2,667 files on staging (expense receipts 2,564 via the superadmin
+account, menu images 81, press assets 4). The 18 `invoice-images` files belong to one restaurant
+the superadmin has no role in; that restaurant's owner can copy them with the same command, or
+they can be downloaded by hand. The 123 `menu_items.image_url` links were then switched from the
+old host to `https://staging-api.matbex.com` (on cutover day the data move's
+`--steps urls --rewrite-urls --yes` does this against the restored export).
