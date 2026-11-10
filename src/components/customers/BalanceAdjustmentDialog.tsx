@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { addBalanceAdjustment } from "@/lib/api/credit";
 import {
   Dialog,
   DialogContent,
@@ -117,19 +118,16 @@ export function BalanceAdjustmentDialog({
         throw new Error("Please provide a reason for this adjustment");
       }
 
-      const { error } = await db.from("customer_balance_adjustments").insert({
-        restaurant_id: restaurant.id,
-        customer_id: customer.id,
-        tenant_id: tenant.id,
-        adjustment_type: adjustmentType,
+      // POST /api/v1/credit/adjustments (the server recomputes the balance).
+      await addBalanceAdjustment({
+        restaurantId: restaurant.id,
+        customerId: customer.id,
+        type: adjustmentType,
         amount: amountValue,
         reason: reason.trim(),
         notes: notes.trim() || null,
-        created_by: user.id,
-        created_at: adjustmentDate.toISOString(),
+        createdAt: adjustmentDate.toISOString(),
       });
-
-      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer", customer.id] });

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { editSale, voidSale } from "@/lib/api/pos";
+import { createSettlementInvoice, deleteSettlementInvoice, paySettlementInvoice, payCreditSale, revertWriteOff, writeOffCreditSale, type CreditPayMethod } from "@/lib/api/credit";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -205,94 +206,34 @@ export default function CustomerDetail() {
   
   const settlementPreview = settlementMode === "custom" 
     ? { count: 0, subtotal: customAmount, tax: 0, total: customAmount }
-    : settlementMode === "full"
-      ? {
-          count: unpaidTransactions.length,
-          subtotal: customer?.current_balance ?? 0,
-          tax: 0,
-          total: customer?.current_balance ?? 0,
-        }
-      : transactionsForSettlement.reduce(
-          (acc, t) => ({
-            count: acc.count + 1,
-            subtotal: acc.subtotal + t.subtotal,
-            tax: acc.tax + t.tax,
-            total: acc.total + t.total,
-          }),
+    : // Same rule as the server: open sales not already on an invoice, for what they still owe.
+      transactionsForSettlement
+        .filter((t) => !t.settlement_invoice_id)
+        .reduce(
+          (acc, t) => {
+            const owed = Math.max(0, (Number(t.total) || 0) - (Number(t.paid_amount) || 0));
+            return { count: acc.count + 1, subtotal: acc.subtotal + owed, tax: 0, total: acc.total + owed };
+          },
           { count: 0, subtotal: 0, tax: 0, total: 0 }
         );
 
   // Create settlement mutation
   const createSettlementMutation = useMutation({
+    // POST /api/v1/credit/settlement-invoices: the server picks the open credit sales (full or
+    // within the period) and bills what they still owe; custom bills an amount with no sales.
     mutationFn: async () => {
-      if (!customer || !restaurant?.id || !user?.id) throw new Error("Missing context");
-
-      const transactionsToSettle = settlementMode === "full" 
-        ? unpaidTransactions 
-        : settlementMode === "period"
-          ? unpaidTransactions.filter((t) => {
-              const txDate = format(new Date(t.created_at), "yyyy-MM-dd");
-              return txDate >= settlementPeriod.start && txDate <= settlementPeriod.end;
-            })
-          : []; // Custom mode doesn't link specific transactions
-
-      // For custom mode, validate the amount
+      if (!customer || !restaurant?.id) throw new Error("Missing context");
       if (settlementMode === "custom") {
         const amount = parseFloat(customSettlementAmount);
-        if (!amount || amount <= 0) {
-          throw new Error("Please enter a valid amount");
-        }
-      } else if (transactionsToSettle.length === 0) {
-        throw new Error("No transactions to settle");
+        if (!amount || amount <= 0) throw new Error("Please enter a valid amount");
       }
-
-      // Generate invoice number
-      const invoiceNumber = `INV-${customer.name.substring(0, 3).toUpperCase()}-${format(new Date(), "yyyyMMdd")}-${Math.floor(Math.random() * 1000).toString().padStart(3, "0")}`;
-
-      // Create settlement invoice
-      const { data: invoice, error: invoiceError } = await db
-        .from("settlement_invoices")
-        .insert({
-          restaurant_id: restaurant.id,
-          customer_id: customer.id,
-          invoice_number: invoiceNumber,
-          billing_period_start: settlementPeriod.start,
-          billing_period_end: settlementPeriod.end,
-          subtotal: settlementPreview.subtotal,
-          tax_amount: settlementPreview.tax,
-          total_amount: settlementPreview.total,
-          due_date: format(new Date(new Date().setDate(new Date().getDate() + 30)), "yyyy-MM-dd"),
-        })
-        .select()
-        .single();
-
-      if (invoiceError) throw invoiceError;
-
-      // Link transactions to the invoice (only for non-custom modes)
-      if (transactionsToSettle.length > 0) {
-        const transactionIds = transactionsToSettle.map((t) => t.id);
-        const { error: updateError } = await db
-          .from("sales_transactions")
-          .update({ settlement_invoice_id: invoice.id })
-          .in("id", transactionIds);
-
-        if (updateError) throw updateError;
-      }
-
-      // Log audit
-      await db.from("settlement_audit_logs").insert({
-        restaurant_id: restaurant.id,
-        settlement_invoice_id: invoice.id,
-        customer_id: customer.id,
-        action: "invoice_created",
-        actor_id: user.id,
-        details: {
-          transaction_count: transactionsToSettle.length,
-          total_amount: settlementPreview.total,
-          settlement_mode: settlementMode,
-        },
+      const { invoice } = await createSettlementInvoice({
+        restaurantId: restaurant.id,
+        customerId: customer.id,
+        mode: settlementMode,
+        ...(settlementMode !== "full" ? { periodStart: settlementPeriod.start, periodEnd: settlementPeriod.end } : {}),
+        ...(settlementMode === "custom" ? { amount: parseFloat(customSettlementAmount) } : {}),
       });
-
       return invoice;
     },
     onSuccess: () => {
@@ -309,172 +250,19 @@ export default function CustomerDetail() {
 
   // Record payment mutation
   const recordPaymentMutation = useMutation({
+    // POST /api/v1/credit/settlement-invoices/:id/payments: posts the receipt to the ledger,
+    // allocates it to the invoice's sales oldest first and settles the invoice when paid.
     mutationFn: async () => {
-      if (!selectedInvoice || !restaurant?.id || !user?.id) throw new Error("Missing context");
-
+      if (!selectedInvoice || !restaurant?.id) throw new Error("Missing context");
       const amount = parseFloat(paymentAmount);
       if (isNaN(amount) || amount <= 0) throw new Error("Invalid payment amount");
-
-      const remaining = selectedInvoice.total_amount - selectedInvoice.amount_paid;
-      if (amount > remaining) throw new Error("Payment exceeds remaining balance");
-
-      // Record the payment
-      const { data: payment, error: paymentError } = await db
-        .from("settlement_payments")
-        .insert({
-          restaurant_id: restaurant.id,
-          settlement_invoice_id: selectedInvoice.id,
-          amount: amount,
-          payment_method: paymentMethod,
-          paid_by: user.id,
-          notes: paymentNotes || null,
-        })
-        .select("id, ledger_posted, ledger_transaction_id")
-        .single();
-
-      if (paymentError) throw paymentError;
-
-      // Update invoice
-      const newAmountPaid = selectedInvoice.amount_paid + amount;
-      const isFullyPaid = newAmountPaid >= selectedInvoice.total_amount;
-      const newStatus: SettlementStatus = isFullyPaid ? "settled" : "partial";
-
-      const { error: updateError } = await db
-        .from("settlement_invoices")
-        .update({
-          amount_paid: newAmountPaid,
-          status: newStatus,
-          ...(isFullyPaid && { paid_at: new Date().toISOString(), paid_by: user.id }),
-        })
-        .eq("id", selectedInvoice.id);
-
-      if (updateError) throw updateError;
-
-      // Allocate this payment across linked transactions (oldest first) so
-      // partial payments correctly reduce each transaction's outstanding
-      // balance, not just the parent invoice.
-      const { data: linkedTx, error: linkedTxError } = await db
-        .from("sales_transactions")
-        .select("id, total, paid_amount, settlement_status")
-        .eq("settlement_invoice_id", selectedInvoice.id)
-        .neq("settlement_status", "settled")
-        .order("created_at", { ascending: true });
-
-      if (linkedTxError) throw linkedTxError;
-
-      let settlementAdjustmentId: string | null = null;
-
-      if (linkedTx && linkedTx.length > 0) {
-        let toApply = amount;
-        const nowIso = new Date().toISOString();
-        for (const tx of linkedTx) {
-          if (toApply <= 0.0001) break;
-          const txTotal = Number(tx.total) || 0;
-          const txPaid = Number(tx.paid_amount) || 0;
-          const txRemaining = Math.max(0, txTotal - txPaid);
-          if (txRemaining <= 0.0001) continue;
-          const apply = Math.min(toApply, txRemaining);
-          const newPaid = txPaid + apply;
-          const fully = newPaid + 0.0001 >= txTotal;
-          const { error: txErr } = await db
-            .from("sales_transactions")
-            .update({
-              paid_amount: newPaid,
-              ...(fully && {
-                settlement_status: "settled" as const,
-                settled_at: nowIso,
-              }),
-            })
-            .eq("id", tx.id);
-          if (txErr) throw txErr;
-          toApply -= apply;
-        }
-
-        // If the invoice is fully paid, force-settle ALL linked transactions
-        // even if their raw remaining exceeds what was allocated (covers
-        // cases where current_balance was already reduced by prior credits
-        // or write-offs at the customer level).
-        if (isFullyPaid) {
-          const nowIso2 = new Date().toISOString();
-          for (const tx of linkedTx) {
-            const { error: forceSettleError } = await db
-              .from("sales_transactions")
-              .update({
-                paid_amount: Number(tx.total) || 0,
-                settlement_status: "settled" as const,
-                settled_at: nowIso2,
-              })
-              .eq("id", tx.id);
-
-            if (forceSettleError) throw forceSettleError;
-          }
-        }
-      }
-
-      if (isFullyPaid) {
-          const { data: existingAdjustment, error: existingAdjustmentError } = await db
-            .from("customer_balance_adjustments")
-            .select("id, ledger_posted")
-            .eq("customer_id", selectedInvoice.customer_id)
-            .eq("reference_number", selectedInvoice.invoice_number)
-            .eq("adjustment_type", "settlement")
-            .maybeSingle();
-
-          if (existingAdjustmentError) throw existingAdjustmentError;
-
-          if (existingAdjustment?.id) {
-            settlementAdjustmentId = existingAdjustment.id;
-            if (!existingAdjustment.ledger_posted) {
-              const { error: markExistingPostedError } = await db
-                .from("customer_balance_adjustments")
-                .update({
-                  ledger_posted: true,
-                  ledger_transaction_id: payment.ledger_transaction_id,
-                })
-                .eq("id", existingAdjustment.id);
-              if (markExistingPostedError) throw markExistingPostedError;
-            }
-          } else {
-            const { data: adjustmentData, error: adjustmentError } = await db
-            .from("customer_balance_adjustments")
-            .insert({
-              restaurant_id: restaurant.id,
-              tenant_id: restaurant.tenant_id!,
-              customer_id: selectedInvoice.customer_id,
-              adjustment_type: "settlement",
-              amount: selectedInvoice.total_amount,
-              reason: `Settlement invoice ${selectedInvoice.invoice_number} paid`,
-              notes: linkedTx && linkedTx.length > 0
-                ? "Settlement payment received for linked invoice transactions"
-                : "Custom amount settlement - reduces customer balance",
-              created_by: user.id,
-              reference_number: selectedInvoice.invoice_number,
-              ledger_posted: true,
-              ledger_transaction_id: payment.ledger_transaction_id,
-            })
-            .select("id")
-            .single();
-
-            if (adjustmentError) throw adjustmentError;
-            settlementAdjustmentId = adjustmentData?.id ?? null;
-          }
-
-          // The settlement-payment insert already posts DR Cash/Bank and CR A/R.
-          // The balance adjustment only records customer-state history, preventing
-          // the same receipt from being posted to the ledger twice.
-        }
-
-      // Log audit
-      await db.from("settlement_audit_logs").insert({
-        restaurant_id: restaurant.id,
-        settlement_invoice_id: selectedInvoice.id,
-        customer_id: selectedInvoice.customer_id,
-        action: isFullyPaid ? "invoice_settled" : "payment_recorded",
-        actor_id: user.id,
-        details: { amount, payment_method: paymentMethod },
+      const { fullyPaid } = await paySettlementInvoice(selectedInvoice.id, {
+        restaurantId: restaurant.id,
+        amount,
+        paymentMethod: paymentMethod as CreditPayMethod,
+        notes: paymentNotes || null,
       });
-
-      return { isFullyPaid };
+      return { isFullyPaid: fullyPaid };
     },
     onSuccess: ({ isFullyPaid }) => {
       queryClient.invalidateQueries({ queryKey: ["settlement-invoices"] });
@@ -495,50 +283,11 @@ export default function CustomerDetail() {
 
   // Delete settlement invoice mutation
   const deleteInvoiceMutation = useMutation({
+    // DELETE /api/v1/credit/settlement-invoices/:id: only while nothing is paid on it (paid
+    // receipts are in the ledger); its sales go back on the customer's tab.
     mutationFn: async (invoice: any) => {
       if (!restaurant?.id) throw new Error("Missing restaurant context");
-
-      // Unlink all transactions from this invoice
-      const { error: unlinkError } = await db
-        .from("sales_transactions")
-        .update({ settlement_invoice_id: null })
-        .eq("settlement_invoice_id", invoice.id);
-
-      if (unlinkError) throw unlinkError;
-
-      // Delete related payments
-      const { error: paymentsError } = await db
-        .from("settlement_payments")
-        .delete()
-        .eq("settlement_invoice_id", invoice.id);
-
-      if (paymentsError) throw paymentsError;
-
-      // Delete audit logs for this invoice
-      const { error: auditError } = await db
-        .from("settlement_audit_logs")
-        .delete()
-        .eq("settlement_invoice_id", invoice.id);
-
-      if (auditError) throw auditError;
-
-      // Delete linked balance adjustments referencing this invoice number
-      const { error: adjError } = await db
-        .from("customer_balance_adjustments")
-        .delete()
-        .eq("restaurant_id", restaurant.id)
-        .eq("reference_number", invoice.invoice_number);
-
-      if (adjError) throw adjError;
-
-      // Delete the invoice itself
-      const { error: invoiceError } = await db
-        .from("settlement_invoices")
-        .delete()
-        .eq("id", invoice.id);
-
-      if (invoiceError) throw invoiceError;
-
+      await deleteSettlementInvoice(invoice.id, restaurant.id);
       return invoice;
     },
     onSuccess: () => {
@@ -578,33 +327,10 @@ export default function CustomerDetail() {
 
   // Write off transaction mutation
   const writeOffTransactionMutation = useMutation({
+    // POST /api/v1/credit/sales/:id/write-off: writes off what the sale still owes.
     mutationFn: async (transaction: any) => {
-      if (!restaurant?.id || !user?.id || !customer?.id) throw new Error("Missing context");
-
-      // Create a write_off balance adjustment for the transaction amount
-      const { error } = await db.from("customer_balance_adjustments").insert({
-        restaurant_id: restaurant.id,
-        tenant_id: restaurant.tenant_id,
-        customer_id: customer.id,
-        adjustment_type: "write_off",
-        amount: transaction.total,
-        reason: `Write-off for transaction ${transaction.receipt_number}`,
-        notes: `Transaction dated ${format(new Date(transaction.created_at), "MMM dd, yyyy")} written off`,
-        created_by: user.id,
-      });
-
-      if (error) throw error;
-
-      // Mark the transaction as settled (written off)
-      const { error: updateError } = await db
-        .from("sales_transactions")
-        .update({ 
-          settlement_status: "settled", 
-          settled_at: new Date().toISOString() 
-        })
-        .eq("id", transaction.id);
-
-      if (updateError) throw updateError;
+      if (!restaurant?.id) throw new Error("Missing context");
+      await writeOffCreditSale(transaction.id, { restaurantId: restaurant.id });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer-transactions"] });
@@ -621,24 +347,10 @@ export default function CustomerDetail() {
 
   // Revert a write-off by creating an opposite (debit) adjustment
   const revertWriteOffMutation = useMutation({
+    // POST /api/v1/credit/adjustments/:id/revert (once; a write-off of a sale puts it back on the tab).
     mutationFn: async (adjustment: any) => {
-      if (!restaurant?.id || !user?.id || !customer?.id || !restaurant.tenant_id) {
-        throw new Error("Missing context");
-      }
-
-      // Create a reversing debit adjustment
-      const { error } = await db.from("customer_balance_adjustments").insert({
-        restaurant_id: restaurant.id,
-        tenant_id: restaurant.tenant_id,
-        customer_id: customer.id,
-        adjustment_type: "debit",
-        amount: adjustment.amount,
-        reason: `Reversal of write-off: ${adjustment.reason}`,
-        notes: `Reverted write-off from ${format(new Date(adjustment.created_at), "MMM dd, yyyy")}. Original reference: ${adjustment.reference_number || "N/A"}`,
-        created_by: user.id,
-      });
-
-      if (error) throw error;
+      if (!restaurant?.id) throw new Error("Missing context");
+      await revertWriteOff(adjustment.id, restaurant.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer-transactions"] });
@@ -655,59 +367,18 @@ export default function CustomerDetail() {
 
   // Record partial payment against a specific transaction
   const partialPaymentMutation = useMutation({
+    // POST /api/v1/credit/sales/:id/payments: instalment on one credit sale.
     mutationFn: async () => {
-      if (!restaurant?.id || !user?.id || !customer?.id || !restaurant.tenant_id || !transactionToPartialPay) {
-        throw new Error("Missing context");
-      }
-
+      if (!restaurant?.id || !transactionToPartialPay) throw new Error("Missing context");
       const amount = parseFloat(partialPaymentAmount);
-      if (isNaN(amount) || amount <= 0) {
-        throw new Error("Please enter a valid amount");
-      }
-
-      const currentPaid = transactionToPartialPay.paid_amount || 0;
-      const remaining = transactionToPartialPay.total - currentPaid;
-      
-      if (amount > remaining) {
-        throw new Error(`Amount exceeds remaining balance of ${remaining.toFixed(2)}`);
-      }
-
-      const newPaidAmount = currentPaid + amount;
-      const isFullyPaid = newPaidAmount >= transactionToPartialPay.total;
-
-      // Update the transaction's paid_amount
-      const { error: updateError } = await db
-        .from("sales_transactions")
-        .update({ 
-          paid_amount: newPaidAmount,
-          ...(isFullyPaid && { 
-            settlement_status: "paid" as const, 
-            settled_at: new Date().toISOString() 
-          })
-        })
-        .eq("id", transactionToPartialPay.id);
-
-      if (updateError) throw updateError;
-
-      // Create a credit balance adjustment to reduce customer balance
-      const { error: adjustmentError } = await db
-        .from("customer_balance_adjustments")
-        .insert({
-          restaurant_id: restaurant.id,
-          tenant_id: restaurant.tenant_id,
-          customer_id: customer.id,
-          transaction_id: transactionToPartialPay.id,
-          adjustment_type: "credit",
-          amount: amount,
-          reason: `Payment for ${transactionToPartialPay.receipt_number}`,
-          notes: `${partialPaymentMethod.toUpperCase()} payment${partialPaymentNotes ? `: ${partialPaymentNotes}` : ""}`,
-          created_by: user.id,
-          reference_number: transactionToPartialPay.receipt_number,
-        });
-
-      if (adjustmentError) throw adjustmentError;
-
-      return { isFullyPaid };
+      if (isNaN(amount) || amount <= 0) throw new Error("Please enter a valid amount");
+      const { fullyPaid } = await payCreditSale(transactionToPartialPay.id, {
+        restaurantId: restaurant.id,
+        amount,
+        paymentMethod: partialPaymentMethod as CreditPayMethod,
+        notes: partialPaymentNotes || null,
+      });
+      return { isFullyPaid: fullyPaid };
     },
     onSuccess: ({ isFullyPaid }) => {
       queryClient.invalidateQueries({ queryKey: ["customer-transactions"] });

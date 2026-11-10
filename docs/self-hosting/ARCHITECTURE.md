@@ -223,9 +223,34 @@ Back office (`sales-admin.*`):
   (`20261110171928`). Lines without a sale never reach the kitchen screen any more
   (`20261110165205`), and voids do not notify managers as new sales.
 
-Still updating `sales_transactions` from the browser: customer settlements (CustomerDetail,
-Settlements: settlement invoices, partial payments, write-offs), the ZATCA helpers
-(src/lib/zatca) and VAT corrections (VatAudit, VatReceiptDrilldown). Combo packages cannot be
+Customer credit (`server/src/modules/credit`, `/api/v1/credit/*`): settlement invoices
+(create from open credit sales or a custom amount, edit dates/notes/overdue, delete only while
+unpaid), invoice payments (posted to the ledger by the existing trigger, allocated to the
+invoice's sales oldest first), instalments on one sale, write-offs and their reversal, and manual
+balance adjustments. CustomerDetail, Settlements and the balance adjustment dialog use it.
+
+**Customer balances follow one rule now** (`20261110172707`): what unpaid, non-voided sales
+still owe (total minus paid), plus manual adjustments not tied to a sale, minus payments on
+custom-amount invoices; recomputed by the database whenever a sale, adjustment or invoice
+changes. Before, two triggers used different rules and several flows counted the same money
+twice: a write-off settled the sale *and* subtracted the write-off; a sale paid off in instalments
+dropped out *and* kept its credits; a fully paid invoice settled its sales *and* subtracted a
+settlement adjustment; partial invoice payments lowered nothing. The migration recomputes every
+customer, so **existing balances will change at cutover**: run
+`docs/self-hosting/customer-balance-review.sql` on the rehearsal copy first to see which.
+
+Browsers can no longer write `settlement_invoices`, `settlement_payments`,
+`customer_balance_adjustments` or `settlement_audit_logs`, and may update only the ZATCA columns,
+`branch_id` and the amounts of `sales_transactions` (`20261110173940`). Invoices with payments can
+no longer be deleted (their receipts are in the ledger); deleting one used to remove its payments
+and audit trail.
+
+Not changed, needs an accountant's decision: instalments and write-offs are not posted to the
+ledger (`post_balance_adjustment_to_ledger` exists but nothing calls it), and instalments paid in
+cash do not reach the shift drawer.
+
+Still updating `sales_transactions` from the browser (column-limited): the ZATCA helpers
+(src/lib/zatca), VatAudit (amounts) and VatReceiptDrilldown (branch). Combo packages cannot be
 sold today (their id is sent as a menu item and the foreign key rejects it; the API answers
 `menu_item_not_found`).
 
@@ -265,8 +290,8 @@ sold today (their id is sent as a menu item and the foreign key rejects it; the 
 
 1. Move the POS terminal's own live updates (ticket ready, table status) onto events, then retire
    the matching `/realtime/v1` subscriptions screen by screen.
-2. Customer credit on the module (settlement invoices, payments, write-offs), then ZATCA status
-   and VAT corrections, then revoke UPDATE on `sales_transactions` from browsers.
+2. ZATCA status writes and VAT corrections on the module, then revoke the remaining column
+   UPDATE grants on `sales_transactions`.
 3. R2 and managed PostgreSQL/Redis: settings and a test run.
 4. GitHub Actions: typecheck, unit tests, migrations on a fresh database, smoke test, image build
    and push, deploy.
