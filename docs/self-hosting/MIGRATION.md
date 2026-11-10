@@ -101,6 +101,7 @@ Do a full dry run on a staging server with a copy of production first; time each
    | `cron` | Copies production's `cron.job` rows (most were created in the dashboard), upserted by `jobname`. Function-calling jobs run in-process with the new service key. |
    | `urls` | Lists stored values that still contain `https://<ref>.supabase.co`. Add `--rewrite-urls` to replace them with `API_URL`. Note that this also rewrites matching values inside `audit_logs` history. |
    | `verify` | Exact row counts for every copied table, old against new. Also checks that every production bucket and named cron job exists. Exits non-zero on any difference. |
+   | `fixups` | Repeats the data fixes of migrations that ran before the data arrived (they ran on an empty database): standard chart of accounts and 6999 Cash Over/Short for tenants without them, historical write-offs tied to their sale, and every customer balance recomputed with the single rule (`20261110172707`). Each balance change is listed in the report. In a dry run it previews the balance changes from the source, read-only. |
 
    All writes run with `session_replication_role = replica`, so **no trigger fires**. This matters because:
    * `on_auth_user_created` would otherwise create a `profiles` row for each imported user, and the profiles copy would then fail on duplicate keys.
@@ -116,17 +117,36 @@ Do a full dry run on a staging server with a copy of production first; time each
    pooler (6543). Connect to the new one as the database owner/superuser (the same `DATABASE_URL` the migrations use).
    No `pg_dump` is needed.
 
-5. **Rehearse first.** On staging, run the dry run, then `--yes`, and note each step's time from the report. Then
+5. **Check production** (read-only, on the copy or against the source):
+   `psql "$SOURCE_DATABASE_URL" -f docs/self-hosting/production-checks.sql` answers the questions the migration raised
+   (VAT-exclusive branches stored without VAT, shifts that never closed, ZATCA status / QR VAT / chain gaps, exposed
+   device keys, sales that lost their lines). `docs/self-hosting/customer-balance-review.sql` lists the customer
+   balances `fixups` will change. Decide what to correct before cutover.
+6. **Rehearse first.** On staging, run the dry run, then `--yes`, and note each step's time from the report. Then
    run `npm --prefix server run smoke` against the new API, log in as an owner, cashier and accountant, run a sale on a
    POS terminal, post a day-end, and run P&L and VAT reports. Check the cron job list the script printed against
    what you expect to run, and remove any that should not (`delete from cron.job where jobname = ...`).
-6. **On cutover day:** freeze writes (step 3), then run `--yes --fresh` against production's new database, then
+7. **On cutover day:** freeze writes (step 3), then run `--yes --fresh` against production's new database, then
    `--steps urls --rewrite-urls --yes`. Do not switch DNS until `verify` passes with 0 mismatches.
 
-7. **Switch:** point DNS / `VITE_API_URL`, rebuild the web app and Android APK (`vars.VITE_API_URL`/`VITE_API_KEY`
+8. **Switch:** point DNS / `VITE_API_URL`, rebuild the web app and Android APK (`vars.VITE_API_URL`/`VITE_API_KEY`
     in GitHub), update webhook URLs at Stripe, Checkout.com, Hala, Twilio and delivery platforms to
     `https://<API_DOMAIN>/functions/v1/<name>`.
-8. Keep the old project read-only for a rollback window (e.g. 14 days), then decommission.
+9. Keep the old project read-only for a rollback window (e.g. 14 days), then decommission.
+
+### Staging
+
+A staging server is a production-shaped copy used for the rehearsal: same compose stack
+(`docker compose up -d --build`, plus `-f docker-compose.observability.yml`), its own domain
+behind Cloudflare (e.g. `staging-api.<domain>` and `staging.<domain>`, see CLOUDFLARE.md), its own
+secrets (`npm --prefix server run keys`; never production's), `STORAGE_DRIVER` pointing at a
+staging bucket, and no outbound side effects: leave `RESEND_API_KEY`, Twilio, Stripe live keys
+and `ZATCA_BASE_URL` empty (ZATCA runs in simulation), and do not register payment or delivery
+webhooks against it. Disable the copied cron jobs that send messages before starting the worker.
+
+Locally verified on 2026-11-10: all migrations apply to an empty database, the data move copies
+the local data into it with 0 verify mismatches, and `fixups` restores write-off links and
+corrected balances it was given in their old state.
 
 ## 6. Changes to existing code worth knowing
 

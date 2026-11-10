@@ -15,6 +15,9 @@
  *   cron       cron.job rows (dashboard-created schedules), upserted by jobname
  *   urls       find stored absolute URLs pointing at the old host; rewrite them with --rewrite-urls
  *   verify     exact row counts, old vs new, for every copied table
+ *   fixups     data fixes from migrations that ran before the data arrived: standard chart of
+ *              accounts, 6999 Cash Over/Short, customer balances under the single rule (every
+ *              change listed in the report; the dry run previews them from the source)
  *
  * Every write runs with session_replication_role = replica, so no trigger fires: the
  * on_auth_user_created trigger does not create profiles, posting/ledger triggers do not
@@ -58,7 +61,7 @@ try {
   /* no .env: rely on the environment */
 }
 
-const ALL_STEPS = ["preflight", "auth", "data", "sequences", "storage", "files", "cron", "urls", "verify"];
+const ALL_STEPS = ["preflight", "auth", "data", "sequences", "storage", "files", "cron", "urls", "verify", "fixups"];
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
 const opt = (name, dflt) => {
@@ -608,6 +611,57 @@ const steps = {
       report.errors.push(`verify: ${bad.length} table count mismatches, ${missingBuckets.length} missing buckets, ${missingJobs.length} missing cron jobs`);
     }
     return { tables: rows, mismatches: bad.length, missingBuckets, missingJobs };
+  },
+
+  /**
+   * Data fixes that migrations applied to the data present when they ran. On a fresh target
+   * they ran against an empty database, so they are repeated here on the copied data (all are
+   * idempotent). Runs after verify, which compares exact copies. Triggers fire normally.
+   *   - standard chart of accounts for tenants without one (20261109102727)
+   *   - 6999 Cash Over/Short for tenants without it (20261109121304)
+   *   - customer balances: tie historical write-offs to their sale, then recompute every
+   *     balance with the single rule (20261110172707). Each change is listed in the report.
+   * Dry run: previews the balance changes from the SOURCE (read-only) and writes nothing.
+   */
+  async fixups() {
+    const reviewSql = await readFile(resolve(here, "../../docs/self-hosting/customer-balance-review.sql"), "utf8");
+    if (!WRITE) {
+      const preview = await src.unsafe(reviewSql);
+      log(`customer balances that will change: ${preview.length}`);
+      for (const r of preview.slice(0, 10)) log(`  ${r.restaurant} / ${r.customer}: ${r.stored} -> ${r.new}`);
+      return { planned: true, balanceChanges: preview.length, sample: preview.slice(0, 50) };
+    }
+    return dst.begin(async (tx) => {
+      // Snapshot first: tying write-offs below already fires the balance recompute trigger.
+      const before = new Map((await tx`select id, current_balance::text as b from public.customers`).map((r) => [r.id, r.b]));
+      const coa = await tx`
+        select t.id, public.seed_standard_coa_missing(t.id) as added from public.tenants t
+        where not exists (select 1 from public.chart_of_accounts c where c.tenant_id = t.id and c.account_code = '1000')`;
+      const cashOverShort = await tx`
+        insert into public.chart_of_accounts (tenant_id, account_code, account_name, account_type, is_active, description)
+        select t.id, '6999', 'Cash Over/Short', 'expense', true, 'Auto-created for day-end adjustments and reconciliations'
+        from public.tenants t
+        where not exists (select 1 from public.chart_of_accounts c where c.tenant_id = t.id and c.account_code = '6999')
+        returning tenant_id`;
+      const linked = await tx`
+        update public.customer_balance_adjustments a set transaction_id = st.id
+        from public.sales_transactions st
+        where a.adjustment_type = 'write_off' and a.transaction_id is null
+          and st.customer_id = a.customer_id and st.receipt_number is not null
+          and a.reason = 'Write-off for transaction ' || st.receipt_number
+        returning a.id`;
+      await tx`select public.recompute_customer_balance(id) from public.customers`;
+      const after = await tx`
+        select c.id, c.name, r.name as restaurant, c.current_balance::text as b
+        from public.customers c join public.restaurants r on r.id = c.restaurant_id`;
+      const changes = after
+        .filter((r) => before.get(r.id) !== r.b)
+        .map((r) => ({ restaurant: r.restaurant, customer: r.name, stored: before.get(r.id), new: r.b }));
+      log(`chart of accounts seeded for ${coa.length} tenants; 6999 added for ${cashOverShort.length}`);
+      log(`write-offs tied to their sale: ${linked.length}; customer balances changed: ${changes.length}`);
+      for (const c of changes.slice(0, 10)) log(`  ${c.restaurant} / ${c.customer}: ${c.stored} -> ${c.new}`);
+      return { coaSeeded: coa.length, cashOverShortAdded: cashOverShort.length, writeOffsLinked: linked.length, balanceChanges: changes };
+    });
   },
 };
 
