@@ -30,6 +30,11 @@ import { mcpRoutes } from "./mcp/server.js";
 import { apiV1Routes } from "./modules/index.js";
 import { closeModuleDb } from "./modules/shared/db.js";
 import { startJobs, stopJobs } from "./jobs/index.js";
+import { installEmailRecipientGuard } from "./email/recipientGuard.js";
+
+// Staging: outbound email only to EMAIL_ALLOWED_RECIPIENTS (no-op when unset). Before any
+// function or email sender runs.
+installEmailRecipientGuard();
 
 const app = Fastify({
   logger: { level: config.LOG_LEVEL, ...(config.NODE_ENV === "development" ? { transport: undefined } : {}) },

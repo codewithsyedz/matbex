@@ -30,6 +30,11 @@ follow latency and Saudi data-residency requirements.
   `STORAGE_DRIVER=fs` (files in the `objects` volume until R2 is set up), and every integration
   key (Resend, Twilio, Stripe, Checkout.com, Hala, Anthropic) and `ZATCA_BASE_URL` empty, so
   staging sends no messages or payments and ZATCA runs in simulation.
+* Email: staging uses the production Resend account but `EMAIL_ALLOWED_RECIPIENTS` limits it to
+  the listed addresses / @domains (server/src/email/recipientGuard.ts filters every call to
+  Resend's API; other recipients are dropped and logged). Set both with `~/set-email.sh` on the
+  server (asks for the key without echoing it). Never leave the key set with an empty allow-list
+  while staging holds production data.
 * Docker logs rotate at 20 MB x 5 per container.
 
 ## Deploy a commit

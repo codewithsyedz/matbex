@@ -10,6 +10,11 @@ import { loadFunctions } from "./functions/host.js";
 import { startJobs, stopJobs } from "./jobs/index.js";
 import { startMetricsServer } from "./lib/metrics.js";
 import { closeRedis } from "./lib/redis.js";
+import { installEmailRecipientGuard } from "./email/recipientGuard.js";
+
+// Staging: outbound email only to EMAIL_ALLOWED_RECIPIENTS (no-op when unset). Before any
+// function or email sender runs.
+installEmailRecipientGuard();
 
 // Fastify only for its logger, so worker logs match the API's JSON format.
 const app = Fastify({ logger: { level: config.LOG_LEVEL } });
