@@ -81,7 +81,14 @@ Done on 2026-11-11 with the export of 2026-11-10 (5 tenants, 14 users, 48,558 sa
    Then `docker compose up -d worker`; it registered 11 schedules.
 5. Smoke test (27/27 with production data), then remove `prodcopy` and the export.
 
-Still to do on staging: the storage files (2,667 objects, 380 MB: public `menu-images` and
+Storage files (Lovable gives no service key): `server/scripts/copy-supabase-files.mjs` reads the
+file list from the new database and downloads public buckets by URL; with `--email` it signs in
+to the old project as that user (password at a hidden prompt) and copies the private files that
+account may read. On the server: `~/copy-files.sh` (dry run), `~/copy-files.sh --yes` (public:
+85 files copied 2026-11-11), `ssh -t matbex-staging '~/copy-files.sh --yes --email <you>'` (private).
+Reports go to `~/files-reports/`.
+
+Was still to do on staging: the storage files (2,667 objects, 380 MB: public `menu-images` and
 `press-assets`; private `expense-receipts` 2,564 readable by the superadmin, `invoice-images` 18
 readable only by that restaurant's users), then `--steps urls --rewrite-urls --yes` (123
 `menu_items.image_url` values still point at the old Supabase host).
