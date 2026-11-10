@@ -15569,6 +15569,10 @@ export type Database = {
           table_id: string | null
           tax: number
           total: number
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+          voids_transaction_id: string | null
           zatca_buyer_address: string | null
           zatca_buyer_name: string | null
           zatca_buyer_vat_number: string | null
@@ -15619,6 +15623,10 @@ export type Database = {
           table_id?: string | null
           tax?: number
           total: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          voids_transaction_id?: string | null
           zatca_buyer_address?: string | null
           zatca_buyer_name?: string | null
           zatca_buyer_vat_number?: string | null
@@ -15669,6 +15677,10 @@ export type Database = {
           table_id?: string | null
           tax?: number
           total?: number
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+          voids_transaction_id?: string | null
           zatca_buyer_address?: string | null
           zatca_buyer_name?: string | null
           zatca_buyer_vat_number?: string | null
@@ -15736,6 +15748,13 @@ export type Database = {
               columns: ["table_id"]
               isOneToOne: false
               referencedRelation: "pos_tables"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "sales_transactions_voids_transaction_id_fkey"
+              columns: ["voids_transaction_id"]
+              isOneToOne: false
+              referencedRelation: "sales_transactions"
               referencedColumns: ["id"]
             },
             {

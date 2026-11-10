@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { editSale, voidSale } from "@/lib/api/pos";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -559,22 +560,16 @@ export default function CustomerDetail() {
     mutationFn: async (transactionId: string): Promise<void> => {
       if (!restaurant?.id) throw new Error("Missing restaurant context");
 
-      // Delete items directly
-      const itemDelete = db.from("sales_items");
-      await itemDelete.delete().eq("sale_id", transactionId);
-
-      // Delete transaction
-      const txDelete = db.from("sales_transactions");
-      const { error: txError } = await txDelete.delete().eq("id", transactionId);
-      
-      if (txError) throw txError;
+      // Sales are never deleted; the server voids them and clears a credit sale from the
+      // customer's balance. POST /api/v1/pos/sales/:id/void
+      await voidSale(transactionId, { restaurantId: restaurant.id, reason: "Voided from the customer page" });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["customer", customerId] });
       queryClient.invalidateQueries({ queryKey: ["unpaid-counts"] });
       setTransactionToDelete(null);
-      toast.success("Transaction deleted successfully");
+      toast.success("Transaction voided");
     },
     onError: (error: any) => {
       toast.error(error.message || "Failed to delete transaction");
@@ -736,21 +731,13 @@ export default function CustomerDetail() {
         throw new Error("Missing required fields");
       }
 
-      const gross = parseFloat(editSubtotal);
-      const taxRateNum = parseFloat(editTaxRate) || 0;
-      const { net: subtotal, vat: tax, gross: total } = splitInclusive(gross, taxRateNum / 100);
-
-      const { error } = await db
-        .from("sales_transactions")
-        .update({
-          subtotal,
-          tax,
-          total,
-          payment_method: editPaymentMethod,
-        })
-        .eq("id", transactionToEdit.id);
-
-      if (error) throw error;
+      // PATCH /api/v1/pos/sales/:id (amount-only sales; POS sales change through their lines).
+      await editSale(transactionToEdit.id, {
+        restaurantId: restaurant.id,
+        total: parseFloat(editSubtotal),
+        vatPercent: parseFloat(editTaxRate) || 0,
+        paymentMethod: editPaymentMethod as "cash" | "card" | "other",
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer-transactions"] });

@@ -1695,7 +1695,7 @@
         "subtotalRequired": "Please enter a subtotal",
         "saleRecorded": "Sale recorded",
         "receipt": "Receipt: {{number}}",
-        "saleDeleted": "Sale deleted successfully",
+        "saleDeleted": "Sale voided",
         "shiftReassigned": "Shift reassigned successfully",
         "saleUpdated": "Sale updated successfully"
       },
@@ -1754,8 +1754,8 @@
         "pdfSettings": "PDF export settings"
       },
       "delete": {
-        "title": "Delete Sale Transaction",
-        "desc": "Are you sure you want to delete this sale ({{receipt}})? This action cannot be undone."
+        "title": "Void Sale Transaction",
+        "desc": "Void this sale ({{receipt}})? A negative entry is recorded, stock is returned and a cash refund is taken from the open shift. This cannot be undone."
       },
       "edit": {
         "title": "Edit Sale",

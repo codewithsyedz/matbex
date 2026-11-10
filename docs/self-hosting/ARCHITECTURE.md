@@ -200,11 +200,34 @@ Part two (all POS screens and the offline queue on the module):
 * **Browsers can no longer insert `sales_items`** (`20261110093956`). Editing and deleting lines
   (sales history, customer tabs) still go through `/rest/v1` under RLS.
 
-Still writing `sales_transactions` from the browser: Sales (manual sale, edits, voids),
-CustomerDetail (settlements), EndOfDaySummary, PosBackfill, Settlements, VatAudit and the ZATCA
-helpers; server functions terminal-api and auto-shift-manager. Each needs its own endpoint before
-inserts into `sales_transactions` can be blocked too. Combo packages cannot be sold today (their
-id is sent as a menu item and the foreign key rejects it; the API answers `menu_item_not_found`).
+Back office (`sales-admin.*`):
+* `POST /pos/sales/summary`: amount-only sales. `manual` (Sales page: one amount, optional
+  backdate and shift, numbered in the RCP sequence), `end_of_day` / `end_of_day_no_pos` (Day-End
+  summary) and `backfill_adjustment` (POS backfill reconcile, may be negative). Amounts include
+  VAT, split with the branch rate unless `vatPercent` is given. **End-of-day totals used to be
+  stored with zero VAT**; they now carry the branch VAT like every other sale.
+* `POST /pos/sales/:id/void` replaces the delete buttons on Sales and Customer Detail (deletes
+  were already refused by `trg_prevent_sales_hard_delete`, but the Sales page first deleted the
+  sale's lines, which put stock back and left a sale without lines). A void is a negative mirror
+  sale `VOID-<receipt>` linked by `voids_transaction_id`; the original gets `voided_at/by/reason`.
+  Stock and provisional COGS are reversed, food-cost rows removed, the open kitchen ticket
+  cancelled, a paid sale refunded from an open shift's drawer, a credit sale settled (off the
+  customer's balance). Refused for sales reported to ZATCA (credit note) or on a settlement
+  invoice.
+* `PATCH /pos/sales/:id`: amount/VAT/payment method of amount-only sales, and moving a sale to
+  another shift (its drawer entry moves with it).
+* `PATCH|DELETE /pos/sales/:id/lines/:lineId` (Sales Breakdown): the line is replaced through the
+  `sales_items` triggers, so stock, provisional COGS, food cost, the sale's totals and the drawer
+  follow. A direct update used to change none of them.
+* Browsers can no longer insert or delete `sales_transactions`, or update/delete `sales_items`
+  (`20261110171928`). Lines without a sale never reach the kitchen screen any more
+  (`20261110165205`), and voids do not notify managers as new sales.
+
+Still updating `sales_transactions` from the browser: customer settlements (CustomerDetail,
+Settlements: settlement invoices, partial payments, write-offs), the ZATCA helpers
+(src/lib/zatca) and VAT corrections (VatAudit, VatReceiptDrilldown). Combo packages cannot be
+sold today (their id is sent as a menu item and the foreign key rejects it; the API answers
+`menu_item_not_found`).
 
 ### Defects found while building it (fixed in migrations)
 
@@ -233,13 +256,17 @@ id is sent as a menu item and the foreign key rejects it; the API answers `menu_
 * **Offline sales from the desktop POS were queued under the branch id**, but the sync engine
   drains the queue by restaurant id, so only the background service worker (Chromium) could
   send them. They are now queued under the restaurant with the branch in the payload.
+* **ZATCA status changes failed.** Five functions (append_zatca_audit, the audit-chain checks,
+  verify_terminal_key) call pgcrypto's `digest()`/`hmac()` with `search_path = public`, but
+  pgcrypto lives in `extensions`; every update of a sale's `zatca_clearance_status` rolled back
+  (`20261110170020`). Supabase also installs pgcrypto in `extensions`, so check production.
 
 ## Next steps, in order
 
 1. Move the POS terminal's own live updates (ticket ready, table status) onto events, then retire
    the matching `/realtime/v1` subscriptions screen by screen.
-2. Sales back office on the module: voids/edits, customer settlements, end-of-day and backfill
-   entries, then block `sales_transactions` inserts from `/rest/v1`.
+2. Customer credit on the module (settlement invoices, payments, write-offs), then ZATCA status
+   and VAT corrections, then revoke UPDATE on `sales_transactions` from browsers.
 3. R2 and managed PostgreSQL/Redis: settings and a test run.
 4. GitHub Actions: typecheck, unit tests, migrations on a fresh database, smoke test, image build
    and push, deploy.

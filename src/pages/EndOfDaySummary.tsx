@@ -28,6 +28,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { recordSummarySales } from "@/lib/api/pos";
 
 export default function EndOfDaySummary() {
   const { restaurant, user, profile } = useAuth();
@@ -173,15 +174,8 @@ export default function EndOfDaySummary() {
     }
 
     setSubmitting(true);
-    // Use noon local time of selected day to avoid timezone day-boundary issues
-    const ts = new Date(effectiveDate);
-    ts.setHours(12, 0, 0, 0);
-    const isoTs = ts.toISOString();
     const dateStamp = format(effectiveDate, "yyyyMMdd");
     const isoDate = format(effectiveDate, "yyyy-MM-dd");
-    const rand = () =>
-      Math.floor(Math.random() * 10000).toString().padStart(4, "0");
-    const receiptPrefix = effectiveNoPos ? `EOD-NOPOS-${dateStamp}` : `EOD-${dateStamp}`;
     const noPosNote = effectiveNoPos ? "No POS" : "";
     const fullNotes = [noPosNote, effectiveNotes.trim()].filter(Boolean).join(" - ");
     const noteSuffix = fullNotes
@@ -202,41 +196,20 @@ export default function EndOfDaySummary() {
       }
     }
 
-    const rows: Array<Record<string, unknown>> = [];
-    if (cashAmount > 0) {
-      rows.push({
-        restaurant_id: restaurant.id,
-        branch_id: branchId,
-        payment_method: "cash",
-        subtotal: cashAmount,
-        tax: 0,
-        total: cashAmount,
-        receipt_number: `${receiptPrefix}-CASH-${rand()}`,
-        settlement_status: "paid",
-        created_at: isoTs,
-        shift_id: null,
-      });
-    }
-    if (cardAmount > 0) {
-      rows.push({
-        restaurant_id: restaurant.id,
-        branch_id: branchId,
-        payment_method: "card",
-        subtotal: cardAmount,
-        tax: 0,
-        total: cardAmount,
-        receipt_number: `${receiptPrefix}-CARD-${rand()}`,
-        settlement_status: "paid",
-        created_at: isoTs,
-        shift_id: null,
-      });
-    }
+    const entries: { paymentMethod: "cash" | "card"; total: number }[] = [];
+    if (cashAmount > 0) entries.push({ paymentMethod: "cash", total: cashAmount });
+    if (cardAmount > 0) entries.push({ paymentMethod: "card", total: cardAmount });
 
     try {
-      const { error } = await db
-        .from("sales_transactions")
-        .insert(rows as never);
-      if (error) throw error;
+      // POST /api/v1/pos/sales/summary: one sale per payment method at noon of the business day
+      // (restaurant time zone), VAT split with the branch rate, receipts EOD[-NOPOS]-YYYYMMDD-*.
+      await recordSummarySales({
+        restaurantId: restaurant.id,
+        branchId,
+        kind: effectiveNoPos ? "end_of_day_no_pos" : "end_of_day",
+        businessDate: isoDate,
+        entries,
+      });
 
       // ---- Optional estimated COGS posting ----
       let cogsToastDetail = "";

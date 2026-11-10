@@ -85,3 +85,72 @@ export async function quoteSale(input: RecordSaleInput, opts: { signal?: AbortSi
   const { data } = await apiRequest<SaleQuote>("/pos/sales/quote", { body: input, signal: opts.signal });
   return data;
 }
+
+// ---- Back office (server/src/modules/pos/sales-admin.*) -------------------------------------
+
+export interface SaleRow {
+  id: string;
+  receipt_number: string | null;
+  payment_method: string;
+  subtotal: number;
+  tax: number;
+  total: number;
+  settlement_status: string;
+  shift_id: string | null;
+  branch_id: string | null;
+  created_at: string;
+}
+
+export type SummaryKind = "manual" | "end_of_day" | "end_of_day_no_pos" | "backfill_adjustment";
+
+/**
+ * Sales entered as amounts without lines. Amounts include VAT (split with the branch rate unless
+ * vatPercent is given). manual: one entry, optional createdAt/shiftId; the others: businessDate,
+ * one entry per payment method (negative only for backfill adjustments).
+ */
+export async function recordSummarySales(input: {
+  restaurantId: string;
+  branchId?: string | null;
+  shiftId?: string | null;
+  kind: SummaryKind;
+  createdAt?: string | null;
+  businessDate?: string | null;
+  vatPercent?: number | null;
+  entries: { paymentMethod: "cash" | "card" | "other"; total: number }[];
+}) {
+  const { data } = await apiRequest<{ transactions: SaleRow[]; receiptPrefix: string | null }>("/pos/sales/summary", { body: input });
+  return data;
+}
+
+/** Void a sale: negative mirror sale, stock back, refund from an open shift's drawer. */
+export async function voidSale(saleId: string, input: { restaurantId: string; reason: string; shiftId?: string | null }) {
+  const { data } = await apiRequest<{ void: SaleRow; cashRefunded: boolean; refundShiftId: string | null }>(
+    `/pos/sales/${saleId}/void`,
+    { body: input },
+  );
+  return data;
+}
+
+/** Edit an amount-only sale's total/VAT/payment method, or move a sale to another shift (null: none). */
+export async function editSale(
+  saleId: string,
+  input: { restaurantId: string; total?: number; vatPercent?: number; paymentMethod?: "cash" | "card" | "other"; shiftId?: string | null },
+) {
+  const { data } = await apiRequest<{ transaction: SaleRow }>(`/pos/sales/${saleId}`, { method: "PATCH", body: input });
+  return data;
+}
+
+/** Change one line's quantity/price; stock, food cost, totals and the drawer follow. */
+export async function editSaleLine(saleId: string, lineId: string, input: { restaurantId: string; quantity: number; unitPrice: number }) {
+  const { data } = await apiRequest<{ transaction: SaleRow; lineId: string }>(`/pos/sales/${saleId}/lines/${lineId}`, { method: "PATCH", body: input });
+  return data;
+}
+
+/** Remove one line (not the last one: void the sale instead). */
+export async function deleteSaleLine(saleId: string, lineId: string, restaurantId: string) {
+  const { data } = await apiRequest<{ transaction: SaleRow }>(
+    `/pos/sales/${saleId}/lines/${lineId}?restaurantId=${encodeURIComponent(restaurantId)}`,
+    { method: "DELETE" },
+  );
+  return data;
+}

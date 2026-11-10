@@ -78,6 +78,7 @@ import { DailySalesDrilldown } from "@/components/sales/DailySalesDrilldown";
 import { BranchTotalsExplainerBanner } from "@/components/branches/BranchTotalsExplainer";
 import { DayEndAdjustmentBreakdown } from "@/components/sales/DayEndAdjustmentBreakdown";
 import { useBranch } from "@/contexts/BranchContext";
+import { editSale, recordSummarySales, voidSale } from "@/lib/api/pos";
 import { useTranslation } from "react-i18next";
 import { splitInclusive } from "@/lib/vatInclusive";
 
@@ -928,13 +929,6 @@ export default function Sales() {
     }
   };
 
-  const generateReceiptNumber = () => {
-    const date = new Date();
-    const dateStr = format(date, "yyyyMMdd");
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
-    return `RCP-${dateStr}-${random}`;
-  };
-
   const handleCreateSale = async (isBackdated: boolean = false) => {
     if (!subtotal || !restaurant?.id) {
       toast({ title: t("common.error"), description: t("app.sales.toasts.subtotalRequired"), variant: "destructive" });
@@ -943,51 +937,24 @@ export default function Sales() {
 
     setSubmitting(true);
     try {
-      const receiptNumber = generateReceiptNumber();
-      
       // Create timestamp for backdated sales
       let createdAt: string | undefined;
       if (isBackdated) {
         createdAt = new Date(`${saleDate}T${saleTime}:00`).toISOString();
       }
-      
-      const insertData: any = {
-        restaurant_id: restaurant.id,
-        subtotal: netSubtotal,
-        tax: tax,
-        total: total,
-        payment_method: paymentMethod,
-        receipt_number: receiptNumber,
-        shift_id: selectedShift && selectedShift !== "none" ? selectedShift : null,
-      };
-      
-      if (isBackdated && createdAt) {
-        insertData.created_at = createdAt;
-      }
 
-      const { data, error } = await db
-        .from("sales_transactions")
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Create cash event for shift tracking (all payment methods, not just cash)
-      if (selectedShift && selectedShift !== "none") {
-        const { data: { user } } = await db.auth.getUser();
-        if (user) {
-          await db.from("cash_events").insert({
-            shift_id: selectedShift,
-            restaurant_id: restaurant.id,
-            event_type: "sale",
-            amount: total,
-            payment_method: paymentMethod,
-            created_by: user.id,
-            description: `Sale ${receiptNumber}`,
-          });
-        }
-      }
+      // POST /api/v1/pos/sales/summary: numbered in the restaurant's receipt sequence, VAT split
+      // with the entered rate, drawer entry when a shift is picked.
+      const { transactions } = await recordSummarySales({
+        restaurantId: restaurant.id,
+        branchId: activeBranchId && activeBranchId !== "all" ? activeBranchId : null,
+        shiftId: selectedShift && selectedShift !== "none" ? selectedShift : null,
+        kind: "manual",
+        createdAt: isBackdated && createdAt ? createdAt : null,
+        vatPercent: parseFloat(taxRate) || 0,
+        entries: [{ paymentMethod: paymentMethod as "cash" | "card" | "other", total }],
+      });
+      const receiptNumber = transactions[0].receipt_number;
 
       toast({ title: t("app.sales.toasts.saleRecorded"), description: t("app.sales.toasts.receipt", { number: receiptNumber }) });
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
@@ -1012,23 +979,12 @@ export default function Sales() {
     setSaleTime(format(new Date(), "HH:mm"));
   };
 
+  // Sales are never deleted: the server voids them (negative mirror sale, stock back, refund
+  // from an open shift's drawer). POST /api/v1/pos/sales/:id/void
   const handleDeleteSale = async (transactionId: string) => {
+    if (!restaurant?.id) return;
     try {
-      // First delete related sales_items
-      const { error: itemsError } = await db
-        .from("sales_items")
-        .delete()
-        .eq("transaction_id", transactionId);
-      
-      if (itemsError) throw itemsError;
-
-      // Then delete the transaction
-      const { error } = await db
-        .from("sales_transactions")
-        .delete()
-        .eq("id", transactionId);
-
-      if (error) throw error;
+      await voidSale(transactionId, { restaurantId: restaurant.id, reason: "Voided from the Sales page" });
 
       toast({ title: t("app.sales.toasts.saleDeleted") });
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
@@ -1068,12 +1024,10 @@ export default function Sales() {
 
     setSubmitting(true);
     try {
-      const { error } = await db
-        .from("sales_transactions")
-        .update({ shift_id: selectedReassignShift && selectedReassignShift !== "none" ? selectedReassignShift : null })
-        .eq("id", reassigningTransaction.id);
-
-      if (error) throw error;
+      await editSale(reassigningTransaction.id, {
+        restaurantId: restaurant.id,
+        shiftId: selectedReassignShift && selectedReassignShift !== "none" ? selectedReassignShift : null,
+      });
 
       toast({ title: t("app.sales.toasts.shiftReassigned") });
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
@@ -1095,17 +1049,12 @@ export default function Sales() {
 
     setSubmitting(true);
     try {
-      const { error } = await db
-        .from("sales_transactions")
-        .update({
-          subtotal: netSubtotal,
-          tax: tax,
-          total: total,
-          payment_method: paymentMethod,
-        })
-        .eq("id", editingTransaction.id);
-
-      if (error) throw error;
+      await editSale(editingTransaction.id, {
+        restaurantId: restaurant.id,
+        total,
+        vatPercent: parseFloat(taxRate) || 0,
+        paymentMethod: paymentMethod as "cash" | "card" | "other",
+      });
 
       toast({ title: t("app.sales.toasts.saleUpdated") });
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });

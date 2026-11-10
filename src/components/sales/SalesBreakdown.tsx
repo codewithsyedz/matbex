@@ -2,6 +2,7 @@ import { useState, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { deleteSaleLine, editSaleLine } from "@/lib/api/pos";
 import { useBranch } from "@/contexts/BranchContext";
 import { getRestaurantDayBoundsUTC } from "@/lib/timezone";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -160,13 +161,11 @@ export function SalesBreakdown() {
 
   // Update sales item mutation
   const updateMutation = useMutation({
-    mutationFn: async ({ id, quantity, unitPrice }: { id: string; quantity: number; unitPrice: number }) => {
-      const totalPrice = quantity * unitPrice;
-      const { error } = await db
-        .from("sales_items")
-        .update({ quantity, unit_price: unitPrice, total_price: totalPrice })
-        .eq("id", id);
-      if (error) throw error;
+    // PATCH /api/v1/pos/sales/:id/lines/:lineId: stock, food cost, sale totals and the drawer
+    // follow the new quantity/price (a direct row update changed none of them).
+    mutationFn: async ({ id, transactionId, quantity, unitPrice }: { id: string; transactionId: string; quantity: number; unitPrice: number }) => {
+      if (!restaurant?.id) throw new Error("Missing restaurant context");
+      await editSaleLine(transactionId, id, { restaurantId: restaurant.id, quantity, unitPrice });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales-breakdown"] });
@@ -182,12 +181,10 @@ export function SalesBreakdown() {
 
   // Delete sales item mutation
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await db
-        .from("sales_items")
-        .delete()
-        .eq("id", id);
-      if (error) throw error;
+    // DELETE /api/v1/pos/sales/:id/lines/:lineId (the last line of a sale: void the sale instead).
+    mutationFn: async ({ id, transactionId }: { id: string; transactionId: string }) => {
+      if (!restaurant?.id) throw new Error("Missing restaurant context");
+      await deleteSaleLine(transactionId, id, restaurant.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["sales-breakdown"] });
@@ -214,11 +211,11 @@ export function SalesBreakdown() {
       toast.error(t("app.salesBreakdown.invalidValues"));
       return;
     }
-    updateMutation.mutate({ id: editingItem.id, quantity, unitPrice });
+    updateMutation.mutate({ id: editingItem.id, transactionId: editingItem.transaction_id, quantity, unitPrice });
   };
 
-  const handleDelete = (id: string) => {
-    deleteMutation.mutate(id);
+  const handleDelete = (item: SalesItem) => {
+    deleteMutation.mutate({ id: item.id, transactionId: item.transaction_id });
   };
 
   // Calculate item-wise summary
@@ -576,7 +573,7 @@ export function SalesBreakdown() {
                                   <AlertDialogCancel>{t("app.salesBreakdown.cancel")}</AlertDialogCancel>
                                   <AlertDialogAction
                                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                    onClick={() => handleDelete(item.id)}
+                                    onClick={() => handleDelete(item)}
                                   >
                                     {t("app.salesBreakdown.delete")}
                                   </AlertDialogAction>

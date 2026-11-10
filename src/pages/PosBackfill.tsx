@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
+import { recordSummarySales } from "@/lib/api/pos";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import {
   CalendarIcon,
@@ -15,7 +16,6 @@ import {
 import { toast } from "sonner";
 
 import { db } from "@/integrations/db/client";
-import { splitInclusive } from "@/lib/vatInclusive";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -344,49 +344,21 @@ export default function PosBackfill() {
     const adjCard = +(Number(row.card_amount) - eod.card).toFixed(2);
     setReconcilingId(row.id);
     try {
-      const dateStamp = row.business_date.replace(/-/g, "");
-      const prefix = `BACKFILL-ADJ-${dateStamp}`;
-      const ts = new Date(`${row.business_date}T12:00:00`);
-      const isoTs = ts.toISOString();
-      const rows: Array<Record<string, unknown>> = [];
-      const rand = () =>
-        Math.floor(Math.random() * 10000).toString().padStart(4, "0");
-      if (Math.abs(adjCash) >= 0.01) {
-        const cashSplit = splitInclusive(adjCash);
-        rows.push({
-          restaurant_id: restaurant.id,
-          branch_id: row.branch_id,
-          payment_method: "cash",
-          subtotal: cashSplit.net,
-          tax: cashSplit.vat,
-          total: adjCash,
-          receipt_number: `${prefix}-CASH-${rand()}`,
-          settlement_status: "paid",
-          created_at: isoTs,
-          shift_id: null,
-        });
-      }
-      if (Math.abs(adjCard) >= 0.01) {
-        const cardSplit = splitInclusive(adjCard);
-        rows.push({
-          restaurant_id: restaurant.id,
-          branch_id: row.branch_id,
-          payment_method: "card",
-          subtotal: cardSplit.net,
-          tax: cardSplit.vat,
-          total: adjCard,
-          receipt_number: `${prefix}-CARD-${rand()}`,
-          settlement_status: "paid",
-          created_at: isoTs,
-          shift_id: null,
-        });
-      }
-      if (rows.length > 0) {
-        const { error: insErr } = await db
-          .from("sales_transactions")
-          .insert(rows as never);
-        if (insErr) throw insErr;
-      }
+      // POST /api/v1/pos/sales/summary records the cash/card differences (may be negative) at
+      // noon of the business day with the branch VAT split; receipts BACKFILL-ADJ-YYYYMMDD-*.
+      const entries: { paymentMethod: "cash" | "card"; total: number }[] = [];
+      if (Math.abs(adjCash) >= 0.01) entries.push({ paymentMethod: "cash", total: adjCash });
+      if (Math.abs(adjCard) >= 0.01) entries.push({ paymentMethod: "card", total: adjCard });
+      const posted = entries.length
+        ? await recordSummarySales({
+            restaurantId: restaurant.id,
+            branchId: row.branch_id ?? null,
+            kind: "backfill_adjustment",
+            businessDate: row.business_date,
+            entries,
+          })
+        : null;
+      const prefix = posted?.receiptPrefix ?? null;
       const { error: upErr } = await db
         .from("pos_backfill_entries")
         .update({
@@ -395,7 +367,7 @@ export default function PosBackfill() {
           reconciled_by: user?.id ?? null,
           adjustment_cash: adjCash,
           adjustment_card: adjCard,
-          adjustment_receipt_prefix: rows.length > 0 ? prefix : null,
+          adjustment_receipt_prefix: prefix,
           notes: [
             row.notes ?? "",
             `Reconciled by ${profile?.full_name || user?.email || "user"} on ${format(new Date(), "PPP")}`,
@@ -407,7 +379,7 @@ export default function PosBackfill() {
       if (upErr) throw upErr;
 
       toast.success(
-        rows.length > 0
+        entries.length > 0
           ? `Posted adjustment ${formatCurrency(adjCash + adjCard)}`
           : "Marked reconciled (no variance)",
       );

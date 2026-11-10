@@ -10,7 +10,9 @@
  */
 import type { FastifyInstance } from "fastify";
 import { posSalesRoutes } from "./pos/sales.routes.js";
+import { posSalesAdminRoutes } from "./pos/sales-admin.routes.js";
 
 export async function apiV1Routes(app: FastifyInstance) {
   await app.register(posSalesRoutes);
+  await app.register(posSalesAdminRoutes);
 }
