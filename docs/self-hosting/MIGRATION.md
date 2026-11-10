@@ -136,6 +136,8 @@ Do a full dry run on a staging server with a copy of production first; time each
 
 ### Staging
 
+The staging server is described in STAGING.md (staging.matbex.com).
+
 A staging server is a production-shaped copy used for the rehearsal: same compose stack
 (`docker compose up -d --build`, plus `-f docker-compose.observability.yml`), its own domain
 behind Cloudflare (e.g. `staging-api.<domain>` and `staging.<domain>`, see CLOUDFLARE.md), its own

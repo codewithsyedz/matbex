@@ -265,7 +265,13 @@ await check("auth.signOut invalidates session", async () => {
 });
 
 // cleanup
-if (tenantId) await admin.from("tenants").delete().eq("id", tenantId);
+// Restaurants first: a check that failed half-way can leave its restaurant behind, and the
+// tenant cannot be deleted while one references it (the next run would then fail on the
+// unique tenant name).
+if (tenantId) {
+  await admin.from("restaurants").delete().eq("tenant_id", tenantId);
+  await admin.from("tenants").delete().eq("id", tenantId);
+}
 if (uid) await admin.auth.admin.deleteUser(uid);
 
 for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}${r.info ? `  — ${r.info}` : ""}`);
