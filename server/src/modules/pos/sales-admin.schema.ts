@@ -106,6 +106,8 @@ export const editBody = {
     paymentMethod: method,
     /** Move the sale to another shift; null takes it out of any shift. */
     shiftId: { ...uuid, nullable: true },
+    /** Tag the sale with another branch of this restaurant (null: untagged). */
+    branchId: { ...uuid, nullable: true },
   },
 } as const;
 
@@ -115,7 +117,15 @@ export interface EditInput {
   vatPercent?: number;
   paymentMethod?: "cash" | "card" | "other";
   shiftId?: string | null;
+  branchId?: string | null;
 }
+
+export const reconcileBody = {
+  type: "object",
+  additionalProperties: false,
+  required: ["restaurantId"],
+  properties: { restaurantId: uuid },
+} as const;
 
 export const lineBody = {
   type: "object",

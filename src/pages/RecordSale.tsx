@@ -112,10 +112,7 @@ import {
   logInvoiceGeneration,
   pdfBase64ToBytes,
 } from "@/lib/zatca/persistence";
-import {
-  advanceZatcaChain,
-  writeZatcaChainToSale,
-} from "@/lib/zatca/chain";
+import { stampZatcaChain } from "@/lib/api/zatca";
 import {
   buildSimplifiedTaxInvoiceUbl,
   uploadZatcaXml,
@@ -822,6 +819,8 @@ export default function RecordSale() {
         ? "Standard (B2B) invoices require connectivity for ZATCA clearance."
         : docCurrency && docCurrency !== "SAR"
           ? "Foreign-currency sales require connectivity for FX validation."
+          : (parseFloat(docDiscount) || 0) > 0 || (parseFloat(docSurcharge) || 0) > 0
+            ? "Document discounts and surcharges require connectivity."
           : isUnpaidSale && !selectedCustomer
             ? "Unpaid (credit) sales require a customer - pick one first to queue offline."
             : null;
@@ -1327,6 +1326,9 @@ export default function RecordSale() {
               paymentMethod,
               settlement: isUnpaidSale ? "unpaid" : "paid",
               createdAt: isUnpaidSale && isBackdated ? transactionTimestamp : null,
+              // Same amounts the receipt and the ZATCA invoice use (zatcaTotals).
+              documentDiscount: zatcaTotals.discountSar,
+              documentSurcharge: zatcaTotals.surchargeSar,
               lines: cart.map((item) => ({
                 menuItemId: item.menuItemId,
                 size: item.size === "combo" ? undefined : (item.size as SaleLineSize),
@@ -1493,16 +1495,18 @@ export default function RecordSale() {
       // snapshot drives the printed receipt, the queued reprint, and
       // the PDF - guaranteeing the QR / VAT / totals never disagree.
       const saleTimestamp = new Date().toISOString();
-      const snapshotPrinted = buildZatcaSnapshot(
-        zatcaSettings,
-        { subtotal: cartTotal, tax: 0, total: cartTotal, timestamp: saleTimestamp },
-        "printed",
-      );
-      const snapshotDigital = buildZatcaSnapshot(
-        zatcaSettings,
-        { subtotal: cartTotal, tax: 0, total: cartTotal, timestamp: saleTimestamp },
-        "digital",
-      );
+      // The QR must carry the invoice's real total and VAT: use what the server recorded
+      // (branch rate and pricing mode, document discount/surcharge), not the cart sum with
+      // VAT 0, which made every QR report zero VAT.
+      const savedTx = (data as { transaction?: { subtotal?: number; tax?: number; total?: number } }).transaction;
+      const qrTotals = {
+        subtotal: Number(savedTx?.subtotal ?? cartTotal),
+        tax: Number(savedTx?.tax ?? 0),
+        total: Number(savedTx?.total ?? cartTotal),
+        timestamp: saleTimestamp,
+      };
+      const snapshotPrinted = buildZatcaSnapshot(zatcaSettings, qrTotals, "printed");
+      const snapshotDigital = buildZatcaSnapshot(zatcaSettings, qrTotals, "digital");
 
       // Trigger printing if enabled
       if (posHardware.receipt_printer_enabled && posHardware.print_receipt_on_sale) {
@@ -1620,28 +1624,24 @@ export default function RecordSale() {
       const txnId = (data.transaction as { id?: string } | null)?.id ?? null;
       const restaurantIdForLog = restaurant?.id ?? null;
 
-      // Phase 2: advance the per-device hash chain (ICV/PIH) and persist
-      // UUID + invoice hash on the transaction. Runs in the background
-      // and is a no-op when no active device is configured (Phase 1 mode).
+      // Phase 2: the server allocates the device's next ICV/PIH and stamps UUID + invoice hash
+      // on the sale in one transaction (POST /api/v1/zatca/sales/:id/chain), so a failure can
+      // no longer leave a gap in the chain. Runs in the background and is a no-op when no
+      // active device is configured (Phase 1 mode).
       const activeDeviceId = (zatcaSettings as { active_device_id?: string | null } | null)?.active_device_id ?? null;
       if (txnId && activeDeviceId && snapshotForPdf) {
         void (async () => {
           try {
-            const chain = await advanceZatcaChain(activeDeviceId, {
-              receiptNumber: data.receiptNumber,
-              snapshot: snapshotForPdf,
-              items: cart.map((i) => ({ name: i.name, quantity: i.quantity, unitPrice: i.price, total: i.price * i.quantity })),
-              subtotal: cartTotal,
-              tax: 0,
-              total: cartTotal,
-              paymentMethod,
-            });
+            const chain = restaurantIdForLog
+              ? await stampZatcaChain(txnId, {
+                  restaurantId: restaurantIdForLog,
+                  deviceId: activeDeviceId,
+                  sellerName: snapshotForPdf.sellerName,
+                  vatNumber: snapshotForPdf.vatNumber,
+                  timestamp: snapshotForPdf.timestamp,
+                })
+              : null;
             if (chain) {
-              await writeZatcaChainToSale({
-                salesTransactionId: txnId,
-                deviceId: activeDeviceId,
-                chain,
-              });
               // UBL 2.1 XML - built from the same snapshot + chain values
               // and uploaded to the private `zatca-xml` bucket. Audit-only
               // for now (no clearance call); URL is stamped on the sale row.
@@ -1729,7 +1729,7 @@ export default function RecordSale() {
                     xml,
                   });
                   if (xmlUrl) {
-                    await writeXmlUrlToSale({ salesTransactionId: txnId, xmlUrl });
+                    await writeXmlUrlToSale({ restaurantId: restaurantIdForXml, salesTransactionId: txnId, xmlUrl });
                   }
                   // XAdES sign the unsigned UBL using the device key
                   // (server-side - private key never leaves the backend).
@@ -1789,9 +1789,9 @@ export default function RecordSale() {
             unitPrice: item.price,
             total: item.price * item.quantity,
           })),
-          subtotal: cartTotal,
-          tax: 0,
-          total: cartTotal,
+          subtotal: qrTotals.subtotal,
+          tax: qrTotals.tax,
+          total: qrTotals.total,
           zatca: { ...snapshotForPdf, showQr: true },
           mode,
         });
@@ -1812,6 +1812,7 @@ export default function RecordSale() {
             }
             if (txnId) {
               await writeZatcaSnapshot({
+                restaurantId: restaurantIdForLog ?? restaurant!.id,
                 salesTransactionId: txnId,
                 snapshot: snapshotForPdf,
                 pdfUrl,
@@ -1878,6 +1879,7 @@ export default function RecordSale() {
         // onto the transaction so reprints remain reproducible, and log
         // a "skipped" generation row for completeness.
         void writeZatcaSnapshot({
+          restaurantId: restaurantIdForLog ?? restaurant!.id,
           salesTransactionId: txnId,
           snapshot: snapshotForPdf,
           pdfUrl: null,

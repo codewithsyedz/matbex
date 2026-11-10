@@ -249,10 +249,26 @@ Not changed, needs an accountant's decision: instalments and write-offs are not 
 ledger (`post_balance_adjustment_to_ledger` exists but nothing calls it), and instalments paid in
 cash do not reach the shift drawer.
 
-Still updating `sales_transactions` from the browser (column-limited): the ZATCA helpers
-(src/lib/zatca), VatAudit (amounts) and VatReceiptDrilldown (branch). Combo packages cannot be
-sold today (their id is sent as a menu item and the foreign key rejects it; the API answers
-`menu_item_not_found`).
+ZATCA and VAT (`server/src/modules/zatca`, `sales-admin`):
+* `POST /api/v1/zatca/sales/:id/chain` allocates the device's next ICV/PIH and stamps the sale
+  (device, UUID, ICV, PIH, invoice hash, PENDING) in one transaction; the browser used to do it
+  in two calls, so a failure in between left a gap in the device's chain. Repeating the call
+  returns the same values. The hash is computed from the stored sale, not the cart.
+* `POST /api/v1/zatca/sales/:id/documents` freezes the receipt snapshot and the PDF/XML links
+  once each; links must point at this restaurant's storage folder.
+* `POST /api/v1/pos/sales/:id/vat-reconcile` (VAT audit) recomputes the split on the server with
+  the branch's rate and pricing mode; `PATCH /api/v1/pos/sales/:id {branchId}` re-tags a sale's
+  branch (VAT drilldown). Both write audit_logs.
+* The ZATCA server functions (sign, submit, credit note, onboarding) check access as the caller
+  and read device keys / write sales with the service client.
+* Sales carry `document_discount` / `document_surcharge`, applied before VAT is split.
+* **Browsers can no longer update sales at all**, cannot read a device's private key or CSID
+  secrets, and cannot call `next_zatca_chain` (`20261110180818`).
+
+Combo packages cannot be sold today (their id is sent as a menu item and the foreign key
+rejects it; the API answers `menu_item_not_found`). ZATCA credit notes still fail at signing:
+the credit-note builder emits a document the signer rejects ("Could not find <Invoice> root");
+ZATCA expects credit notes as `Invoice` documents with type code 381.
 
 ### Defects found while building it (fixed in migrations)
 
@@ -281,6 +297,23 @@ sold today (their id is sent as a menu item and the foreign key rejects it; the 
 * **Offline sales from the desktop POS were queued under the branch id**, but the sync engine
   drains the queue by restaurant id, so only the background service worker (Chromium) could
   send them. They are now queued under the restaurant with the branch in the payload.
+* **VAT-exclusive branches stored every sale without its VAT.** The trigger
+  `normalize_vat_inclusive_sale_from_items` "repaired" any sale whose total equals its lines
+  plus VAT, which is exactly a correct sale on a branch with `prices_vat_inclusive = false`: a
+  customer charged 115.00 was recorded as 100.00. `detect_vat_incident` and the VAT audit
+  screen flagged those sales the same way (`20261110181214`). **Check production for branches
+  with `prices_vat_inclusive = false`**: their past sales are understated.
+* **Every ZATCA QR reported 0.00 VAT.** The POS built the QR snapshot and the PDF from the cart
+  total with VAT 0 (and without document discounts); they now use the totals the server saved.
+* **ZATCA PDFs with a QR code failed** (`generate-zatca-receipt` passed a Uint8Array to pdfkit,
+  which treats it as a file path).
+* **The ZATCA device private key and CSID secrets were readable by every tenant user** (the
+  devices screen loaded them with `select("*")`).
+* **Document discounts and surcharges never reached the stored sale**, only the ZATCA XML.
+* **ZATCA credit notes failed immediately**: wrong column names (`total_amount`, and
+  `seller_name`/`vat_number`/... in zatca_settings). They now get as far as signing (see above).
+* **The VAT audit screen showed nothing**: it filtered sales by the tenant id instead of the
+  restaurant id.
 * **ZATCA status changes failed.** Five functions (append_zatca_audit, the audit-chain checks,
   verify_terminal_key) call pgcrypto's `digest()`/`hmac()` with `search_path = public`, but
   pgcrypto lives in `extensions`; every update of a sale's `zatca_clearance_status` rolled back
@@ -290,8 +323,7 @@ sold today (their id is sent as a menu item and the foreign key rejects it; the 
 
 1. Move the POS terminal's own live updates (ticket ready, table status) onto events, then retire
    the matching `/realtime/v1` subscriptions screen by screen.
-2. ZATCA status writes and VAT corrections on the module, then revoke the remaining column
-   UPDATE grants on `sales_transactions`.
+2. ZATCA credit notes as `Invoice` (381) documents so they sign and submit.
 3. R2 and managed PostgreSQL/Redis: settings and a test run.
 4. GitHub Actions: typecheck, unit tests, migrations on a fresh database, smoke test, image build
    and push, deploy.

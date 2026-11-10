@@ -106,10 +106,14 @@ async function priceSale(
     const rate = vat.branch?.vatRate != null ? Number(vat.branch.vatRate) / 100 : VAT_RATE;
     const inclusive = vat.branch?.inclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE;
     const lines = priced.map((l) => ({ ...l, lineTotal: lineGross(l.unitPrice, l.quantity) }));
-    const listed = sumMoney(lines.map((l) => l.lineTotal));
+    const documentDiscount = roundMoney(input.documentDiscount ?? 0);
+    const documentSurcharge = roundMoney(input.documentSurcharge ?? 0);
+    const linesTotal = sumMoney(lines.map((l) => l.lineTotal));
+    if (documentDiscount > linesTotal + documentSurcharge) throw badRequest("Discount is larger than the order", "discount_too_large");
+    const listed = roundMoney(linesTotal - documentDiscount + documentSurcharge);
     const { net: subtotal, vat: tax, gross: total } = splitListed(listed, rate, inclusive);
 
-    return { byId, branchId, day, created_at, lines, subtotal, tax, total, rate, inclusive };
+    return { byId, branchId, day, created_at, lines, subtotal, tax, total, rate, inclusive, documentDiscount, documentSurcharge };
 }
 
 /**
@@ -127,6 +131,8 @@ export async function quoteSale(input: CreateSaleInput, opts: { claims: DbClaims
       subtotal: q.subtotal,
       tax: q.tax,
       total: q.total,
+      documentDiscount: q.documentDiscount,
+      documentSurcharge: q.documentSurcharge,
       vatRate: q.rate,
       pricesVatInclusive: q.inclusive,
       branchId: q.branchId,
@@ -184,7 +190,7 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
       idemId = claim.id;
     }
 
-    const { byId, branchId, day, created_at, lines, subtotal, tax, total } = await priceSale(t, repo, input, { offline: !!offline, saleAt });
+    const { byId, branchId, day, created_at, lines, subtotal, tax, total, documentDiscount, documentSurcharge } = await priceSale(t, repo, input, { offline: !!offline, saleAt });
 
     // ---- receipt number: the printed one for offline replays, else the next in sequence ----
     const receiptNumber = offline?.receiptNumber ?? (await repo.nextReceiptNumber(input.restaurantId, day));
@@ -207,6 +213,8 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
       zatcaBuyerVatNumber: subtype === "STANDARD" ? input.invoice?.buyerVat?.trim() || null : null,
       zatcaBuyerAddress: subtype === "STANDARD" ? input.invoice?.buyerAddress?.trim() || null : null,
       tableId: input.tableId ?? null,
+      documentDiscount: String(documentDiscount),
+      documentSurcharge: String(documentSurcharge),
       ...(input.cardTerminal
         ? {
             halaStatus: input.cardTerminal.status,

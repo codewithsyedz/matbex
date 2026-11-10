@@ -288,7 +288,7 @@ serve(async (req) => {
   // 1. Load original sale
   const { data: sale, error: saleErr } = await db
     .from("sales_transactions")
-    .select("id, restaurant_id, receipt_number, total_amount, zatca_device_id, zatca_uuid, zatca_pih, zatca_icv, zatca_clearance_status")
+    .select("id, restaurant_id, receipt_number, total_amount:total, zatca_device_id, zatca_uuid, zatca_pih, zatca_icv, zatca_clearance_status")
     .eq("id", body.original_sales_transaction_id)
     .single();
   if (saleErr || !sale) return json({ error: saleErr?.message ?? "Original sale not found" }, 404);
@@ -311,7 +311,9 @@ serve(async (req) => {
     .single();
   const { data: settings } = await db
     .from("zatca_settings")
-    .select("seller_name, seller_name_ar, vat_number, cr_number, address_line, city, country_code, currency")
+    // zatca_settings has seller_name_en / vat_registration_number / branch_address_en (no city,
+    // country or currency columns); the old column list made this query fail every time.
+    .select("seller_name:seller_name_en, seller_name_ar, vat_number:vat_registration_number, cr_number, address_line:branch_address_en")
     .eq("tenant_id", saleTenantId)
     .maybeSingle();
   if (!device || !settings) return json({ error: "Device or ZATCA settings missing" }, 404);
@@ -363,7 +365,11 @@ serve(async (req) => {
     const issueDateTime = new Date().toISOString();
     // Compute hash placeholder of canonical body (will be replaced post-build)
     const seedHash = await sha256B64(`${cnUuid}|${cnNumber}|${taxInclusive}`);
-    const { data: chain, error: chainErr } = await db.rpc("next_zatca_chain", {
+    // The caller's access to the sale and device was checked above (RLS); the chain itself is
+    // allocated with the service client because browsers may no longer call next_zatca_chain
+    // (migration 20261110180818).
+    const admin = createClient(env("API_URL") ?? "", env("SERVICE_ROLE_KEY") ?? "");
+    const { data: chain, error: chainErr } = await admin.rpc("next_zatca_chain", {
       _device_id: sale.zatca_device_id,
       _invoice_hash: seedHash,
     });
@@ -385,10 +391,10 @@ serve(async (req) => {
         vatNumber: settings.vat_number ?? "",
         crNumber: settings.cr_number,
         addressLine: settings.address_line,
-        city: settings.city,
-        countryCode: settings.country_code,
+        city: (settings as { city?: string | null }).city ?? null,
+        countryCode: (settings as { country_code?: string | null }).country_code ?? "SA",
       },
-      currency: settings.currency || "SAR",
+      currency: (settings as { currency?: string | null }).currency || "SAR",
       lines: body.refund_lines,
       taxExclusiveAmount: taxExclusive,
       taxAmount,

@@ -23,6 +23,13 @@ export interface ZatcaDevice {
   updated_at: string;
 }
 
+/**
+ * Columns a browser may read. The device's private key and CSID secrets stay on the server
+ * (migration 20261110180818); asking for "*" would be refused.
+ */
+const DEVICE_COLUMNS =
+  "id, tenant_id, restaurant_id, name, serial_number, model, otp, registration_status, csr, compliance_csid, production_csid, csid_expires_at, icv_counter, last_pih, registered_at, revoked_at, created_at, updated_at";
+
 export type ZatcaDeviceInput = {
   name: string;
   serial_number: string;
@@ -44,7 +51,7 @@ export function useZatcaDevices() {
     queryFn: async (): Promise<ZatcaDevice[]> => {
       const { data, error } = await db
         .from("zatca_devices" as never)
-        .select("*")
+        .select(DEVICE_COLUMNS)
         .eq("restaurant_id", restaurantId!)
         .order("created_at", { ascending: false });
       if (error) throw error;
@@ -65,7 +72,7 @@ export function useZatcaDevices() {
           model: input.model ?? null,
           otp: input.otp ?? null,
         }) as never)
-        .select()
+        .select(DEVICE_COLUMNS)
         .single();
       if (error) throw error;
       return data as unknown as ZatcaDevice;

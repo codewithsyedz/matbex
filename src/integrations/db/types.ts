@@ -15550,6 +15550,8 @@ export type Database = {
           created_at: string
           customer_id: string | null
           delivery_platform: Database["public"]["Enums"]["delivery_platform"] | null
+          document_discount: number
+          document_surcharge: number
           hala_charged_at: string | null
           hala_reference: string | null
           hala_response: Json | null
@@ -15604,6 +15606,8 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           delivery_platform?: Database["public"]["Enums"]["delivery_platform"] | null
+          document_discount?: number
+          document_surcharge?: number
           hala_charged_at?: string | null
           hala_reference?: string | null
           hala_response?: Json | null
@@ -15658,6 +15662,8 @@ export type Database = {
           created_at?: string
           customer_id?: string | null
           delivery_platform?: Database["public"]["Enums"]["delivery_platform"] | null
+          document_discount?: number
+          document_surcharge?: number
           hala_charged_at?: string | null
           hala_reference?: string | null
           hala_response?: Json | null
@@ -21987,6 +21993,11 @@ export type Database = {
         | {
         Args: { p_txn_id: unknown }
         Returns: string
+      }
+      recompute_customer_balance:
+        | {
+        Args: { _customer_id: string }
+        Returns: undefined
       }
       reconcile_expense_ledger:
         | {

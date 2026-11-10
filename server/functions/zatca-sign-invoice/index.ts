@@ -155,11 +155,32 @@ serve(async (req) => {
     return json({ error: "device_id, xml, receipt_number, invoice_hash are required" }, 400);
   }
 
+  // Access is checked as the caller (RLS): the device and, when given, the sale must be
+  // visible to them and belong to the same restaurant. Only then does the service client read
+  // the device's private key and write the sale: browsers can neither read device keys nor
+  // update these sale columns (migration 20261110180818).
+  const { data: device, error: devErr } = await db
+    .from("zatca_devices")
+    .select("id, restaurant_id, public_cert_pem, registration_status, serial_number")
+    .eq("id", body.device_id)
+    .single();
+  if (devErr || !device) return json({ error: devErr?.message ?? "Device not found" }, 404);
+  if (body.sales_transaction_id) {
+    const { data: sale } = await db
+      .from("sales_transactions")
+      .select("id")
+      .eq("id", body.sales_transaction_id)
+      .eq("restaurant_id", device.restaurant_id)
+      .maybeSingle();
+    if (!sale) return json({ error: "Sale not found for this device's restaurant" }, 404);
+  }
+  const admin = createClient(env("API_URL") ?? "", env("SERVICE_ROLE_KEY") ?? "");
+
   // ----- Pre-flight schema validation - fail fast, persist on sale -----
   const v = validateUbl(body.xml);
   if (!v.valid) {
     if (body.sales_transaction_id) {
-      await db.from("sales_transactions").update({
+      await admin.from("sales_transactions").update({
         zatca_clearance_status: "SCHEMA_INVALID",
         zatca_schema_errors: v.errors,
       }).eq("id", body.sales_transaction_id);
@@ -167,14 +188,10 @@ serve(async (req) => {
     return json({ error: "Schema validation failed", schema_errors: v.errors }, 422);
   }
 
-  // Load device keys (RLS limits to the caller's tenant).
-  const { data: device, error: devErr } = await db
-    .from("zatca_devices")
-    .select("id, restaurant_id, private_key_pem, public_cert_pem, registration_status, serial_number")
-    .eq("id", body.device_id)
-    .single();
-  if (devErr || !device) return json({ error: devErr?.message ?? "Device not found" }, 404);
-  if (device.registration_status !== "REGISTERED" || !device.private_key_pem || !device.public_cert_pem) {
+  // The signing key never leaves the server.
+  const { data: keyRow } = await admin.from("zatca_devices").select("private_key_pem").eq("id", device.id).single();
+  const privateKeyPem = (keyRow as { private_key_pem?: string | null } | null)?.private_key_pem ?? null;
+  if (device.registration_status !== "REGISTERED" || !privateKeyPem || !device.public_cert_pem) {
     return json({ error: "Device is not onboarded with a signing key yet" }, 409);
   }
 
@@ -198,7 +215,7 @@ serve(async (req) => {
     });
 
     // ----- 3. Sign SignedInfo with the device EC key (P-256) -------
-    const keyDer = pemToDer(device.private_key_pem);
+    const keyDer = pemToDer(privateKeyPem);
     const cryptoKey = await crypto.subtle.importKey(
       "pkcs8",
       keyDer,
@@ -241,7 +258,7 @@ serve(async (req) => {
 
     // ----- 6. Stamp signature + signed-XML URL onto the sale -------
     if (body.sales_transaction_id) {
-      const { error: updErr } = await db
+      const { error: updErr } = await admin
         .from("sales_transactions")
         .update({
           zatca_signature: signatureValueB64,

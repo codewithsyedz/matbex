@@ -234,7 +234,10 @@ serve(async (req) => {
     productionCsidSecret = `SIM-SECRET-P-${device.serial_number}`;
   }
 
-  const { error: updErr } = await db
+  // The caller loaded this device through RLS above. Keys and CSID secrets are written and
+  // read with the service client: browsers cannot read or write them (migration 20261110180818).
+  const admin = createClient(env("API_URL") ?? "", env("SERVICE_ROLE_KEY") ?? "");
+  const { error: updErr } = await admin
     .from("zatca_devices")
     .update({
       csr,
@@ -251,7 +254,7 @@ serve(async (req) => {
       ...(await (async () => {
         // Only generate a keypair if the device doesn't already have one,
         // so re-onboarding doesn't invalidate previously signed invoices.
-        const { data: existing } = await db
+        const { data: existing } = await admin
           .from("zatca_devices")
           .select("private_key_pem, public_cert_pem")
           .eq("id", device.id)

@@ -12,6 +12,7 @@
 
 import { db } from "@/integrations/db/client";
 import type { ZatcaReceiptSnapshot } from "@/lib/printUtils";
+import { recordZatcaDocuments } from "@/lib/api/zatca";
 
 export type GenerationStatus = "success" | "failed" | "skipped";
 export type GenerationMode = "STRICT" | "SOFT";
@@ -51,32 +52,31 @@ export async function uploadZatcaPdf(args: UploadPdfArgs): Promise<string | null
 }
 
 export interface SnapshotWriteArgs {
+  restaurantId: string;
   salesTransactionId: string;
   snapshot: ZatcaReceiptSnapshot;
   pdfUrl: string | null;
   generatedAt?: string;
 }
 
-/** Freeze the ZATCA snapshot onto the sales transaction row. */
+/** Freeze the ZATCA snapshot (and PDF link) onto the sale: POST /api/v1/zatca/sales/:id/documents. */
 export async function writeZatcaSnapshot(args: SnapshotWriteArgs): Promise<void> {
   try {
-    const { error } = await db
-      .from("sales_transactions")
-      .update({
-        zatca_seller_name: args.snapshot.sellerName,
-        zatca_seller_name_ar: args.snapshot.sellerNameAr ?? null,
-        zatca_vat_number: args.snapshot.vatNumber,
-        zatca_qr_base64: args.snapshot.qrBase64 ?? null,
-        zatca_pdf_url: args.pdfUrl,
-        zatca_invoice_total: Number(args.snapshot.invoiceTotal),
-        zatca_vat_total: Number(args.snapshot.vatTotal),
-        zatca_timestamp: args.snapshot.timestamp,
-        zatca_generated_at: args.generatedAt ?? new Date().toISOString(),
-      })
-      .eq("id", args.salesTransactionId);
-    if (error) console.warn("[zatca] snapshot write failed:", error.message);
+    await recordZatcaDocuments(args.salesTransactionId, {
+      restaurantId: args.restaurantId,
+      snapshot: {
+        sellerName: args.snapshot.sellerName,
+        sellerNameAr: args.snapshot.sellerNameAr ?? null,
+        vatNumber: args.snapshot.vatNumber,
+        timestamp: args.snapshot.timestamp,
+        invoiceTotal: args.snapshot.invoiceTotal,
+        vatTotal: args.snapshot.vatTotal,
+        qrBase64: args.snapshot.qrBase64 ?? null,
+      },
+      pdfUrl: args.pdfUrl,
+    });
   } catch (e) {
-    console.warn("[zatca] snapshot write threw:", e);
+    console.warn("[zatca] snapshot write failed:", e);
   }
 }
 

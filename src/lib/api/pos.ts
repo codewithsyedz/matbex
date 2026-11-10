@@ -25,6 +25,9 @@ export interface RecordSaleInput {
   lines: { menuItemId: string; size?: SaleLineSize; quantity: number; unitPrice?: number }[];
   /** Only for replaying a sale rung up offline: the printed receipt number and time of sale. */
   offline?: { receiptNumber: string; createdAt: string } | null;
+  /** Document-level discount / surcharge in listed amounts, applied before VAT is split. */
+  documentDiscount?: number;
+  documentSurcharge?: number;
   /** Approval from the integrated card terminal (Hala) for a card sale. */
   cardTerminal?: { provider: "hala"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
   invoice?: {
@@ -75,6 +78,8 @@ export interface SaleQuote {
   subtotal: number;
   tax: number;
   total: number;
+  documentDiscount: number;
+  documentSurcharge: number;
   vatRate: number;
   pricesVatInclusive: boolean;
   branchId: string | null;
@@ -134,7 +139,15 @@ export async function voidSale(saleId: string, input: { restaurantId: string; re
 /** Edit an amount-only sale's total/VAT/payment method, or move a sale to another shift (null: none). */
 export async function editSale(
   saleId: string,
-  input: { restaurantId: string; total?: number; vatPercent?: number; paymentMethod?: "cash" | "card" | "other"; shiftId?: string | null },
+  input: {
+    restaurantId: string;
+    total?: number;
+    vatPercent?: number;
+    paymentMethod?: "cash" | "card" | "other";
+    shiftId?: string | null;
+    /** Re-tag the sale's branch (null: untagged); recorded in audit_logs. */
+    branchId?: string | null;
+  },
 ) {
   const { data } = await apiRequest<{ transaction: SaleRow }>(`/pos/sales/${saleId}`, { method: "PATCH", body: input });
   return data;
@@ -151,6 +164,18 @@ export async function deleteSaleLine(saleId: string, lineId: string, restaurantI
   const { data } = await apiRequest<{ transaction: SaleRow }>(
     `/pos/sales/${saleId}/lines/${lineId}?restaurantId=${encodeURIComponent(restaurantId)}`,
     { method: "DELETE" },
+  );
+  return data;
+}
+
+/**
+ * VAT audit fix: the server recomputes subtotal/VAT/total from the lines with the branch's rate
+ * and pricing mode (or from the total for amount-only sales) and logs before/after.
+ */
+export async function reconcileSaleVat(saleId: string, restaurantId: string) {
+  const { data } = await apiRequest<{ changed: boolean; before: { subtotal: number; tax: number; total: number }; after: { subtotal: number; tax: number; total: number } }>(
+    `/pos/sales/${saleId}/vat-reconcile`,
+    { body: { restaurantId } },
   );
   return data;
 }

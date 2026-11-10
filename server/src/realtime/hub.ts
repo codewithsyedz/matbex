@@ -118,7 +118,16 @@ async function dispatch(e: DbEvent) {
       } else {
         try {
           const row = await asCaller(t.c.claims, async (tx) => {
-            const [r] = await tx.unsafe(`select * from "${e.schema}"."${e.table}" where id = $1`, [e.id as string]);
+            // Only the columns this role may read: "select *" fails on tables with column-level
+            // grants (zatca_devices hides its keys), which would silently drop the event.
+            const [cols] = await tx<{ list: string | null }[]>`
+              select string_agg(quote_ident(a.attname), ', ' order by a.attnum) as list
+              from pg_attribute a
+              where a.attrelid = format('%I.%I', ${e.schema}::text, ${e.table}::text)::regclass
+                and a.attnum > 0 and not a.attisdropped
+                and has_column_privilege(a.attrelid, a.attnum, 'SELECT')`;
+            if (!cols?.list) return null;
+            const [r] = await tx.unsafe(`select ${cols.list} from "${e.schema}"."${e.table}" where id = $1`, [e.id as string]);
             return (r as Record<string, unknown>) ?? null;
           });
           cache.set(key, row);

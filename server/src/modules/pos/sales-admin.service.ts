@@ -202,9 +202,11 @@ export async function voidSale(saleId: string, input: VoidInput, claims: Claims)
 export async function editSale(saleId: string, input: EditInput, claims: Claims) {
   return inServiceTx(claims, async (t) => {
     const repo = salesAdminRepository(t);
-    await requireRestaurantRole(t.tx, claims.sub, input.restaurantId, BACK_OFFICE);
+    const access = await requireRestaurantRole(t.tx, claims.sub, input.restaurantId, BACK_OFFICE);
     const sale = await loadSale(repo, input.restaurantId, saleId);
-    assertChangeable(sale);
+    // Re-tagging the branch is allowed on any sale (it changes no amount); everything else
+    // follows the usual rules.
+    if (Object.keys(input).some((k) => k !== "restaurantId" && k !== "branchId")) assertChangeable(sale);
 
     let row: SaleRow = sale;
     if (input.total != null || input.vatPercent != null) {
@@ -217,6 +219,15 @@ export async function editSale(saleId: string, input: EditInput, claims: Claims)
     } else if (input.paymentMethod) {
       row = await repo.setPaymentMethod(sale.id, input.paymentMethod);
       await repo.updateSaleCashEvents(input.restaurantId, sale.id, { paymentMethod: input.paymentMethod });
+    }
+
+    if (input.branchId !== undefined && input.branchId !== sale.branch_id) {
+      if (input.branchId && !(await repo.branchBelongs(input.restaurantId, input.branchId))) {
+        throw badRequest("Branch not found for this restaurant", "branch_not_found");
+      }
+      const before = { branch_id: sale.branch_id };
+      row = await repo.setBranch(sale.id, input.branchId);
+      await repo.auditLog({ userId: claims.sub, tenantId: access.tenantId, action: "sale_branch_reassign", saleId: sale.id, before, after: { branch_id: input.branchId } });
     }
 
     if (input.shiftId !== undefined && input.shiftId !== sale.shift_id) {
@@ -298,5 +309,55 @@ export async function deleteLine(saleId: string, lineId: string, restaurantId: s
     await repo.deleteLine(line.id);
     const row = await recomputeFromLines(t, repo, sale, restaurantId);
     return { transaction: row };
+  });
+}
+
+/**
+ * What a sale's subtotal/VAT/total should be, from its lines (branch rate and pricing mode,
+ * document discount/surcharge) or, for an amount-only sale, from its total with VAT inside.
+ */
+export async function expectedTotals(
+  t: Parameters<Parameters<typeof inServiceTx>[1]>[0],
+  repo: ReturnType<typeof salesAdminRepository>,
+  sale: LockedSale,
+  restaurantId: string,
+) {
+  const vat = await salesRepository(t).vatSettings(restaurantId, sale.branch_id);
+  const rate = vat.branch?.vatRate != null ? Number(vat.branch.vatRate) / 100 : VAT_RATE;
+  const inclusive = vat.branch?.inclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE;
+  if (sale.line_count === 0) {
+    const { net, vat: tax, gross } = splitInclusive(sale.total, rate);
+    return { subtotal: net, tax, total: gross, rate, inclusive };
+  }
+  const adj = await repo.documentAdjustments(sale.id);
+  const listed = roundMoney(sumMoney((await repo.lineTotals(sale.id)).map((l) => l.total_price)) - adj.discount + adj.surcharge);
+  const { net, vat: tax, gross } = splitListed(listed, rate, inclusive);
+  return { subtotal: net, tax, total: gross, rate, inclusive };
+}
+
+/**
+ * POST /api/v1/pos/sales/:id/vat-reconcile (VAT audit). Recomputes the split on the server with
+ * the branch's own rate AND pricing mode; the audit screen used to assume VAT-inclusive prices
+ * everywhere, so on a VAT-exclusive branch it flagged correct sales and its "fix" would have
+ * rewritten their totals. Records an audit_logs entry with before/after.
+ */
+export async function reconcileVat(saleId: string, restaurantId: string, claims: Claims) {
+  return inServiceTx(claims, async (t) => {
+    const repo = salesAdminRepository(t);
+    const access = await requireRestaurantRole(t.tx, claims.sub, restaurantId, BACK_OFFICE);
+    const sale = await loadSale(repo, restaurantId, saleId);
+    assertChangeable(sale);
+    const want = await expectedTotals(t, repo, sale, restaurantId);
+    const before = { subtotal: sale.subtotal, tax: sale.tax, total: sale.total };
+    const after = { subtotal: want.subtotal, tax: want.tax, total: want.total };
+    if (before.subtotal === after.subtotal && before.tax === after.tax && before.total === after.total) {
+      return { changed: false, before, after };
+    }
+    const row = await repo.updateSaleAmounts(sale.id, after);
+    if (row.settlement_status === "paid" && before.total !== after.total) {
+      await repo.updateSaleCashEvents(restaurantId, sale.id, { amount: after.total });
+    }
+    await repo.auditLog({ userId: claims.sub, tenantId: access.tenantId, action: "vat_reconcile", saleId: sale.id, before, after });
+    return { changed: true, before, after };
   });
 }

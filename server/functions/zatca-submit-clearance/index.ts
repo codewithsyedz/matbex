@@ -86,7 +86,10 @@ serve(async (req) => {
     return json({ ok: true, already: true, status: sale.zatca_clearance_status });
   }
 
-  const { data: device } = await db
+  // The caller can see the sale (RLS above); the device's CSID secret is read with the service
+  // client because browsers cannot read device secrets (migration 20261110180818).
+  const admin = createClient(env("API_URL") ?? "", env("SERVICE_ROLE_KEY") ?? "");
+  const { data: device } = await admin
     .from("zatca_devices")
     .select("production_csid, production_csid_secret, public_cert_pem")
     .eq("id", sale.zatca_device_id)
@@ -154,7 +157,7 @@ serve(async (req) => {
   // Persist on the sale row. We compute a fresh sha256 of the signed
   // XML so the audit hash matches what was actually submitted.
   const submittedHash = await sha256B64(signedXml);
-  const { error: updErr } = await db
+  const { error: updErr } = await admin
     .from("sales_transactions")
     .update({
       zatca_clearance_status: status,

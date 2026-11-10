@@ -53,6 +53,12 @@ export const createSaleBody = {
         createdAt: { type: "string", format: "date-time" },
       },
     },
+    /**
+     * Document-level discount / surcharge in listed amounts (same pricing mode as the lines),
+     * applied before VAT is split: what the receipt and the ZATCA invoice show.
+     */
+    documentDiscount: { type: "number", minimum: 0, maximum: 10000000 },
+    documentSurcharge: { type: "number", minimum: 0, maximum: 10000000 },
     /** Approval from an integrated card terminal (Hala), stored on the sale for audit. */
     cardTerminal: {
       type: "object",
@@ -95,6 +101,8 @@ export interface CreateSaleInput {
   createdAt?: string | null;
   lines: { menuItemId: string; size?: SaleLineSize; quantity: number; unitPrice?: number }[];
   offline?: { receiptNumber: string; createdAt: string } | null;
+  documentDiscount?: number;
+  documentSurcharge?: number;
   cardTerminal?: { provider: "hala"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
   invoice?: {
     subtype?: "SIMPLIFIED" | "STANDARD";
@@ -129,6 +137,8 @@ export interface SaleQuote {
   subtotal: number;
   tax: number;
   total: number;
+  documentDiscount: number;
+  documentSurcharge: number;
   vatRate: number;
   pricesVatInclusive: boolean;
   branchId: string | null;

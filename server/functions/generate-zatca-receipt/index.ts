@@ -199,7 +199,9 @@ async function buildPdf(body: RequestBody, qrPngBase64: string | null): Promise<
     doc.moveDown(0.5);
     const qrSize = 110;
     const qrX = (226 - qrSize) / 2;
-    const qrBytes = Uint8Array.from(atob(qrPngBase64), (c) => c.charCodeAt(0));
+    // pdfkit treats anything that is not a Buffer as a file path ("argument 'path' must be a
+    // string..."), so the Deno-era Uint8Array made every receipt with a QR code fail.
+    const qrBytes = Buffer.from(qrPngBase64, "base64");
     doc.image(qrBytes, qrX, doc.y, { width: qrSize, height: qrSize });
     doc.y += qrSize + 4;
     doc.font("Helvetica").fontSize(7).text("ZATCA Phase 1 - Scan to verify", {

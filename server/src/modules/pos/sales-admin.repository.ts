@@ -184,6 +184,34 @@ export function salesAdminRepository({ tx }: ServiceTx) {
         select total_price::float8 as total_price from public.sales_items where transaction_id = ${saleId}`;
     },
 
+    async setBranch(saleId: string, branchId: string | null) {
+      const [row] = await tx.unsafe<SaleRow[]>(
+        `update public.sales_transactions set branch_id = $2 where id = $1 returning ${SALE_COLS}`,
+        [saleId, branchId],
+      );
+      return row;
+    },
+
+    async branchBelongs(restaurantId: string, branchId: string) {
+      const [r] = await tx<{ ok: boolean }[]>`
+        select exists(select 1 from public.branches where id = ${branchId} and restaurant_id = ${restaurantId} and deleted_at is null) as ok`;
+      return !!r?.ok;
+    },
+
+    async documentAdjustments(saleId: string) {
+      const [r] = await tx<{ discount: number; surcharge: number }[]>`
+        select document_discount::float8 as discount, document_surcharge::float8 as surcharge
+        from public.sales_transactions where id = ${saleId}`;
+      return r ?? { discount: 0, surcharge: 0 };
+    },
+
+    async auditLog(v: { userId: string; tenantId: string; action: string; saleId: string; before: unknown; after: unknown }) {
+      await tx`
+        insert into public.audit_logs (user_id, tenant_id, action, entity_type, entity_id, old_data, new_data)
+        values (${v.userId}, ${v.tenantId}, ${v.action}, 'sales_transaction', ${v.saleId},
+                ${JSON.stringify(v.before)}::jsonb, ${JSON.stringify(v.after)}::jsonb)`;
+    },
+
     async emitEvent(restaurantId: string, saleId: string, type: string, payload: Record<string, unknown>) {
       await tx`select platform.emit_event('pos', ${type}, ${restaurantId}::uuid, ${saleId}::uuid, ${JSON.stringify(payload)}::jsonb)`;
     },

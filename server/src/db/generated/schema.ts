@@ -367,6 +367,8 @@ export const salesTransactions = pgTable("sales_transactions", {
 	voidedBy: uuid("voided_by"),
 	voidReason: text("void_reason"),
 	voidsTransactionId: uuid("voids_transaction_id"),
+	documentDiscount: numeric("document_discount", { precision: 12, scale:  2 }).default('0').notNull(),
+	documentSurcharge: numeric("document_surcharge", { precision: 12, scale:  2 }).default('0').notNull(),
 }, (table) => [
 	index("idx_sales_legal_retention").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.legalRetentionUntil.asc().nullsLast().op("uuid_ops")),
 	index("idx_sales_transactions_customer").using("btree", table.customerId.asc().nullsLast().op("uuid_ops")),
@@ -381,6 +383,8 @@ export const salesTransactions = pgTable("sales_transactions", {
 	index("idx_sales_zatca_clearance").using("btree", table.restaurantId.asc().nullsLast().op("text_ops"), table.zatcaClearanceStatus.asc().nullsLast().op("uuid_ops")).where(sql`(zatca_clearance_status IS NOT NULL)`),
 	index("idx_sales_zatca_device").using("btree", table.zatcaDeviceId.asc().nullsLast().op("uuid_ops")),
 	uniqueIndex("sales_transactions_voids_uidx").using("btree", table.voidsTransactionId.asc().nullsLast().op("uuid_ops")).where(sql`(voids_transaction_id IS NOT NULL)`),
+	check("sales_transactions_document_discount_check", sql`document_discount >= (0)::numeric`),
+	check("sales_transactions_document_surcharge_check", sql`document_surcharge >= (0)::numeric`),
 	check("sales_transactions_zatca_clearance_status_check", sql`(zatca_clearance_status IS NULL) OR (zatca_clearance_status = ANY (ARRAY['PENDING'::text, 'CLEARED'::text, 'REPORTED'::text, 'CLEARED_SIM'::text, 'REJECTED'::text, 'SCHEMA_INVALID'::text, 'NOT_APPLICABLE'::text]))`),
 	check("sales_transactions_zatca_invoice_subtype_check", sql`zatca_invoice_subtype = ANY (ARRAY['SIMPLIFIED'::text, 'STANDARD'::text])`),
 ]);

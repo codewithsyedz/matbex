@@ -620,14 +620,16 @@ export async function uploadZatcaXml(
   }
 }
 
+/** Stamp the uploaded XML link on the sale: POST /api/v1/zatca/sales/:id/documents. */
 export async function writeXmlUrlToSale(args: {
+  restaurantId: string;
   salesTransactionId: string;
   xmlUrl: string;
 }): Promise<void> {
-  const { db } = await import("@/integrations/db/client");
-  const { error } = await db
-    .from("sales_transactions")
-    .update({ zatca_xml_url: args.xmlUrl } as never)
-    .eq("id", args.salesTransactionId);
-  if (error) console.warn("[zatca] xml url write failed:", error.message);
+  const { recordZatcaDocuments } = await import("@/lib/api/zatca");
+  try {
+    await recordZatcaDocuments(args.salesTransactionId, { restaurantId: args.restaurantId, xmlUrl: args.xmlUrl });
+  } catch (e) {
+    console.warn("[zatca] xml url write failed:", e);
+  }
 }
