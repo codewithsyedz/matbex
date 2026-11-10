@@ -32,9 +32,12 @@ follow latency and Saudi data-residency requirements.
   staging sends no messages or payments and ZATCA runs in simulation.
 * Email: staging uses the production Resend account but `EMAIL_ALLOWED_RECIPIENTS` limits it to
   the listed addresses / @domains (server/src/email/recipientGuard.ts filters every call to
-  Resend's API; other recipients are dropped and logged). Set both with `~/set-email.sh` on the
-  server (asks for the key without echoing it). Never leave the key set with an empty allow-list
-  while staging holds production data.
+  Resend's API; other recipients are dropped and logged). Allow-list: `ssh -t matbex-staging
+  '~/set-email.sh'`; key from the Mac clipboard: `pbpaste | ssh matbex-staging '~/set-resend-key.sh'`.
+  Never leave the key set with an empty allow-list while staging holds production data.
+  Sender: `noreply@notify.matbex.com` (Resend domain `notify.matbex.com`, verified 2026-11-11).
+  `mail.matbex.com` cannot be used: its NS records delegate it to Lovable's email service.
+  Without email, `ssh -t matbex-staging '~/reset-link.sh <email>'` prints a one-time reset link.
 * Docker logs rotate at 20 MB x 5 per container.
 
 ## Deploy a commit
