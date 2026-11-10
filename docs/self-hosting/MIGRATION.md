@@ -82,7 +82,10 @@ Do a full dry run on a staging server with a copy of production first; time each
 1. **Provision** the new stack: `cp .env.example .env`, fill in, `docker compose up -d --build`.
 2. **Create the schema:** `docker compose run --rm migrate` (platform bootstrap + all migrations).
 3. **Freeze writes** on the old system (maintenance banner, stop POS sync, disable webhooks for a few minutes).
-4. **Move the data** with one script (`server/scripts/migrate-from-supabase.mjs`). Put the old project's details in
+4. **Move the data** with one script (`server/scripts/migrate-from-supabase.mjs`). On Lovable Cloud there is no
+   direct database access: take Lovable's full export and restore it with
+   `server/scripts/restore-lovable-export.sh` first, then use that copy as `SOURCE_DATABASE_URL` (STAGING.md,
+   "Data-move rehearsal"). Put the old project's details in
    `.env` (see the end of `.env.example`) or the environment, then:
    ```sh
    npm --prefix server run migrate:from-supabase                 # dry run: checks + plan, writes nothing

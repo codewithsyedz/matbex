@@ -58,11 +58,30 @@ Bound to the server's loopback only. Open a tunnel, then browse http://localhost
 ssh -N -L 3300:127.0.0.1:3300 matbex-staging
 ```
 
-## Data-move rehearsal
+## Data-move rehearsal (production data on staging)
 
-See MIGRATION.md, "Production cutover runbook". On staging the old project's details go in the
-server's `.env` (`SOURCE_DATABASE_URL`, `SOURCE_SUPABASE_URL`, `SOURCE_SERVICE_ROLE_KEY`) and the
-script runs in the API image: `docker compose run --rm api node server/scripts/...` is not
-available (scripts are not in the image), so run it from a `node:22-alpine` container on the
-`matbex_default` network as for the smoke test. Before the worker runs the copied cron jobs,
-disable the ones that send messages.
+Lovable Cloud does not expose the production database URL or service-role key, so the source
+is Lovable's full export (More → Database → Manage → Settings → Export data; once per 24 h;
+pg_dump custom format, includes `auth.users` with password hashes, not the storage files).
+
+Done on 2026-11-11 with the export of 2026-11-10 (5 tenants, 14 users, 48,558 sales):
+
+1. Copy the export to the server: `~/export/` (mode 700, file 600).
+2. `server/scripts/restore-lovable-export.sh ~/export/<file>.backup` restores it into a
+   throwaway container `prodcopy` on `matbex_default` (14 expected errors for Supabase-only
+   extensions; scheduled jobs loaded into a plain `cron.job` table).
+3. `docker compose stop worker`, then run the data move from a `node:22-alpine` container on the
+   network (as for the smoke test) with `SOURCE_DATABASE_URL=postgres://postgres:<.prodcopy-pw>@prodcopy:5432/prod`
+   and `--yes --fresh --skip files,urls`. Result: 327/327 tables match, 629,587 rows, 41.5 s;
+   fixups seeded the chart of accounts for 2 tenants, no balance changes.
+4. Staging must not message real customers: the copied jobs that send (reports, summaries,
+   WhatsApp, reminders, expiry alerts, export emails, payments reconciler) are set
+   `active = false` in `cron.job`, and `JOB_SCHEDULES_JSON` in the server's `.env` sets the same
+   functions to `null` (an inactive cron row would otherwise fall back to the built-in schedule).
+   Then `docker compose up -d worker`; it registered 11 schedules.
+5. Smoke test (27/27 with production data), then remove `prodcopy` and the export.
+
+Still to do on staging: the storage files (2,667 objects, 380 MB: public `menu-images` and
+`press-assets`; private `expense-receipts` 2,564 readable by the superadmin, `invoice-images` 18
+readable only by that restaurant's users), then `--steps urls --rewrite-urls --yes` (123
+`menu_items.image_url` values still point at the old Supabase host).
