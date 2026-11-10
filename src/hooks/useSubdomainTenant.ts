@@ -80,6 +80,9 @@ const RESERVED_HOSTS = new Set([
   "api",
   "preview",
   "id-preview",
+  // Staging deployment of the app itself (docs/self-hosting/STAGING.md), not a storefront.
+  "staging",
+  "staging-api",
 ]);
 
 /** App-owned hostnames that must never be treated as custom-domain tenants. */
