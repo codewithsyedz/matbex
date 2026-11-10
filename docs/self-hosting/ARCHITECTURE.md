@@ -266,9 +266,10 @@ ZATCA and VAT (`server/src/modules/zatca`, `sales-admin`):
   secrets, and cannot call `next_zatca_chain` (`20261110180818`).
 
 Combo packages cannot be sold today (their id is sent as a menu item and the foreign key
-rejects it; the API answers `menu_item_not_found`). ZATCA credit notes still fail at signing:
-the credit-note builder emits a document the signer rejects ("Could not find <Invoice> root");
-ZATCA expects credit notes as `Invoice` documents with type code 381.
+rejects it; the API answers `menu_item_not_found`). ZATCA credit notes are UBL `Invoice` documents with
+`InvoiceTypeCode` 381 (debit notes 383), a `BillingReference` to the original invoice and the
+reason in `PaymentMeans/InstructionNote`; they take the next ICV/PIH on the device's chain.
+They used to be emitted as UBL `CreditNote` documents, which the signer rejected.
 
 ### Defects found while building it (fixed in migrations)
 
@@ -310,8 +311,9 @@ ZATCA expects credit notes as `Invoice` documents with type code 381.
 * **The ZATCA device private key and CSID secrets were readable by every tenant user** (the
   devices screen loaded them with `select("*")`).
 * **Document discounts and surcharges never reached the stored sale**, only the ZATCA XML.
-* **ZATCA credit notes failed immediately**: wrong column names (`total_amount`, and
-  `seller_name`/`vat_number`/... in zatca_settings). They now get as far as signing (see above).
+* **ZATCA credit notes never issued**: wrong column names (`total_amount`, and
+  `seller_name`/`vat_number`/... in zatca_settings), and a UBL `CreditNote` document the signer
+  could not handle (ZATCA wants `Invoice` with type code 381).
 * **The VAT audit screen showed nothing**: it filtered sales by the tenant id instead of the
   restaurant id.
 * **ZATCA status changes failed.** Five functions (append_zatca_audit, the audit-chain checks,
@@ -323,8 +325,9 @@ ZATCA expects credit notes as `Invoice` documents with type code 381.
 
 1. Move the POS terminal's own live updates (ticket ready, table status) onto events, then retire
    the matching `/realtime/v1` subscriptions screen by screen.
-2. ZATCA credit notes as `Invoice` (381) documents so they sign and submit.
-3. R2 and managed PostgreSQL/Redis: settings and a test run.
-4. GitHub Actions: typecheck, unit tests, migrations on a fresh database, smoke test, image build
+2. R2 and managed PostgreSQL/Redis: settings and a test run.
+3. GitHub Actions: typecheck, unit tests, migrations on a fresh database, smoke test, image build
    and push, deploy.
+4. Staging server and a rehearsal of the data move (run docs/self-hosting/customer-balance-review.sql
+   on the copy first), then cutover.
 5. Next.js public website.

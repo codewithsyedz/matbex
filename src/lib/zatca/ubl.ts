@@ -420,12 +420,13 @@ export interface UploadUblArgs {
 // =====================================================================
 // CREDIT NOTE (UBL 2.1) - for refunds, returns, corrections
 // ---------------------------------------------------------------------
-// Mirrors buildSimplifiedTaxInvoiceUbl but emits a <CreditNote> root
-// with cac:BillingReference linking back to the original invoice UUID.
-// Per ZATCA UBL 2.1 spec, simplified credit notes use:
-//   InvoiceTypeCode 381 + name "0200000"
+// Mirrors buildSimplifiedTaxInvoiceUbl. ZATCA issues credit notes as UBL
+// <Invoice> documents (the UBL <CreditNote> document is not accepted):
+//   InvoiceTypeCode 381 + name "0200000" (simplified)
+//   cac:BillingReference to the original invoice's number and UUID
 //   ProfileID reporting:1.0
 //   PaymentMeans/InstructionNote = reason text
+// Same shape as server/functions/zatca-issue-credit-note.
 // =====================================================================
 
 export type CreditNoteReasonCode =
@@ -445,40 +446,24 @@ export interface BuildCreditNoteInput extends BuildUblInput {
 }
 
 export function buildSimplifiedCreditNoteUbl(input: BuildCreditNoteInput): string {
-  // Reuse the invoice builder then substitute root + add BillingReference.
-  // We do a deterministic, surgical rewrite rather than a second builder.
-  const baseInvoiceXml = buildSimplifiedTaxInvoiceUbl(input);
+  // Reuse the invoice builder: same root and lines, type code 381, plus the reference to the
+  // original invoice and the reason.
+  let xml = buildSimplifiedTaxInvoiceUbl(input).replace(
+    /<cbc:InvoiceTypeCode\b[^>]*>388<\/cbc:InvoiceTypeCode>/,
+    '<cbc:InvoiceTypeCode name="0200000">381</cbc:InvoiceTypeCode>',
+  );
 
-  // 1. Swap root element <Invoice> → <CreditNote>
-  let xml = baseInvoiceXml
-    .replace(/<Invoice\b/, "<CreditNote")
-    .replace("urn:oasis:names:specification:ubl:schema:xsd:Invoice-2",
-             "urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2")
-    .replace(/<\/Invoice>\s*$/, "</CreditNote>")
-    .replace(/<cbc:InvoiceTypeCode\b[^>]*>388<\/cbc:InvoiceTypeCode>/,
-             '<cbc:CreditNoteTypeCode name="0200000">381</cbc:CreditNoteTypeCode>')
-    .replace(/<cac:InvoiceLine>/g, "<cac:CreditNoteLine>")
-    .replace(/<\/cac:InvoiceLine>/g, "</cac:CreditNoteLine>")
-    .replace(/<cbc:InvoicedQuantity\b/g, "<cbc:CreditedQuantity")
-    .replace(/<\/cbc:InvoicedQuantity>/g, "</cbc:CreditedQuantity>");
-
-  // 2. Inject <cac:BillingReference> right after </cac:AdditionalDocumentReference>
-  // for QR (last AdditionalDocumentReference). We anchor on the closing tag of
-  // the QR block; if QR missing, anchor on the closing of the PIH block.
-  const billingRef = `  <cac:BillingReference>
+  // UBL element order: BillingReference comes before the AdditionalDocumentReference
+  // elements (ICV, PIH, QR).
+  const billingRef = `<cac:BillingReference>
     <cac:InvoiceDocumentReference>
       <cbc:ID>${esc(input.originalReceiptNumber)}</cbc:ID>
       <cbc:UUID>${esc(input.originalUuid)}</cbc:UUID>
     </cac:InvoiceDocumentReference>
-  </cac:BillingReference>`;
+  </cac:BillingReference>
+  `;
+  xml = xml.replace(/<cac:AdditionalDocumentReference>/, `${billingRef}<cac:AdditionalDocumentReference>`);
 
-  // Insert before <cac:AccountingSupplierParty> - guaranteed anchor.
-  xml = xml.replace(
-    /<cac:AccountingSupplierParty>/,
-    `${billingRef}\n  <cac:AccountingSupplierParty>`,
-  );
-
-  // 3. Inject reason text into PaymentMeans as InstructionNote
   if (input.reasonText || input.reasonCode) {
     const note = esc(input.reasonText || input.reasonCode);
     xml = xml.replace(

@@ -6,7 +6,7 @@ import { env } from "../_runtime/env.ts";
 // Issues a ZATCA-compliant Simplified Credit Note for a previously
 // recorded sale. End-to-end pipeline:
 //   1. Validate caller + load original sale + device + ZATCA settings
-//   2. Build canonical credit-note UBL (CreditNoteTypeCode 381)
+//   2. Build the credit/debit note UBL (<Invoice>, InvoiceTypeCode 381/383)
 //   3. Pre-flight schema validation (fail fast - store SCHEMA_INVALID)
 //   4. Advance device chain (next ICV / PIH) via next_zatca_chain RPC
 //   5. Invoke zatca-sign-invoice to XAdES-sign the UBL
@@ -98,15 +98,15 @@ function buildAdjustmentUbl(input: {
   const country = input.seller.countryCode || "SA";
   const pmc = input.paymentMeansCode || "10";
   const isDebit = input.documentType === "DEBIT";
-  // Debit notes are emitted as <Invoice> with InvoiceTypeCode 383.
-  // Credit notes use <CreditNote> with CreditNoteTypeCode 381.
-  const rootElem = isDebit ? "Invoice" : "CreditNote";
-  const rootNs = isDebit
-    ? "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2"
-    : "urn:oasis:names:specification:ubl:schema:xsd:CreditNote-2";
-  const lineElem = isDebit ? "InvoiceLine" : "CreditNoteLine";
-  const qtyElem = isDebit ? "InvoicedQuantity" : "CreditedQuantity";
-  const typeCodeElem = isDebit ? "InvoiceTypeCode" : "CreditNoteTypeCode";
+  // ZATCA (e-invoicing XML implementation standard) issues credit and debit notes as UBL
+  // <Invoice> documents: InvoiceTypeCode 381 = credit note, 383 = debit note, with a
+  // BillingReference to the original invoice and the reason in PaymentMeans/InstructionNote.
+  // The UBL <CreditNote> document is not accepted (and the signer only handles <Invoice>).
+  const rootElem = "Invoice";
+  const rootNs = "urn:oasis:names:specification:ubl:schema:xsd:Invoice-2";
+  const lineElem = "InvoiceLine";
+  const qtyElem = "InvoicedQuantity";
+  const typeCodeElem = "InvoiceTypeCode";
   const typeCodeValue = isDebit ? "383" : "381";
 
   const lineXml = input.lines.map((l, idx) => {
@@ -255,7 +255,7 @@ function validateUbl(xml: string): { valid: boolean; errors: Array<{ field: stri
   if (!/<cac:TaxCategory>[\s\S]*?<cbc:ID>([SZEO])<\/cbc:ID>/m.test(xml)) errors.push({ field: "cac:TaxCategory", message: "VAT category code (S/Z/E/O) is required." });
   if (!/<cbc:ID>ICV<\/cbc:ID>/.test(xml)) errors.push({ field: "ICV", message: "ICV reference missing." });
   if (!/<cbc:ID>PIH<\/cbc:ID>/.test(xml)) errors.push({ field: "PIH", message: "PIH reference missing." });
-  if (xml.includes("<CreditNote") && !/<cac:BillingReference>/.test(xml)) errors.push({ field: "cac:BillingReference", message: "Credit notes must reference original invoice." });
+  if (/<cbc:InvoiceTypeCode\b[^>]*>(381|383)</.test(xml) && !/<cac:BillingReference>/.test(xml)) errors.push({ field: "cac:BillingReference", message: "Credit and debit notes must reference the original invoice." });
   return { valid: errors.length === 0, errors };
 }
 
