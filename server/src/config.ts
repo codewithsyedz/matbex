@@ -33,7 +33,7 @@ const schema = z.object({
   AUTH_MIN_PASSWORD_LENGTH: z.coerce.number().default(8),
   AUTH_MFA_ISSUER: z.string().default("Matbex"),
 
-  EMAIL_FROM: z.string().default("Matbex <noreply@mail.matbex.com>"),
+  EMAIL_FROM: z.string().default("Matbex <noreply@notify.matbex.com>"),
   RESEND_API_KEY: z.string().optional(),
 
   STORAGE_DRIVER: z.enum(["fs", "s3"]).default("fs"),

@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { Resend } from "resend";
 
@@ -60,7 +61,7 @@ const handler = async (req: Request): Promise<Response> => {
     const subtitle = body.subtitle ? esc(body.subtitle) : "";
 
     const { error } = await resend.emails.send({
-      from: "Matbex Reports <reports@matbex.com>",
+      from: fromAddress("Matbex Reports", "reports"),
       to: [recipient],
       subject: `${body.report_title || "Report"}${body.subtitle ? ` — ${body.subtitle}` : ""}`,
       html: `<!DOCTYPE html>

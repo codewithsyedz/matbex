@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 
@@ -213,7 +214,7 @@ serve(async (req) => {
 
       const csv = buildCsv(flagged, tenant.name ?? "", scanDate);
       const { error: sendError } = await resend.emails.send({
-        from: "Matbex Accounting <accounting@matbex.com>",
+        from: fromAddress("Matbex Accounting", "accounting"),
         to: recipients,
         subject: `${flagged.length} invoice-to-ledger mismatch${flagged.length === 1 ? "" : "es"} — ${scanDate}`,
         html: buildHtml(flagged, tenant.name ?? "", scanDate),

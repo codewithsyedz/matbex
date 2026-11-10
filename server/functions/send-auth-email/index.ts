@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 
 import { buildCorsHeaders } from "../_shared/cors.ts";
@@ -139,7 +140,7 @@ serve(async (req) => {
 
     // Send email via Resend
     const emailResponse = await resend.emails.send({
-      from: 'Matbex <noreply@matbex.com>',
+      from: fromAddress("Matbex", "noreply"),
       to: [user.email],
       subject,
       html: emailHtml,

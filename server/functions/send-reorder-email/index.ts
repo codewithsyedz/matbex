@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { Resend } from "resend";
 
@@ -56,7 +57,7 @@ const handler = async (req: Request): Promise<Response> => {
     `).join("");
 
     const emailResponse = await resend.emails.send({
-      from: "Matbex Inventory <inventory@matbex.com>",
+      from: fromAddress("Matbex Inventory", "inventory"),
       to: [supplier_email],
       subject: `Reorder Request from ${restaurant_name}`,
       html: `

@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 import { requireSuperAdminOrCron } from "../_shared/superadmin.ts";
@@ -142,7 +143,7 @@ async function sendApprovalEmail(email: string, exportType: string) {
       Authorization: `Bearer ${RESEND_API_KEY}`,
     },
     body: JSON.stringify({
-      from: "Matbex Exports <exports@matbex.com>",
+      from: fromAddress("Matbex Exports", "exports"),
       to: [email],
       subject: "Your Data Export Request Has Been Approved",
       html: `
@@ -181,7 +182,7 @@ async function sendRejectionEmail(email: string, exportType: string, reason: str
       Authorization: `Bearer ${RESEND_API_KEY}`,
     },
     body: JSON.stringify({
-      from: "Matbex Exports <exports@matbex.com>",
+      from: fromAddress("Matbex Exports", "exports"),
       to: [email],
       subject: "Your Data Export Request Has Been Declined",
       html: `

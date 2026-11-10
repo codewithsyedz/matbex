@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 
@@ -209,7 +210,7 @@ serve(async (req) => {
           "Authorization": `Bearer ${RESEND_API_KEY}`,
         },
         body: JSON.stringify({
-          from: "Matbex Alerts <alerts@matbex.com>",
+          from: fromAddress("Matbex Alerts", "alerts"),
           to: [setting.expiry_alert_email],
           subject: `⚠️ ${batches.length} Inventory Item(s) Expiring Soon - ${restaurantName}`,
           html: emailHtml,

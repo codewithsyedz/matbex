@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import Stripe from "stripe";
 import { createClient } from "@matbex/client";
@@ -190,7 +191,7 @@ serve(async (req) => {
     const siteUrl = env('SITE_URL') || 'https://matbex.com';
 
     await resend.emails.send({
-      from: 'Matbex <onboarding@matbex.com>',
+      from: fromAddress("Matbex", "onboarding"),
       to: [application.email],
       subject: `🚀 Welcome to Matbex, ${application.full_name}! Your credentials are ready`,
       html: generateWelcomeEmail(

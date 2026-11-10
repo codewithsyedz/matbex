@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 import Stripe from "stripe";
@@ -173,7 +174,7 @@ serve(async (req) => {
         const resend = new Resend(env("RESEND_API_KEY"));
         const siteUrl = env('SITE_URL') || 'https://matbex.com';
         await resend.emails.send({
-          from: 'Matbex <onboarding@matbex.com>',
+          from: fromAddress("Matbex", "onboarding"),
           to: [application.email],
           subject: `🎁 Your 14-day Matbex trial is ready, ${application.full_name}!`,
           html: `<p>Hi ${application.full_name},</p>
@@ -283,7 +284,7 @@ serve(async (req) => {
     const resend = new Resend(env("RESEND_API_KEY"));
 
     await resend.emails.send({
-      from: 'Matbex <onboarding@matbex.com>',
+      from: fromAddress("Matbex", "onboarding"),
       to: [application.email],
       subject: `🎉 Your Matbex Application is Approved, ${application.full_name}!`,
       html: generateApprovalEmail(

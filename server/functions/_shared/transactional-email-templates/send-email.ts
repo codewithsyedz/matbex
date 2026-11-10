@@ -6,7 +6,7 @@ import { TEMPLATES } from './registry.ts'
 
 // Server-only. Sends through the API's email module (Resend; see server/src/email/send.ts).
 const SITE_NAME = "Matbex"
-const FROM_DOMAIN = env('EMAIL_FROM_DOMAIN') ?? "mail.matbex.com"
+const FROM_DOMAIN = env('EMAIL_FROM_DOMAIN') || "notify.matbex.com"
 
 export type SendTemplateEmailResult =
   | { sent: true }

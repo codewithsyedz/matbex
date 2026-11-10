@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 
@@ -380,7 +381,7 @@ const handler = async (req: Request): Promise<Response> => {
             Authorization: `Bearer ${RESEND_API_KEY}`,
           },
           body: JSON.stringify({
-            from: "Matbex Reports <reports@matbex.com>",
+            from: fromAddress("Matbex Reports", "reports"),
             to: [schedule.email],
             subject: `${frequencyTitle} ${reportTypeTitle} Report`,
             html,

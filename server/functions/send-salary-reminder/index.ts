@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 
@@ -106,7 +107,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       // Send reminder email
       const emailResponse = await resend.emails.send({
-        from: "Matbex Payroll <payroll@matbex.com>",
+        from: fromAddress("Matbex Payroll", "payroll"),
         to: [settings.reminder_email!],
         subject: `Salary Reminder - ${restaurant.name} (Due: Day ${settings.salary_day})`,
         html: `

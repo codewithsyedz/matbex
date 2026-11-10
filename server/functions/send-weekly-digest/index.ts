@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 
@@ -187,7 +188,7 @@ const handler = async (req: Request): Promise<Response> => {
 
       // Send digest email
       const { error: emailError } = await resend.emails.send({
-        from: "Matbex Digest <reports@matbex.com>",
+        from: fromAddress("Matbex Digest", "reports"),
         to: [profile.email],
         subject: `📊 Weekly Security Digest: ${pendingItems.length} event${pendingItems.length !== 1 ? 's' : ''} | ${tenantName}`,
         html: emailHtml,

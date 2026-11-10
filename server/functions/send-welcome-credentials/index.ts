@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 
@@ -240,7 +241,7 @@ serve(async (req) => {
 
     // Send email via Resend
     const emailResponse = await resend.emails.send({
-      from: 'Matbex <welcome@matbex.com>',
+      from: fromAddress("Matbex", "welcome"),
       to: [email],
       subject: `🎉 Welcome to Matbex, ${full_name}! Your credentials are ready`,
       html: emailHtml,

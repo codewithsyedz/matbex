@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 import { Resend } from "resend";
@@ -17,7 +18,7 @@ function buildCorsHeaders(req: Request): Record<string, string> {
 }
 const resend = new Resend(env("RESEND_API_KEY"));
 
-const FROM = "Matbex <noreply@mail.matbex.com>";
+const FROM = fromAddress("Matbex", "noreply");
 const SITE_NAME = "Matbex";
 const SITE_URL = "https://www.matbex.com";
 

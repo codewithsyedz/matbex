@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 
@@ -267,7 +268,7 @@ const handler = async (req: Request): Promise<Response> => {
       `;
 
       await resend.emails.send({
-        from: "Matbex Alerts <alerts@matbex.com>",
+        from: fromAddress("Matbex Alerts", "alerts"),
         to: instantEmailRecipients,
         subject: `⚠️ Security Alert: ${formatAction(action)} on ${entity_type} | ${tenantName}`,
         html: emailHtml,

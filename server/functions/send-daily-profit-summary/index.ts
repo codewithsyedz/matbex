@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 
@@ -341,7 +342,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Send email
     const { error: emailError } = await resend.emails.send({
-      from: "Matbex Reports <reports@matbex.com>",
+      from: fromAddress("Matbex Reports", "reports"),
       to: [email],
       subject: `📊 Daily Profit Summary: ${formatCurrency(operatingProfit)} (${status}) | ${formatChange(vsYesterday)} vs yesterday`,
       html: emailHtml,
