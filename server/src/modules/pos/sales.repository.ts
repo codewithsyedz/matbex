@@ -107,10 +107,10 @@ export function salesRepository({ db, tx }: ServiceTx) {
     /**
      * Stock is deducted by the database, once, for every way a sale is recorded: the trigger
      * on sales_items runs post_provisional_cogs_for_sale_item (atomic since 20261109221347),
-     * which writes stock_movements and provisional_cogs_postings. We deliberately do NOT
-     * write inventory_usage here: its own trigger (auto_deduct_inventory_stock) would deduct
-     * the same ingredients a second time. After the lines are inserted we only create one
-     * pending reorder request per ingredient now at or below its reorder level.
+     * which writes stock_movements and provisional_cogs_postings. inventory_usage rows for the
+     * sale are written by recordSaleUsage with sale_item_id set, so its trigger does not deduct
+     * the stock again. Here we only create one pending reorder request per ingredient now at
+     * or below its reorder level.
      */
     async createReorderRequests(params: { restaurantId: string; sold: { menuItemId: string; quantity: number; name: string }[] }) {
       if (!params.sold.length) return [];
@@ -143,6 +143,29 @@ export function salesRepository({ db, tx }: ServiceTx) {
         select it.id as inventory_item_id, it.current_stock::float8 as current_stock, it.reorder_level::float8 as reorder_level
         from items it
         where it.reorder_level is not null and it.current_stock <= it.reorder_level`;
+    },
+
+    /**
+     * Food-cost reports read inventory_usage, so mirror each provisional COGS posting the
+     * sales_items trigger just wrote. sale_item_id tells the inventory_usage triggers that the
+     * stock is already deducted (migration 20261110072331). ledger_posted is true because the
+     * provisional COGS flow owns the journal for these lines; posting them again from the COGS
+     * screen would double the expense.
+     */
+    async recordSaleUsage(params: { restaurantId: string; saleItemIds: string[]; userId: string; shiftId: string | null; day: string; receiptNumber: string }) {
+      if (!params.saleItemIds.length) return;
+      await tx`
+        insert into public.inventory_usage
+          (restaurant_id, inventory_item_id, usage_date, quantity_used, unit_cost, total_cost,
+           shift_id, notes, created_by, sale_item_id, ledger_posted)
+        select p.restaurant_id, p.inventory_item_id, ${params.day}::date, p.qty_consumed,
+               coalesce(p.unit_cost_at_sale, 0), coalesce(p.cogs_amount, 0),
+               ${params.shiftId}, ${"POS sale " + params.receiptNumber}, ${params.userId}, p.sale_item_id, true
+        from public.provisional_cogs_postings p
+        where p.restaurant_id = ${params.restaurantId}
+          and p.sale_item_id = any(${params.saleItemIds}::uuid[])
+          and p.status <> 'reversed'
+        on conflict do nothing`;
     },
 
     async emitEvent(restaurantId: string, saleId: string, payload: Record<string, unknown>) {

@@ -199,10 +199,13 @@ Known limits:
 * **The POS screen deducted recipe stock twice or more.** The `sales_items` trigger deducts.
   Then the screen inserted `inventory_usage` rows, whose own trigger
   (`auto_deduct_inventory_stock`) deducts again, and finally wrote back a stock value computed
-  in the browser. The API path deducts once, through the `sales_items` trigger, and does not
-  write `inventory_usage` for sales. **Reports that read `inventory_usage` will no longer see
-  POS sales recorded through the API**; consumption is in `stock_movements` and
-  `provisional_cogs_postings`. Check which COGS reports should switch to those before go-live.
+  in the browser. The API path deducts once, through the `sales_items` trigger. It still writes
+  `inventory_usage` rows, because the food-cost reports (Reports, Prime Cost card, Daily Profit,
+  COGS page, weekly COGS) sum that table, but each row carries `sale_item_id`, which makes its
+  triggers skip the stock check and deduction (`20261110072331`). A row is accepted only if it
+  matches a stock posting of that sale line, and it is removed when the line is deleted. Rows
+  are written with `ledger_posted = true` because the provisional COGS flow already owns the
+  journal, so the COGS posting screen cannot post the same expense twice.
 
 ## Next steps, in order
 

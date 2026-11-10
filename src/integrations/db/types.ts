@@ -8093,6 +8093,7 @@ export type Database = {
           notes: string | null
           quantity_used: number
           restaurant_id: string
+          sale_item_id: string | null
           shift_id: string | null
           total_cost: number
           unit_cost: number
@@ -8109,6 +8110,7 @@ export type Database = {
           notes?: string | null
           quantity_used?: number
           restaurant_id: string
+          sale_item_id?: string | null
           shift_id?: string | null
           total_cost?: number
           unit_cost?: number
@@ -8125,6 +8127,7 @@ export type Database = {
           notes?: string | null
           quantity_used?: number
           restaurant_id?: string
+          sale_item_id?: string | null
           shift_id?: string | null
           total_cost?: number
           unit_cost?: number
@@ -8157,6 +8160,13 @@ export type Database = {
               columns: ["restaurant_id"]
               isOneToOne: false
               referencedRelation: "restaurants"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "inventory_usage_sale_item_id_fkey"
+              columns: ["sale_item_id"]
+              isOneToOne: false
+              referencedRelation: "sales_items"
               referencedColumns: ["id"]
             },
             {

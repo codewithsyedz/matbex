@@ -145,6 +145,15 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
       });
     }
 
+    await repo.recordSaleUsage({
+      restaurantId: input.restaurantId,
+      saleItemIds: saleItems.map((i) => i.id),
+      userId,
+      shiftId: input.shiftId ?? null,
+      day,
+      receiptNumber,
+    });
+
     const lowStock = await repo.createReorderRequests({
       restaurantId: input.restaurantId,
       sold: lines.map((l) => ({ menuItemId: l.menuItemId, quantity: l.quantity, name: byId.get(l.menuItemId)?.name ?? "" })),
