@@ -56,6 +56,8 @@ import { AdminPinDialog } from "@/components/pos/AdminPinDialog";
 import { EmergencyKioskUnlockDialog } from "@/components/pos/EmergencyKioskUnlockDialog";
 import { KioskWifiDialog } from "@/components/pos/KioskWifiDialog";
 import { recordOfflineSale } from "@/lib/offline/posService";
+import { recordSale, type PriceChangedDetails, type SaleLineSize } from "@/lib/api/pos";
+import { ApiError } from "@/lib/api/http";
 import { isOnline } from "@/lib/offline/connectivity";
 import { useCurrency } from "@/hooks/useCurrency";
 import { db } from "@/integrations/db/client";
@@ -457,12 +459,19 @@ export default function RecordSaleMobile() {
   );
   const total = grossTotal;
 
-  const queueSaleOffline = async () => {
+  const sizeOf = (v: Variant): SaleLineSize => (v === "default" ? "regular" : v);
+
+  // `idempotencyKey`: the key of the online attempt that just failed, so a sale that did reach
+  // the server is returned, not recorded again, when the queue replays it.
+  const queueSaleOffline = async (idempotencyKey?: string) => {
     if (!restaurant?.id || !user?.id || cart.length === 0) throw new Error("Cart is empty");
 
     const activeShift = activeShifts[0];
     const result = await recordOfflineSale({
-      branchId: activeBranchId ?? restaurant.id,
+      // Queue scope is the restaurant (the sync engine drains by it); the branch rides along.
+      branchId: restaurant.id,
+      saleBranchId: activeBranchId ?? null,
+      idempotencyKey,
       cashierId: user.id,
       shiftId: activeShift?.id || null,
       paymentMethod: payment,
@@ -473,6 +482,7 @@ export default function RecordSaleMobile() {
       items: cart.map((l) => ({
         menu_item_id: l.id,
         name: l.name,
+        size: sizeOf(l.variant),
         quantity: l.qty,
         unit_price: l.price,
       })),
@@ -669,84 +679,48 @@ export default function RecordSaleMobile() {
       // the API fetch with no timeout.
       const browserOffline =
         typeof navigator !== "undefined" && navigator.onLine === false;
+      const saleKey = crypto.randomUUID();
       if (browserOffline || !isOnline()) {
-        return queueSaleOffline();
+        return queueSaleOffline(saleKey);
       }
 
-      const receiptNumber = `RCP-${format(new Date(), "yyyyMMdd")}-${Math.floor(
-        Math.random() * 10000,
-      )
-        .toString()
-        .padStart(4, "0")}`;
-
-      let tx;
-      let txErr;
+      // One server transaction (POST /api/v1/pos/sales): sale, lines, cash event, stock,
+      // food-cost usage, kitchen ticket. The server prices the lines and numbers the receipt.
+      let receiptNumber: string;
       try {
-        const response = await withOnlineWriteTimeout(
-          db
-          .from("sales_transactions")
-          .insert({
-            restaurant_id: restaurant.id,
-            shift_id: activeShift?.id || null,
-            payment_method: payment,
-            subtotal,
-            tax: vat,
-            total,
-            receipt_number: receiptNumber,
-            settlement_status: unpaid ? "unpaid" : "paid",
-            paid_amount: unpaid ? 0 : total,
-            customer_id: unpaid ? selectedCustomer?.id ?? null : null,
-            created_at: new Date().toISOString(),
-          } as never)
-          .select()
-          .single(),
+        const saved = await withOnlineWriteTimeout(
+          recordSale(
+            {
+              restaurantId: restaurant.id,
+              branchId: activeBranchId ?? null,
+              shiftId: activeShift?.id ?? null,
+              customerId: unpaid ? selectedCustomer?.id ?? null : null,
+              paymentMethod: payment,
+              settlement: unpaid ? "unpaid" : "paid",
+              lines: cart.map((l) => ({ menuItemId: l.id, size: sizeOf(l.variant), quantity: l.qty, unitPrice: l.price })),
+            },
+            { idempotencyKey: saleKey },
+          ),
           "Recording sale",
         );
-
-        tx = response.data;
-        txErr = response.error;
+        receiptNumber = saved.receiptNumber;
       } catch (error) {
-        if (isRecoverableNetworkError(error)) {
-          return queueSaleOffline();
+        if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
+          return queueSaleOffline(saleKey);
+        }
+        if (error instanceof ApiError && error.code === "price_changed") {
+          const changed = (error.details as PriceChangedDetails | undefined)?.lines ?? [];
+          setCart((prev) =>
+            prev.map((l) => {
+              const hit = changed.find((c) => c.menuItemId === l.id && c.size === sizeOf(l.variant));
+              return hit ? { ...l, price: hit.current } : l;
+            }),
+          );
+          void queryClient.invalidateQueries({ queryKey: ["pos-tablet-menu"] });
+          void queryClient.invalidateQueries({ queryKey: ["branch-menu-prices"] });
+          throw new Error("Prices changed since the menu was loaded. The cart now shows the current prices; check the total and charge again.");
         }
         throw error;
-      }
-      if (txErr) {
-        if (isRecoverableNetworkError(txErr)) {
-          return queueSaleOffline();
-        }
-        throw txErr;
-      }
-
-      const items = cart.map((l) => ({
-        restaurant_id: restaurant.id,
-        transaction_id: (tx as { id: string }).id,
-        menu_item_id: l.id,
-        quantity: l.qty,
-        unit_price: l.price,
-        total_price: l.price * l.qty,
-      }));
-      const { error: itemsErr } = await withOnlineWriteTimeout(
-        db.from("sales_items").insert(items),
-        "Saving sale items",
-      );
-      if (itemsErr) throw itemsErr;
-
-      if (activeShift?.id && !unpaid) {
-        await withOnlineWriteTimeout(
-          db.from("cash_events").insert([
-            {
-              shift_id: activeShift.id,
-              restaurant_id: restaurant.id,
-              event_type: "sale",
-              amount: total,
-              payment_method: payment === "other" ? "other" : payment,
-              created_by: user.id,
-              description: `POS Sale ${receiptNumber}`,
-            },
-          ]),
-          "Saving cash event",
-        );
       }
       return { receiptNumber, queuedOffline: false };
     },

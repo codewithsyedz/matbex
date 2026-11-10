@@ -10,6 +10,7 @@ export class ApiError extends Error {
     public status: number,
     message: string,
     public code?: string,
+    public details?: unknown,
   ) {
     super(message);
     this.name = "ApiError";
@@ -34,6 +35,6 @@ export async function apiRequest<T>(
   });
   const text = await res.text();
   const json = text ? JSON.parse(text) : null;
-  if (!res.ok) throw new ApiError(res.status, json?.message ?? res.statusText, json?.error_code ?? json?.code);
+  if (!res.ok) throw new ApiError(res.status, json?.message ?? res.statusText, json?.error_code ?? json?.code, json?.details);
   return { data: json as T, status: res.status, headers: res.headers };
 }

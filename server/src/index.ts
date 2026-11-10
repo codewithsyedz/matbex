@@ -61,7 +61,7 @@ registerHttpMetrics(app);
 
 app.setErrorHandler((err: any, req, reply) => {
   if (err instanceof HttpError) {
-    return reply.code(err.status).send({ code: err.code ?? err.status, error_code: err.code, msg: err.message, message: err.message });
+    return reply.code(err.status).send({ code: err.code ?? err.status, error_code: err.code, msg: err.message, message: err.message, ...(err.details !== undefined ? { details: err.details } : {}) });
   }
   const status = (err as any).statusCode ?? 500;
   if (status >= 500) req.log.error({ err }, "unhandled error");

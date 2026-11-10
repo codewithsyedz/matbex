@@ -1,6 +1,13 @@
 /** POS sales: POST /api/v1/pos/sales (server/src/modules/pos). */
 import { apiRequest } from "./http";
 
+export type SaleLineSize = "regular" | "quarter" | "half" | "full";
+
+/** Body of a 409 price_changed error (ApiError.details). */
+export interface PriceChangedDetails {
+  lines: { menuItemId: string; size: SaleLineSize; shown: number; current: number }[];
+}
+
 export interface RecordSaleInput {
   restaurantId: string;
   branchId?: string | null;
@@ -10,7 +17,16 @@ export interface RecordSaleInput {
   paymentMethod: "cash" | "card" | "other";
   settlement?: "paid" | "unpaid";
   createdAt?: string | null;
-  lines: { menuItemId: string; quantity: number; unitPrice: number }[];
+  /**
+   * `size` picks the price tier; the server prices every line. Send `unitPrice` (what the
+   * screen showed) to be told about stale prices (409 price_changed) instead of the server
+   * silently charging a different amount. Offline replays must send it.
+   */
+  lines: { menuItemId: string; size?: SaleLineSize; quantity: number; unitPrice?: number }[];
+  /** Only for replaying a sale rung up offline: the printed receipt number and time of sale. */
+  offline?: { receiptNumber: string; createdAt: string } | null;
+  /** Approval from the integrated card terminal (Hala) for a card sale. */
+  cardTerminal?: { provider: "hala"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
   invoice?: {
     subtype?: "SIMPLIFIED" | "STANDARD";
     buyerName?: string | null;
@@ -34,7 +50,7 @@ export interface RecordSaleResult {
   };
   receiptNumber: string;
   salesItems: { menu_item_id: string; quantity: number; unit_price: number; total_price: number }[];
-  lowStock: { inventoryItemId: string; currentStock: number; reorderLevel: number }[];
+  lowStock: { inventoryItemId: string; name: string; currentStock: number; reorderLevel: number }[];
 }
 
 /**
@@ -51,5 +67,21 @@ export async function recordSale(input: RecordSaleInput, opts: { idempotencyKey:
     },
     signal: opts.signal,
   });
+  return data;
+}
+
+export interface SaleQuote {
+  lines: { menuItemId: string; size: SaleLineSize; quantity: number; unitPrice: number; lineTotal: number }[];
+  subtotal: number;
+  tax: number;
+  total: number;
+  vatRate: number;
+  pricesVatInclusive: boolean;
+  branchId: string | null;
+}
+
+/** What the server would charge for this order now (records nothing). */
+export async function quoteSale(input: RecordSaleInput, opts: { signal?: AbortSignal } = {}) {
+  const { data } = await apiRequest<SaleQuote>("/pos/sales/quote", { body: input, signal: opts.signal });
   return data;
 }

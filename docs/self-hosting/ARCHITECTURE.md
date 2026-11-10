@@ -177,13 +177,34 @@ Verified locally:
 * the event reaches Socket.IO;
 * a sale from the POS screen in the browser went through end to end.
 
-Known limits:
-* Line prices are still taken from the terminal: size variants, branch prices and market prices
-  are priced on the device. Moving price lists to the server is the next step for this module.
-* If the online request times out after the server already saved the sale, the screen still
-  falls back to the offline queue, which can record the sale twice when it syncs (the same as
-  before). Sharing one idempotency key between the online call and the offline queue would close
-  this.
+Part two (all POS screens and the offline queue on the module):
+* **Server prices.** Each line names its size tier (`regular`/`quarter`/`half`/`full`); the server
+  prices it from `menu_items` with the branch's `menu_item_branch_prices` row for the business
+  day laid over it (the terminal's own rule). Without `branchId` the base menu prices apply, as
+  on the terminal's all-branches view. A terminal that sends the price it showed gets
+  `409 price_changed` (`details.lines`: shown vs current) when it is stale; the POS screens put
+  the current prices into the cart and ask the cashier to check the total.
+* **Quote.** `POST /api/v1/pos/sales/quote` prices an order without recording it. The dashboard
+  sales recorder charges the Hala card terminal the quoted total and then records the sale with
+  the approval (`cardTerminal`), so the card and the receipt always agree.
+* **One key per checkout.** RecordSale, RecordSaleMobile and SalesRecorder use the same
+  idempotency key for the online request and, on a network failure, the offline queue's ORDER.
+  `pos-sync` replays queued orders through `POST /api/v1/pos/sales` with that key and
+  `offline: { receiptNumber, createdAt }`: an order whose online attempt committed comes back as
+  a duplicate; a real offline sale keeps its printed receipt number, time of sale and charged
+  prices, and may land in a shift that has closed since. Its PAYMENT item is skipped when the
+  API already put the sale in the drawer.
+* **Cash drawer.** The shift cash event is the VAT-inclusive total and only for paid sales (the
+  desktop screen used to record the net amount, so expected cash at shift close was short by
+  the VAT; unpaid sales counted as cash received).
+* **Browsers can no longer insert `sales_items`** (`20261110093956`). Editing and deleting lines
+  (sales history, customer tabs) still go through `/rest/v1` under RLS.
+
+Still writing `sales_transactions` from the browser: Sales (manual sale, edits, voids),
+CustomerDetail (settlements), EndOfDaySummary, PosBackfill, Settlements, VatAudit and the ZATCA
+helpers; server functions terminal-api and auto-shift-manager. Each needs its own endpoint before
+inserts into `sales_transactions` can be blocked too. Combo packages cannot be sold today (their
+id is sent as a menu item and the foreign key rejects it; the API answers `menu_item_not_found`).
 
 ### Defects found while building it (fixed in migrations)
 
@@ -206,14 +227,19 @@ Known limits:
   matches a stock posting of that sale line, and it is removed when the line is deleted. Rows
   are written with `ledger_posted = true` because the provisional COGS flow already owns the
   journal, so the COGS posting screen cannot post the same expense twice.
+* **Shifts could not be closed.** `lock_shift_inventory_on_close()` compared the enum status with
+  `COALESCE(OLD.status, '')`; `''` is not a `shift_status`, so every update to `closed` failed
+  (`20261110094513`). Worth checking whether shifts close in production.
+* **Offline sales from the desktop POS were queued under the branch id**, but the sync engine
+  drains the queue by restaurant id, so only the background service worker (Chromium) could
+  send them. They are now queued under the restaurant with the branch in the payload.
 
 ## Next steps, in order
 
 1. Move the POS terminal's own live updates (ticket ready, table status) onto events, then retire
    the matching `/realtime/v1` subscriptions screen by screen.
-2. POS sales, part two: server-side price lists, a shared idempotency key with the offline
-   queue, then move the daily-sales recorder onto the module and block `sales_transactions` /
-   `sales_items` writes from `/rest/v1`.
+2. Sales back office on the module: voids/edits, customer settlements, end-of-day and backfill
+   entries, then block `sales_transactions` inserts from `/rest/v1`.
 3. R2 and managed PostgreSQL/Redis: settings and a test run.
 4. GitHub Actions: typecheck, unit tests, migrations on a fresh database, smoke test, image build
    and push, deploy.

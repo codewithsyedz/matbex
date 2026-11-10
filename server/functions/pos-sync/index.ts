@@ -29,10 +29,6 @@ import { createClient } from "@matbex/client";
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { validateBatch, type BatchItem, type EntityType, type Operation } from "./eventSchema.ts";
 
-interface BranchContext {
-  vatRate: number | null;
-}
-
 interface ItemResult {
   idempotency_key: string;
   status: "ok" | "duplicate" | "failed";
@@ -171,10 +167,6 @@ serve(async (req) => {
 
     const results: ItemResult[] = [];
 
-    // Branch VAT rate is constant for the whole batch — look it up once instead
-    // of once per order (one fewer round trip per item).
-    const branchCtx: BranchContext = { vatRate: null };
-
     // Wall-clock budget: return whatever finished instead of letting the
     // gateway kill the request (502/520) and strand the entire batch.
     const startedAt = Date.now();
@@ -197,7 +189,7 @@ serve(async (req) => {
         requestId,
         localToServer,
         shiftBranchCache,
-        branchCtx,
+        authHeader,
       });
       results.push(result);
       processed++;
@@ -247,9 +239,9 @@ async function processItem(args: {
   requestId: string;
   localToServer: Record<string, string>;
   shiftBranchCache: Record<string, string>;
-  branchCtx: BranchContext;
+  authHeader: string;
 }): Promise<ItemResult> {
-  const { admin, item, userId, terminalUid, branchId, requestId, localToServer, shiftBranchCache, branchCtx } = args;
+  const { admin, item, userId, terminalUid, branchId, requestId, localToServer, shiftBranchCache, authHeader } = args;
 
   // 1. Check idempotency cache
   const { data: existing } = await admin
@@ -260,7 +252,9 @@ async function processItem(args: {
     .maybeSingle();
 
   if (existing) {
-    const serverId = (existing.response as any)?.server_id ?? null;
+    // ORDER keys written by POST /api/v1/pos/sales store the sale response instead.
+    const resp = existing.response as any;
+    const serverId = resp?.server_id ?? resp?.transaction?.id ?? null;
     if (serverId) localToServer[item.idempotency_key] = serverId;
     // Count the replay so posting monitors can surface terminals whose acks
     // never landed. Never fail the sync because of monitoring.
@@ -284,9 +278,13 @@ async function processItem(args: {
   try {
     let serverId: string | null = null;
     switch (item.entity_type) {
-      case "ORDER":
-        serverId = await syncOrder(admin, item, branchId, userId, shiftBranchCache, branchCtx);
-        break;
+      case "ORDER": {
+        // The API records the sale and its idempotency key in one transaction, so there is
+        // nothing more to store here.
+        serverId = await syncOrder(item, branchId, terminalUid, authHeader);
+        if (serverId) localToServer[item.idempotency_key] = serverId;
+        return { idempotency_key: item.idempotency_key, status: "ok", server_id: serverId, entity_type: item.entity_type };
+      }
       case "PAYMENT":
         serverId = await syncPayment(admin, item, branchId, userId, localToServer, shiftBranchCache);
         break;
@@ -339,71 +337,52 @@ async function processItem(args: {
 // ---------------------------------------------------------------------
 // Entity-specific writers - kept defensive: only known columns get sent.
 // ---------------------------------------------------------------------
-async function syncOrder(
-  admin: ReturnType<typeof createClient>,
-  item: BatchItem,
-  branchId: string,
-  userId: string,
-  shiftBranchCache: Record<string, string>,
-  branchCtx: BranchContext,
-): Promise<string> {
+/**
+ * Offline orders replay through POST /api/v1/pos/sales (server/src/modules/pos), the same code
+ * path as online sales: one transaction with the lines, shift cash event, stock (database
+ * triggers), food-cost usage, reorder requests, kitchen ticket and live event. The queue's
+ * idempotency key is passed through, so an order whose online attempt already committed (the
+ * POS reuses that attempt's key when it falls back to the queue) is returned, not recorded
+ * again. The printed receipt number, time of sale and charged prices are kept.
+ */
+async function syncOrder(item: BatchItem, restaurantId: string, terminalUid: string, authHeader: string): Promise<string> {
   const p = item.payload as any;
-
-  // Validate shift_id belongs to this branch before persisting (cross-tenant guard).
-  if (p.shift_id) {
-    await assertShiftBelongsToBranch(admin, String(p.shift_id), branchId, shiftBranchCache);
-  }
+  const sizes = new Set(["regular", "quarter", "half", "full"]);
+  const methods = new Set(["cash", "card", "other"]);
   const items = Array.isArray(p.items) ? p.items : [];
-  const gross = Math.round(items.reduce(
-    (sum: number, it: any) => sum + Number(it.total_price ?? Number(it.unit_price ?? 0) * Number(it.quantity ?? 1)),
-    0,
-  ) * 100) / 100;
-  if (branchCtx.vatRate === null) {
-    const { data: branch } = await admin
-      .from("branches")
-      .select("vat_rate")
-      .eq("id", branchId)
-      .maybeSingle();
-    branchCtx.vatRate = Number(branch?.vat_rate ?? 15);
-  }
-  const rate = branchCtx.vatRate / 100;
-  const net = gross > 0 ? Math.round((gross / (1 + rate)) * 100) / 100 : Number(p.subtotal ?? 0);
-  const vat = gross > 0 ? Math.round((gross - net) * 100) / 100 : Number(p.tax ?? 0);
-  const txInsert: Record<string, unknown> = {
-    restaurant_id: branchId,
-    shift_id: p.shift_id ?? null,
-    payment_method: p.payment_method ?? "cash",
-    subtotal: net,
-    tax: vat,
-    total: gross || Number(p.total ?? p.subtotal ?? 0),
-    receipt_number: p.receipt_number,
-    customer_id: p.customer_id ?? null,
-    settlement_status: p.settlement_status ?? "paid",
-    created_at: p.created_at ?? new Date().toISOString(),
-  };
-
-  const { data: tx, error: txErr } = await admin
-    .from("sales_transactions")
-    .insert(txInsert)
-    .select("id")
-    .single();
-  if (txErr) throw new Error(`order insert: ${txErr.message}`);
-
-  // Items
-  if (items.length > 0) {
-    const rows = items.map((it: any) => ({
-      restaurant_id: branchId,
-      transaction_id: tx.id,
-      menu_item_id: it.menu_item_id,
+  const body = {
+    restaurantId,
+    branchId: p.branch_id ?? null,
+    shiftId: p.shift_id ?? null,
+    customerId: p.customer_id ?? null,
+    paymentMethod: methods.has(p.payment_method) ? p.payment_method : "other",
+    settlement: p.settlement_status === "unpaid" ? "unpaid" : "paid",
+    offline: { receiptNumber: String(p.receipt_number), createdAt: p.created_at ?? new Date().toISOString() },
+    lines: items.map((it: any) => ({
+      menuItemId: it.menu_item_id,
+      ...(sizes.has(it.size) ? { size: it.size } : {}),
       quantity: Number(it.quantity ?? 1),
-      unit_price: Number(it.unit_price ?? 0),
-      total_price: Number(it.total_price ?? Number(it.unit_price ?? 0) * Number(it.quantity ?? 1)),
-    }));
-    const { error: itemsErr } = await admin.from("sales_items").insert(rows);
-    if (itemsErr) throw new Error(`order items insert: ${itemsErr.message}`);
+      unitPrice: Number(it.unit_price ?? 0),
+    })),
+  };
+  const res = await fetch(`${API_URL}/api/v1/pos/sales`, {
+    method: "POST",
+    headers: {
+      Authorization: authHeader,
+      "Content-Type": "application/json",
+      "Idempotency-Key": item.idempotency_key,
+      "X-Terminal-Id": terminalUid,
+    },
+    body: JSON.stringify(body),
+  });
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    // Rejections (not auth/rate-limit/server errors) start with VALIDATION so the sync engine
+    // parks them for review instead of retrying forever.
+    const prefix = [400, 403, 404, 409, 422].includes(res.status) ? "VALIDATION_ERROR: " : "";
+    throw new Error(`${prefix}order: ${json?.message ?? res.statusText} (${json?.error_code ?? res.status})`);
   }
-
-  return tx.id as string;
+  return json.transaction.id as string;
 }
 
 async function syncPayment(
@@ -426,6 +405,19 @@ async function syncPayment(
     return orderServerId;
   }
   await assertShiftBelongsToBranch(admin, String(shiftId), branchId, shiftBranchCache);
+
+  // Orders synced through the API already put the sale in the shift's drawer.
+  if (orderServerId) {
+    const { data: already } = await admin
+      .from("cash_events")
+      .select("id")
+      .eq("restaurant_id", branchId)
+      .eq("reference_type", "sales_transaction")
+      .eq("reference_id", orderServerId)
+      .limit(1)
+      .maybeSingle();
+    if (already) return orderServerId;
+  }
 
   const { data, error } = await admin
     .from("cash_events")

@@ -35,12 +35,22 @@ async function stampIntegrity(
 export interface OfflineCartItem {
   menu_item_id: string;
   name: string;
+  /** Price tier ("regular" | "quarter" | "half" | "full"). */
+  size?: string | null;
   quantity: number;
   unit_price: number;
 }
 
 export interface RecordOfflineSaleInput {
+  /** Offline queue scope: the restaurant id (the sync engine drains by it). */
   branchId: string;
+  /** The branch the sale belongs to (sent to the API with the replay). */
+  saleBranchId?: string | null;
+  /**
+   * Idempotency key of the ORDER; pass the key of the online attempt that just failed so a
+   * sale that did reach the server is not recorded twice when the queue replays it.
+   */
+  idempotencyKey?: string;
   cashierId: string;
   shiftId: string | null;
   paymentMethod: string;
@@ -100,8 +110,10 @@ export async function recordOfflineSale(
     vat_rate: input.vatRate ?? VAT_RATE,
     prices_vat_inclusive: input.pricesVatInclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE,
     created_at: now.toISOString(),
+    branch_id: input.saleBranchId ?? null,
     items: input.items.map((it) => ({
       menu_item_id: it.menu_item_id,
+      size: it.size ?? null,
       quantity: it.quantity,
       unit_price: it.unit_price,
       total_price: it.unit_price * it.quantity,
@@ -160,7 +172,7 @@ export async function recordOfflineSale(
   });
 
   // Build sync queue entries with explicit dependencies.
-  const orderKey = buildIdempotencyKey(terminalId, "ORDER", orderLocalId);
+  const orderKey = input.idempotencyKey ?? buildIdempotencyKey(terminalId, "ORDER", orderLocalId);
   const paymentKey = buildIdempotencyKey(terminalId, "PAYMENT", paymentLocalId);
   const invoiceKey = buildIdempotencyKey(terminalId, "INVOICE", invoiceLocalId);
 

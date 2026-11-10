@@ -34,6 +34,30 @@ export function salesRepository({ db, tx }: ServiceTx) {
         .where(and(eq(menuItems.restaurantId, restaurantId), inArray(menuItems.id, ids)));
     },
 
+    /**
+     * Server-side price list: the menu item's prices with the branch's price row active on
+     * `day` laid over them (same rule as get_branch_menu_prices + applyBranchPrices on the
+     * terminal: a tier missing from the branch row keeps the base price).
+     */
+    async menuPrices(restaurantId: string, branchId: string | null, day: string, ids: string[]) {
+      return tx<{ id: string; selling: number; quarter: number; half: number; full: number }[]>`
+        select m.id,
+               coalesce(bp.full_price, m.selling_price, 0)::float8 as selling,
+               coalesce(bp.quarter_price, m.quarter_price, 0)::float8 as quarter,
+               coalesce(bp.half_price, m.half_price, 0)::float8 as half,
+               coalesce(bp.full_price, m.full_price, 0)::float8 as full
+        from public.menu_items m
+        left join lateral (
+          select p.quarter_price, p.half_price, p.full_price
+          from public.menu_item_branch_prices p
+          where ${branchId}::uuid is not null and p.branch_id = ${branchId}::uuid and p.menu_item_id = m.id
+            and p.effective_from <= ${day}::date and (p.effective_to is null or p.effective_to >= ${day}::date)
+          order by p.effective_from desc, p.created_at desc, p.id desc
+          limit 1
+        ) bp on true
+        where m.restaurant_id = ${restaurantId} and m.id = any(${ids}::uuid[])`;
+    },
+
     async openShift(restaurantId: string, shiftId: string) {
       const [s] = await db
         .select({ id: shifts.id, status: shifts.status })
@@ -115,7 +139,7 @@ export function salesRepository({ db, tx }: ServiceTx) {
     async createReorderRequests(params: { restaurantId: string; sold: { menuItemId: string; quantity: number; name: string }[] }) {
       if (!params.sold.length) return [];
       const sold = JSON.stringify(params.sold);
-      return tx<{ inventory_item_id: string; current_stock: number; reorder_level: number | null }[]>`
+      return tx<{ inventory_item_id: string; name: string; current_stock: number; reorder_level: number | null }[]>`
         with sold as (
           select (s->>'menuItemId')::uuid as menu_item_id, (s->>'quantity')::numeric as qty, s->>'name' as name
           from jsonb_array_elements(${sold}::jsonb) s
@@ -127,7 +151,7 @@ export function salesRepository({ db, tx }: ServiceTx) {
           where ri.restaurant_id = ${params.restaurantId}
         ),
         items as (
-          select i.id, i.current_stock, i.reorder_level
+          select i.id, i.name, i.current_stock, i.reorder_level
           from public.inventory_items i
           join need on need.inventory_item_id = i.id
           where i.restaurant_id = ${params.restaurantId}
@@ -140,7 +164,7 @@ export function salesRepository({ db, tx }: ServiceTx) {
             and not exists (select 1 from public.reorder_requests rr where rr.inventory_item_id = it.id and rr.status = 'pending')
           returning inventory_item_id
         )
-        select it.id as inventory_item_id, it.current_stock::float8 as current_stock, it.reorder_level::float8 as reorder_level
+        select it.id as inventory_item_id, it.name, it.current_stock::float8 as current_stock, it.reorder_level::float8 as reorder_level
         from items it
         where it.reorder_level is not null and it.current_stock <= it.reorder_level`;
     },

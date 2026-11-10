@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { recordOfflineSale } from "@/lib/offline/posService";
-import { recordSale, type RecordSaleResult } from "@/lib/api/pos";
+import { recordSale, type PriceChangedDetails, type RecordSaleResult, type SaleLineSize } from "@/lib/api/pos";
 import { ApiError } from "@/lib/api/http";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
@@ -806,7 +806,10 @@ export default function RecordSale() {
 
   const hasZatcaErrors = Object.keys(zatcaValidation).length > 0;
 
-  const queueSaleOffline = async () => {
+  // One idempotency key per checkout, shared by the online attempt and the offline queue: if
+  // the online request committed but its response was lost, the offline replay returns that
+  // sale instead of recording a second one.
+  const queueSaleOffline = async (idempotencyKey?: string) => {
     if (!restaurant?.id || !user?.id || cart.length === 0) {
       throw new Error("Invalid sale data");
     }
@@ -829,16 +832,22 @@ export default function RecordSale() {
 
     const activeShift = shiftsEnabled ? activeShifts[0] : undefined;
     const result = await recordOfflineSale({
-      branchId: activeBranchId,
+      // The offline queue is scoped by restaurant (the sync engine drains by restaurant id);
+      // the real branch travels in the payload.
+      branchId: restaurant.id,
+      saleBranchId: activeBranchId,
+      idempotencyKey,
       cashierId: user.id,
       shiftId: activeShift?.id ?? null,
       paymentMethod,
       customerId: isUnpaidSale ? selectedCustomer?.id ?? null : null,
       isUnpaid: isUnpaidSale,
       vatRate,
+      pricesVatInclusive: pricesInclusive,
       items: cart.map((c) => ({
         menu_item_id: c.menuItemId,
         name: c.name,
+        size: c.size === "combo" ? undefined : c.size,
         quantity: c.quantity,
         unit_price: c.price,
       })),
@@ -1250,8 +1259,9 @@ export default function RecordSale() {
       // button look stuck. We rely on the browser offline event + the warmed
       // connectivity watcher and immediately queue the sale when either says
       // offline.
+      const saleKey = crypto.randomUUID();
       if (browserOffline || !isPosOnline()) {
-        return queueSaleOffline();
+        return queueSaleOffline(saleKey);
       }
 
       // Validate STANDARD invoice buyer details (B2B requires 15-digit VAT)
@@ -1317,7 +1327,12 @@ export default function RecordSale() {
               paymentMethod,
               settlement: isUnpaidSale ? "unpaid" : "paid",
               createdAt: isUnpaidSale && isBackdated ? transactionTimestamp : null,
-              lines: cart.map((item) => ({ menuItemId: item.menuItemId, quantity: item.quantity, unitPrice: item.price })),
+              lines: cart.map((item) => ({
+                menuItemId: item.menuItemId,
+                size: item.size === "combo" ? undefined : (item.size as SaleLineSize),
+                quantity: item.quantity,
+                unitPrice: item.price,
+              })),
               invoice: {
                 subtype: invoiceSubtype,
                 buyerName: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,
@@ -1326,13 +1341,26 @@ export default function RecordSale() {
                 buyerAddress: invoiceSubtype === "STANDARD" ? buyerAddress.trim() || null : null,
               },
             },
-            { idempotencyKey: crypto.randomUUID() },
+            { idempotencyKey: saleKey },
           ),
           "Recording sale",
         );
       } catch (error) {
         if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
-          return queueSaleOffline();
+          return queueSaleOffline(saleKey);
+        }
+        if (error instanceof ApiError && error.code === "price_changed") {
+          // The server prices every line. Show the cashier the current prices before charging.
+          const changed = (error.details as PriceChangedDetails | undefined)?.lines ?? [];
+          setCart((prev) =>
+            prev.map((c) => {
+              const hit = changed.find((l) => l.menuItemId === c.menuItemId && l.size === (c.size === "combo" ? "regular" : c.size));
+              return hit ? { ...c, price: hit.current } : c;
+            }),
+          );
+          void queryClient.invalidateQueries({ queryKey: ["menu-items", restaurant.id] });
+          void queryClient.invalidateQueries({ queryKey: ["branch-menu-prices"] });
+          throw new Error("Prices changed since the menu was loaded. The cart now shows the current prices; check the total and charge again.");
         }
         throw error;
       }
