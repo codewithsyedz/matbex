@@ -20891,6 +20891,11 @@ export type Database = {
           recommended_action: string
         }[]
       }
+      compute_delivery_fee:
+        | {
+        Args: { p_subtotal: unknown }
+        Returns: number
+      }
       convert_fine_to_installments:
         | {
         Args: { p_fine_id?: unknown }
