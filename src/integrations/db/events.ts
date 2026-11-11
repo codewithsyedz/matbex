@@ -10,9 +10,10 @@
  * device was offline are not replayed; refetching closes that gap.
  *
  * One shared connection per page. It authenticates with the current access token, reconnects
- * when the token is refreshed, and disconnects on sign-out.
+ * when the token is refreshed, and disconnects on sign-out. socket.io-client is loaded on the
+ * first subscription, so it stays out of the entry bundle (.size-limit.json).
  */
-import { io, type Socket } from "socket.io-client";
+import type { Socket } from "socket.io-client";
 import { db } from "./client";
 import { API_URL } from "./config";
 
@@ -54,8 +55,14 @@ function joinAll(s: Socket) {
   rooms.forEach((sub) => s.emit("subscribe", { topic: sub.topic, restaurantId: sub.restaurantId }));
 }
 
-function ensureSocket(): Socket {
-  if (socket) return socket;
+let loading: Promise<Socket> | null = null;
+function ensureSocket(): Promise<Socket> {
+  if (socket) return Promise.resolve(socket);
+  loading ??= import("socket.io-client").then(({ io }) => createSocket(io));
+  return loading;
+}
+
+function createSocket(io: typeof import("socket.io-client").io): Socket {
   const s = io(API_URL, {
     path: "/socket.io",
     // Websocket only: no sticky sessions needed when several API instances run.
@@ -102,14 +109,18 @@ export function subscribeEvents(
   handler: (e: AppEvent) => void,
   onResync?: () => void,
 ): () => void {
-  const s = ensureSocket();
   const sub: Subscription = { topic, restaurantId, handler, onResync };
   subs.add(sub);
-  if (s.connected) s.emit("subscribe", { topic, restaurantId });
-  else if (!s.active) s.connect();
+  void ensureSocket().then((s) => {
+    if (!subs.has(sub)) return; // unsubscribed while the client was loading
+    if (s.connected) s.emit("subscribe", { topic, restaurantId });
+    else if (!s.active) s.connect();
+  });
 
   return () => {
     subs.delete(sub);
+    const s = socket;
+    if (!s) return;
     const stillUsed = [...subs].some((o) => roomKey(o) === roomKey(sub));
     if (!stillUsed && s.connected) s.emit("unsubscribe", { topic, restaurantId });
     if (subs.size === 0) s.disconnect();
