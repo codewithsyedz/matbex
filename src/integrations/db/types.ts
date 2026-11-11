@@ -1585,7 +1585,7 @@ export type Database = {
           last_paired_at?: string | null
           message?: string | null
           order_ref?: string | null
-          pair_code: string
+          pair_code?: string
           restaurant_id: string
           state?: string
           subtotal?: number
@@ -20811,6 +20811,8 @@ export type Database = {
         | {
         Args: { p_restaurant_id: string; p_pair_code: string }
         Returns: {
+          restaurant_id: string
+          pair_code: string
           state: string
           cart: Json
           subtotal: number
@@ -21731,6 +21733,11 @@ export type Database = {
         | {
         Args: { source_queue: unknown }
         Returns: number
+      }
+      new_cfd_pair_code:
+        | {
+        Args: never
+        Returns: string
       }
       next_zatca_chain:
         | {

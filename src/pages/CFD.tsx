@@ -16,7 +16,7 @@ import { db } from "@/integrations/db/client";
 // Route: /cfd
 // Modes:
 //   ?local=1                       → BroadcastChannel from same device
-//   ?code=ABC123&restaurant=<uuid> → paired-tablet realtime
+//   ?code=ABCD234EFG&restaurant=<uuid> → paired-tablet realtime
 //   (no params)                    → ask for pair code
 // ---------------------------------------------------------------------
 
@@ -34,7 +34,6 @@ function formatRiyal(n: number) {
 
 function PairPrompt({ onPair }: { onPair: (rid: string, code: string) => void }) {
   const [code, setCode] = useState("");
-  const [rid, setRid] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -46,14 +45,15 @@ function PairPrompt({ onPair }: { onPair: (rid: string, code: string) => void })
     try {
       // Look up via SECURITY DEFINER RPC (anon SELECT on cfd_sessions is closed).
       const { data, error: e2 }: any = await (db as any).rpc("cfd_get_session", {
-        p_restaurant_id: rid.trim() || null,
+        p_restaurant_id: null, // the code alone identifies the display
         p_pair_code: code.trim().toUpperCase(),
       });
       const row = Array.isArray(data) ? data[0] : data;
-      if (e2 || !row) {
+      if (e2 || !row?.restaurant_id) {
         setError("Pair code not found. Ask the cashier to re-share it.");
         return;
       }
+      // Codes are unique across restaurants, so the lookup tells us which restaurant this is.
       onPair(row.restaurant_id, row.pair_code);
     } finally {
       setBusy(false);
@@ -73,14 +73,14 @@ function PairPrompt({ onPair }: { onPair: (rid: string, code: string) => void })
           autoFocus
           className="w-full h-16 text-center text-3xl tracking-[0.4em] uppercase font-mono border rounded-lg bg-card"
           value={code}
-          maxLength={6}
-          placeholder="------"
+          maxLength={10}
+          placeholder="----------"
           onChange={(e) => setCode(e.target.value.toUpperCase())}
         />
         {error && <p className="text-sm text-destructive text-center">{error}</p>}
         <button
           type="submit"
-          disabled={busy || code.length < 4}
+          disabled={busy || code.trim().length < 10}
           className="w-full h-12 rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-50"
         >
           {busy ? "Pairing…" : "Pair display"}

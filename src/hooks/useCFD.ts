@@ -52,16 +52,6 @@ export interface CFDSession {
 const BROADCAST_CHANNEL = "matbex:cfd:v1";
 const ACTIVE_SESSION_LS_KEY = "matbex.cfd.activeSessionId.v1";
 
-function randomPairCode(): string {
-  // 6 chars, alphanumeric, no ambiguous 0/O/1/I
-  const alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let out = "";
-  for (let i = 0; i < 6; i += 1) {
-    out += alphabet[Math.floor(Math.random() * alphabet.length)];
-  }
-  return out;
-}
-
 function broadcast(payload: CFDSnapshot) {
   if (typeof window === "undefined" || typeof BroadcastChannel === "undefined") return;
   try {
@@ -150,7 +140,7 @@ export function useCFDSessions() {
         .from("cfd_sessions" as any)
         .insert({
           restaurant_id: rid,
-          pair_code: randomPairCode(),
+          // pair_code: assigned by the database (10 random characters, migration 20261111200912)
           label: label || null,
         })
         .select()
@@ -257,10 +247,10 @@ export function useCFDDisplay(params: {
       if (row) applyRow(row);
     };
     const heartbeat = () => {
-      void (db as any).rpc("cfd_heartbeat", {
-        p_restaurant_id: restaurantId,
-        p_pair_code: pairCode,
-      });
+      // Query builders are lazy: without then() the request is never sent.
+      void (db as any)
+        .rpc("cfd_heartbeat", { p_restaurant_id: restaurantId, p_pair_code: pairCode })
+        .then(() => undefined);
     };
 
     void fetchOnce();

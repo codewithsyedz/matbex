@@ -9,6 +9,7 @@ import {
   generateSalt,
   hashPin,
   readCachedPinMaterial,
+  queueUnlockEvent,
   takeQueuedUnlockEvents,
   validatePinFormat,
 } from "@/lib/kioskPin";
@@ -47,9 +48,18 @@ export function useKioskOfflinePin() {
   // Flush any unlock events recorded while offline.
   useEffect(() => {
     if (!restaurantId) return;
-    const pending = takeQueuedUnlockEvents().filter((e) => e.restaurant_id === restaurantId);
+    const all = takeQueuedUnlockEvents();
+    // Other restaurants' events stay queued for their own session.
+    all.filter((e) => e.restaurant_id !== restaurantId).forEach(queueUnlockEvent);
+    const pending = all.filter((e) => e.restaurant_id === restaurantId);
     if (pending.length === 0) return;
-    void db.from("kiosk_offline_unlock_events" as never).insert(pending as never);
+    // Query builders are lazy: then() sends the insert. On failure, keep the events queued.
+    void db
+      .from("kiosk_offline_unlock_events" as never)
+      .insert(pending as never)
+      .then(({ error }) => {
+        if (error) pending.forEach(queueUnlockEvent);
+      });
   }, [restaurantId]);
 
   const setPin = useMutation({
