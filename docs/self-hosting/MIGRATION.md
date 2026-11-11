@@ -140,9 +140,11 @@ Do a full dry run on a staging server with a copy of production first; time each
    it on the pending journal entries screen once the accountant agrees. It also marks unpaid cash/bank
    expenses that have a receipt attached as paid (Accounts Payable → payment account); those without a
    receipt stay open, and invoice payments missing from the ledger are only listed. Safe to re-run.
-   Lists for the accountant: `accountant-review/` (not in git). On the production copy (2026-11-11):
-   2,541 SAR of receipts to move, 1,841 owed on tabs, 30 receipted expenses (41,558.19 SAR) to mark paid,
-   4 without a receipt (3,330 SAR) left open.
+   Lists for the accountant: `accountant-review/` (not in git). Report on the production copy (staging,
+   2026-11-11): 2,541 SAR of settlement credits to move from 1100; 1130 set to 1,330 SAR, the customer
+   balances (open tab sales are 1,841; manual adjustments and custom-invoice payments make up the
+   difference), 3,871 via Cutover Clearing; none of the 10 invoice payments (4,823 SAR) is in the ledger;
+   30 receipted expenses (41,558.19 SAR) to mark paid, 4 without a receipt (3,330 SAR) left open.
 8. **Switch:** point DNS / `VITE_API_URL`, rebuild the web app and Android APK (`vars.VITE_API_URL`/`VITE_API_KEY`
     in GitHub), update webhook URLs at Stripe, Checkout.com, Hala, Twilio and delivery platforms to
     `https://<API_DOMAIN>/functions/v1/<name>`.

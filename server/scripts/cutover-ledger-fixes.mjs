@@ -72,7 +72,7 @@ async function tenantFixes(tx, t) {
     select coalesce(sum(tr.debit - tr.credit), 0)::float8 as bal1130
     from account_transactions tr where tr.account_id = ${cust} and not coalesce(tr.is_voided, false)`;
   out.unposted = await tx`
-    select sp.created_at::date as paid_on, si.invoice_number, sp.amount::float8 as amount, sp.payment_method
+    select to_char(sp.created_at, 'YYYY-MM-DD') as paid_on, si.invoice_number, sp.amount::float8 as amount, sp.payment_method
     from settlement_payments sp join settlement_invoices si on si.id = sp.settlement_invoice_id
     join restaurants r on r.id = sp.restaurant_id
     where r.tenant_id = ${t.id} and not coalesce(sp.ledger_posted, false) order by sp.created_at`;
@@ -107,7 +107,7 @@ async function tenantFixes(tx, t) {
 
   // --- 2. Receipted cash/bank expenses still unpaid ---
   const rows = await tx`
-    select e.id, e.expense_date, e.description, e.amount::float8 as amount, coalesce(e.receipt_url, '') <> '' as has_receipt
+    select e.id, to_char(e.expense_date, 'YYYY-MM-DD') as expense_date, e.description, e.amount::float8 as amount, coalesce(e.receipt_url, '') <> '' as has_receipt
     from expenses e join restaurants r on r.id = e.restaurant_id
     where r.tenant_id = ${t.id} and e.deleted_at is null and e.status = 'unpaid' and e.payment_account_id is not null
     order by e.expense_date`;
