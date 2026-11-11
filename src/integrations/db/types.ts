@@ -20337,6 +20337,25 @@ export type Database = {
         }
         Relationships: []
       }
+      storefront_settings: {
+        Row: {
+          accept_delivery: boolean | null
+          accept_pickup: boolean | null
+          accepting_orders: boolean | null
+          created_at: string | null
+          delivery_fee_flat: number | null
+          delivery_fee_tiers: Json | null
+          delivery_radius_km: number | null
+          id: string | null
+          min_order_amount: number | null
+          online_payment_enabled: boolean | null
+          prep_time_minutes: number | null
+          restaurant_id: string | null
+          storefront_message: string | null
+          updated_at: string | null
+        }
+        Relationships: []
+      }
       sync_health_v1: {
         Row: {
           cold_starts: number | null

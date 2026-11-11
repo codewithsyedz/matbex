@@ -13,7 +13,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ShoppingBag, Plus, Minus, Trash2, MapPin, Clock, Search, Flame, Star, ChefHat, Utensils, User, LayoutGrid, List } from "lucide-react";
 import { toast } from "sonner";
-import { computeDeliveryFee, computeRiderCommission } from "@/lib/deliveryFee";
+import { computeDeliveryFee } from "@/lib/deliveryFee";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
 
@@ -86,7 +86,8 @@ export default function PublicOrder() {
     enabled: !!restaurantId,
     queryFn: async () => {
       const { data, error } = await (db as any)
-        .from("online_ordering_settings")
+        // Public view without internal fields (rider commission); see migration 20261111113452.
+        .from("storefront_settings")
         .select("*")
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
@@ -184,10 +185,6 @@ export default function PublicOrder() {
           Number(settings.data?.delivery_fee_flat ?? 0),
         )
       : 0;
-  const riderCommission =
-    orderType === "delivery"
-      ? computeRiderCommission(deliveryFee, Number((settings.data as any)?.rider_commission_pct ?? 0))
-      : 0;
   const total = subtotal + deliveryFee;
 
   const addToCart = (item: any, variantKey: string, variantLabel: string, price: number) => {
@@ -241,7 +238,6 @@ export default function PublicOrder() {
         delivery_notes: notes.trim() || null,
         subtotal,
         delivery_fee: deliveryFee,
-        rider_commission: riderCommission,
         tax: 0,
         total,
         payment_method: payment,

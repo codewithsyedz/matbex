@@ -16,7 +16,6 @@ import postgres from "postgres";
 const ALLOWED_OPEN_POLICIES = {
   "client_errors / Anyone can log a client error": "browser error reports, insert-only",
   "menu_item_branch_availability / Public read menu branch availability": "public storefront menu",
-  "online_ordering_settings / Public can view storefront settings": "public storefront (delivery fees, opening state)",
   "restaurant_branding / Public can view branding for public pages": "public storefront branding",
   "tenant_applications / Anyone can submit applications": "public signup form, insert-only",
 };
