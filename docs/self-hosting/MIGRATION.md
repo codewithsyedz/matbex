@@ -139,7 +139,8 @@ Do a full dry run on a staging server with a copy of production first; time each
    Accounts and sets 1130 to what customers owe, against 1999 Cutover Clearing; an owner or manager approves
    it on the pending journal entries screen once the accountant agrees. It also marks unpaid cash/bank
    expenses that have a receipt attached as paid (Accounts Payable → payment account); those without a
-   receipt stay open, and invoice payments missing from the ledger are only listed. Safe to re-run.
+   receipt stay open. Invoice payments missing from the ledger are recorded in the same draft,
+   DR 1010 Bank / CR 1130 (accountant sign-off 2026-11-12, as was 1130 = customer balances). Safe to re-run.
    Lists for the accountant: `accountant-review/` (not in git). Report on the production copy (staging,
    2026-11-11): 2,541 SAR of settlement credits to move from 1100; 1130 set to 1,330 SAR, the customer
    balances (open tab sales are 1,841; manual adjustments and custom-invoice payments make up the

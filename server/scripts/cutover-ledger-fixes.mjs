@@ -15,8 +15,8 @@
  *      DR 1130 / CR 1999   bring Customer Accounts (1130) to what customers owe (positive
  *                          customer balances); 1999 "Cutover Clearing" is cleared by the
  *                          accountant against the cash count and delivery-platform statements
- *    Settlement payments that never reached the ledger are only listed: record the ones the
- *    bank statement or cash count proves.
+ *      DR 1010 / CR 1130   settlement-invoice payments that never reached the ledger,
+ *                          recorded against the bank (accountant sign-off, 2026-11-12)
  *
  * 2. Unpaid cash/bank expenses WITH a receipt attached are marked paid (paid_amount = amount);
  *    the expense triggers move their credit from Accounts Payable to the payment account.
@@ -77,12 +77,21 @@ async function tenantFixes(tx, t) {
     join restaurants r on r.id = sp.restaurant_id
     where r.tenant_id = ${t.id} and not coalesce(sp.ledger_posted, false) order by sp.created_at`;
 
-  // After the reclass, 1130 stands at bal1130 - misapplied; move it to what customers owe.
-  const toTarget = money(owed - (bal1130 - misapplied));
+  const [bank] = await tx`select id from chart_of_accounts where tenant_id = ${t.id} and account_code = '1010' and is_active limit 1`;
+  const unpostedTotal = money(out.unposted.reduce((a, u) => a + u.amount, 0));
+  if (unpostedTotal > 0 && !bank) throw new Error("Bank account 1010 is missing; cannot record the unposted invoice payments");
+  // After the reclass and the payments, 1130 stands at bal1130 - misapplied - unpostedTotal;
+  // move it to what customers owe.
+  const toTarget = money(owed - (bal1130 - misapplied - unpostedTotal));
   const lines = [];
   if (money(misapplied) > 0 && ar) {
     lines.push({ account_id: ar.id, debit: money(misapplied), credit: 0, description: "Customer receipts credited to delivery receivables (1100): moved to Customer Accounts" });
     lines.push({ account_id: cust, debit: 0, credit: money(misapplied), description: "Customer receipts credited to delivery receivables (1100): moved to Customer Accounts" });
+  }
+  for (const u of out.unposted) {
+    const d = `Invoice ${u.invoice_number} payment of ${u.paid_on} (${u.payment_method}), not in the ledger: recorded against the bank`;
+    lines.push({ account_id: bank.id, debit: money(u.amount), credit: 0, description: d });
+    lines.push({ account_id: cust, debit: 0, credit: money(u.amount), description: d });
   }
   if (toTarget !== 0) {
     const clearing = APPLY && !exists ? await clearingAccount(tx, t.id) : "1999";
@@ -94,7 +103,7 @@ async function tenantFixes(tx, t) {
       ? { account_id: clearing, debit: 0, credit: toTarget, description: "Cutover clearing: reconcile against cash count and delivery statements" }
       : { account_id: clearing, debit: -toTarget, credit: 0, description: "Cutover clearing: reconcile against cash count and delivery statements" });
   }
-  out.draft = { exists, misapplied: money(misapplied), owed: money(owed), creditBalances: money(credit_balances), bal1130: money(bal1130), toTarget, lines: lines.length };
+  out.draft = { exists, unpostedTotal, misapplied: money(misapplied), owed: money(owed), creditBalances: money(credit_balances), bal1130: money(bal1130), toTarget, lines: lines.length };
   if (APPLY && !exists && lines.length) {
     const [owner] = await tx`
       select user_id from user_tenant_roles where tenant_id = ${t.id} and role = 'owner' order by created_at limit 1`;
@@ -136,10 +145,11 @@ for (const t of tenants) {
     if (d.exists) console.log(`  receivables draft: already created (${REF}), skipped`);
     else if (d.lines) {
       console.log(`  receivables draft${APPLY ? " created (pending approval)" : ""}: move receipts ${fmt(d.misapplied)} from 1100 to 1130; ` +
+        `record ${r.unposted.length} unposted invoice payments ${fmt(d.unpostedTotal)} DR 1010 Bank / CR 1130; ` +
         `set 1130 to ${fmt(d.owed)} owed (was ${fmt(d.bal1130)}), ${fmt(d.toTarget)} via 1999 Cutover Clearing`);
       if (d.creditBalances) console.log(`  note: customers in credit total ${fmt(-d.creditBalances)} (a liability, not netted here)`);
     }
-    for (const u of r.unposted) console.log(`  invoice payment not in the ledger: ${u.paid_on} ${u.invoice_number} ${fmt(u.amount)} ${u.payment_method}: check against bank/cash`);
+    for (const u of r.unposted) console.log(`  in the draft: ${u.paid_on} ${u.invoice_number} ${fmt(u.amount)} (${u.payment_method}) DR 1010 Bank`);
     if (r.paid.length) console.log(`  receipted expenses ${APPLY ? "marked paid" : "to mark paid"}: ${r.paid.length}, ${fmt(r.paid.reduce((a, e) => a + e.amount, 0))}`);
     for (const e of r.refused) console.log(`  refused: ${e.expense_date} ${fmt(e.amount)} ${e.description ?? ""}: ${e.reason}`);
     if (r.open.length) console.log(`  left open, no receipt: ${r.open.length}, ${fmt(r.open.reduce((a, e) => a + e.amount, 0))}`);
