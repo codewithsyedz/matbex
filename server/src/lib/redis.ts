@@ -10,7 +10,6 @@ import { Redis } from "ioredis";
 import { config } from "../config.js";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __matbexRedis: Redis | null | undefined;
 }
 
