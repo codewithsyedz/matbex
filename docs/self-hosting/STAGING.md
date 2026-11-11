@@ -42,14 +42,20 @@ follow latency and Saudi data-residency requirements.
 
 ## Deploy a commit
 
-From the repo on your machine (copies the commit, not your working tree or `.env`):
+Automatically: every push to `custom-backend` runs CI (lint, typecheck, unit tests, bundle
+budget, migrations on an empty database, RLS audit, smoke test); when all pass, the
+`deploy-staging` job copies the commit to the server with `git archive` and runs
+`deploy/staging-deploy.sh` there (build, migrate, restart, smoke test). It uses its own SSH key
+(`~/.ssh/id_ed25519_matbex_staging_ci`, comment `github-actions-deploy`), and is skipped until
+these repository secrets exist: `STAGING_HOST`, `STAGING_SSH_KEY`, `STAGING_KNOWN_HOSTS`.
+To revoke CI access, delete the `github-actions-deploy` line from `~deploy/.ssh/authorized_keys`.
+
+By hand, from the repo on your machine:
 
 ```sh
 git archive --format=tar HEAD | ssh matbex-staging "tar -x -C ~/matbex && echo $(git rev-parse --short HEAD) > ~/matbex/.deployed-commit"
-ssh matbex-staging 'cd ~/matbex && docker compose build && docker compose run --rm migrate && docker compose up -d'
+ssh matbex-staging 'bash ~/matbex/deploy/staging-deploy.sh'
 ```
-
-With monitoring: add `-f docker-compose.yml -f docker-compose.observability.yml` to `up`.
 
 ## Smoke test (inside the server; the API is not reachable except through Cloudflare)
 
