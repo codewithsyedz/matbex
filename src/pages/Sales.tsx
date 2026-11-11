@@ -79,6 +79,7 @@ import { BranchTotalsExplainerBanner } from "@/components/branches/BranchTotalsE
 import { DayEndAdjustmentBreakdown } from "@/components/sales/DayEndAdjustmentBreakdown";
 import { useBranch } from "@/contexts/BranchContext";
 import { editSale, recordSummarySales, voidSale } from "@/lib/api/pos";
+import { VoidSaleDialog } from "@/components/sales/VoidSaleDialog";
 import { useTranslation } from "react-i18next";
 import { splitInclusive } from "@/lib/vatInclusive";
 
@@ -980,10 +981,10 @@ export default function Sales() {
 
   // Sales are never deleted: the server voids them (negative mirror sale, stock back, refund
   // from an open shift's drawer). POST /api/v1/pos/sales/:id/void
-  const handleDeleteSale = async (transactionId: string) => {
+  const handleDeleteSale = async (transactionId: string, reason: string) => {
     if (!restaurant?.id) return;
     try {
-      await voidSale(transactionId, { restaurantId: restaurant.id, reason: "Voided from the Sales page" });
+      await voidSale(transactionId, { restaurantId: restaurant.id, reason });
 
       toast({ title: t("app.sales.toasts.saleDeleted") });
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
@@ -2022,30 +2023,14 @@ export default function Sales() {
                                     <ArrowRightLeft className="h-4 w-4" />
                                   </Button>
                                 )}
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>{t("app.sales.delete.title")}</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        {t("app.sales.delete.desc", { receipt: transaction.receipt_number })}
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>{t("app.sales.actions.cancel")}</AlertDialogCancel>
-                                      <AlertDialogAction 
-                                        onClick={() => handleDeleteSale(transaction.id)}
-                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                      >
-                                        {t("app.sales.actions.delete")}
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                                <VoidSaleDialog
+                                  receipt={transaction.receipt_number}
+                                  onConfirm={(reason) => handleDeleteSale(transaction.id, reason)}
+                                >
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title={t("app.sales.delete.confirm")}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </VoidSaleDialog>
                               </>
                             )}
                           </div>

@@ -24,8 +24,8 @@ The app uses the production Matbex backend by default. Override via
 
 ```bash
 flutter run \
-  --dart-define=MATBEX_API_BASE=https://tlkyubkbbqwmzjaogavb.supabase.co/functions/v1/terminal-api \
-  --dart-define=SUPABASE_URL=https://tlkyubkbbqwmzjaogavb.supabase.co \
+  --dart-define=MATBEX_API_BASE=https://api.matbex.com/functions/v1/terminal-api \
+  --dart-define=SUPABASE_URL=https://api.matbex.com \
   --dart-define=SUPABASE_ANON_KEY=eyJ...
 ```
 

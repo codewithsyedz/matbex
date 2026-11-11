@@ -102,6 +102,7 @@ export default function CustomerDetail() {
   const [isAdjustmentDialogOpen, setIsAdjustmentDialogOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<any>(null);
   const [transactionToDelete, setTransactionToDelete] = useState<any>(null);
+  const [voidReason, setVoidReason] = useState("");
   const [transactionToWriteOff, setTransactionToWriteOff] = useState<any>(null);
   const [adjustmentToRevert, setAdjustmentToRevert] = useState<any>(null);
   const [invoiceToDelete, setInvoiceToDelete] = useState<any>(null);
@@ -306,18 +307,19 @@ export default function CustomerDetail() {
 
   // Delete transaction mutation
   const deleteTransactionMutation = useMutation({
-    mutationFn: async (transactionId: string): Promise<void> => {
+    mutationFn: async ({ id, reason }: { id: string; reason: string }): Promise<void> => {
       if (!restaurant?.id) throw new Error("Missing restaurant context");
 
       // Sales are never deleted; the server voids them and clears a credit sale from the
       // customer's balance. POST /api/v1/pos/sales/:id/void
-      await voidSale(transactionId, { restaurantId: restaurant.id, reason: "Voided from the customer page" });
+      await voidSale(id, { restaurantId: restaurant.id, reason });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["customer-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["customer", customerId] });
       queryClient.invalidateQueries({ queryKey: ["unpaid-counts"] });
       setTransactionToDelete(null);
+      setVoidReason("");
       toast.success("Transaction voided");
     },
     onError: (error: any) => {
@@ -1274,16 +1276,16 @@ export default function CustomerDetail() {
         </Dialog>
 
         {/* Delete Confirmation Dialog */}
-        <AlertDialog open={!!transactionToDelete} onOpenChange={(open) => !open && setTransactionToDelete(null)}>
+        <AlertDialog open={!!transactionToDelete} onOpenChange={(open) => { if (!open) { setTransactionToDelete(null); setVoidReason(""); } }}>
           <AlertDialogContent>
             <AlertDialogHeader>
               <AlertDialogTitle className="flex items-center gap-2">
                 <Trash2 className="h-5 w-5 text-destructive" />
-                Delete Transaction
+                Void Transaction
               </AlertDialogTitle>
               <AlertDialogDescription asChild>
                 <div className="space-y-3">
-                  <p>Are you sure you want to delete this unpaid transaction?</p>
+                  <p>Void this unpaid transaction? A reversing entry is recorded and its stock is returned.</p>
                   {transactionToDelete && (
                     <>
                       <div className="p-3 bg-muted rounded-md space-y-1">
@@ -1299,7 +1301,7 @@ export default function CustomerDetail() {
                           Customer's balance will decrease by {formatCurrency(transactionToDelete.total)} (from {formatCurrency(customer.current_balance)} to {formatCurrency(Math.max(0, customer.current_balance - transactionToDelete.total))}).
                         </p>
                         <p className="text-xs mt-2 opacity-80">
-                          Consider using "Write Off" instead to keep the transaction record.
+                          Use "Write Off" instead if the sale happened but the customer will not pay.
                         </p>
                       </div>
                     </>
@@ -1308,13 +1310,30 @@ export default function CustomerDetail() {
                 </div>
               </AlertDialogDescription>
             </AlertDialogHeader>
+            <div className="space-y-2">
+              <Label htmlFor="void-reason">Reason (required)</Label>
+              <Textarea
+                id="void-reason"
+                value={voidReason}
+                onChange={(e) => setVoidReason(e.target.value)}
+                placeholder="e.g. entered on the wrong customer, sale cancelled"
+                maxLength={500}
+                rows={3}
+              />
+            </div>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
               <AlertDialogAction
                 className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                onClick={() => transactionToDelete && deleteTransactionMutation.mutate(transactionToDelete.id)}
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (transactionToDelete && voidReason.trim().length >= 3) {
+                    deleteTransactionMutation.mutate({ id: transactionToDelete.id, reason: voidReason.trim() });
+                  }
+                }}
+                disabled={voidReason.trim().length < 3 || deleteTransactionMutation.isPending}
               >
-                {deleteTransactionMutation.isPending ? "Deleting..." : "Delete"}
+                {deleteTransactionMutation.isPending ? "Voiding..." : "Void transaction"}
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

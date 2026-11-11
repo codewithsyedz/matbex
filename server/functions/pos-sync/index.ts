@@ -519,7 +519,9 @@ async function syncReturn(
       shift_id: shiftId,
       restaurant_id: branchId,
       event_type: "refund",
-      amount: -total,
+      // Refunds are stored as positive amounts and subtracted from expected cash
+      // (CloseShiftModal, auto-shift-manager); a negative amount added the refund back.
+      amount: total,
       payment_method: p.payment_method ?? "cash",
       created_by: userId,
       description: `Refund ${p.refund_reference ?? ""} for ${p.original_receipt_number ?? "sale"}${p.reason ? ` - ${p.reason}` : ""}`.trim(),

@@ -1755,7 +1755,10 @@
       },
       "delete": {
         "title": "Void Sale Transaction",
-        "desc": "Void this sale ({{receipt}})? A negative entry is recorded, stock is returned and a cash refund is taken from the open shift. This cannot be undone."
+        "desc": "Void this sale ({{receipt}})? A negative entry is recorded, stock is returned and a cash refund is taken from the open shift. This cannot be undone.",
+        "reasonLabel": "Reason (required)",
+        "reasonPlaceholder": "e.g. customer cancelled, wrong items rung up",
+        "confirm": "Void sale"
       },
       "edit": {
         "title": "Edit Sale",
@@ -3007,7 +3010,11 @@
       "band": "Ticket band",
       "weekday": "Day",
       "hour": "Hour",
-      "methods": { "cash": "Cash", "card": "Card", "other": "Other" },
+      "methods": {
+        "cash": "Cash",
+        "card": "Card",
+        "other": "Other"
+      },
       "kpis": {
         "totalSales": "Total sales",
         "cashSales": "Cash sales",

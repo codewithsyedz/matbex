@@ -11,7 +11,7 @@ info:
     name: Matbex
     url: https://www.matbex.com
 servers:
-  - url: https://tlkyubkbbqwmzjaogavb.supabase.co/functions/v1/terminal-api
+  - url: https://api.matbex.com/functions/v1/terminal-api
     description: Production
 
 security:
