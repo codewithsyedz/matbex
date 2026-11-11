@@ -218,7 +218,7 @@ serve(async (req) => {
     const keyDer = pemToDer(privateKeyPem);
     const cryptoKey = await crypto.subtle.importKey(
       "pkcs8",
-      keyDer,
+      keyDer as BufferSource,
       { name: "ECDSA", namedCurve: "P-256" },
       false,
       ["sign"],

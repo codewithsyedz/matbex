@@ -1,6 +1,9 @@
 import { serve } from "../_runtime/serve.ts";
 import { corsHeaders } from '../_runtime/cors.ts';
 import { requireUser } from '../_shared/auth.ts';
+import { hasValidCronSecret } from '../_shared/cronSecret.ts';
+import { env } from '../_runtime/env.ts';
+import { createClient } from '@matbex/client';
 import { sendTemplateEmail } from '../_shared/transactional-email-templates/send-email.ts';
 import { pendingExpenseReasons, inventoryNeedsAttention, pendingSignature, type PendingRecord } from './pending.ts';
 const RESTAURANT_ID = 'fe1a4d9e-1595-43ba-a47a-37575a9a55b9';
@@ -10,16 +13,26 @@ serve(async req => {
   if (req.method === 'OPTIONS') return new Response('ok', {headers:corsHeaders});
   if (req.method !== 'POST') return response({error:'Method not allowed'},405);
   try {
-    const {userId, userClient} = await requireUser(req);
-    const {data: profile, error: profileError} = await userClient.from('profiles').select('tenant_id,restaurant_id').eq('id',userId).single();
-    if (profileError) throw profileError;
-    if (profile?.tenant_id !== TENANT_ID || profile.restaurant_id !== RESTAURANT_ID) return response({status:'not_enabled'});
-    const permissions = await Promise.all(['accountant','owner','manager','superadmin'].map(role => userClient.rpc('has_role', {_user_id:userId,_role:role})));
-    if (!permissions.some(p => !p.error && p.data === true)) return response({error:'Forbidden'},403);
+    // Two callers: the accountant dashboard (user JWT, checked below) and the worker's
+    // schedule (x-cron-secret; server/src/jobs/schedules.ts), so alerts go out while the
+    // dashboard is closed. Both read only the fixed restaurant and mail the fixed recipient;
+    // the content-derived idempotency key stops repeat sends of an unchanged backlog.
+    let client;
+    if (await hasValidCronSecret(req)) {
+      client = createClient(env('API_URL')!, env('SERVICE_ROLE_KEY')!, {auth:{persistSession:false}});
+    } else {
+      const {userId, userClient} = await requireUser(req);
+      const {data: profile, error: profileError} = await userClient.from('profiles').select('tenant_id,restaurant_id').eq('id',userId).single();
+      if (profileError) throw profileError;
+      if (profile?.tenant_id !== TENANT_ID || profile.restaurant_id !== RESTAURANT_ID) return response({status:'not_enabled'});
+      const permissions = await Promise.all(['accountant','owner','manager','superadmin'].map(role => userClient.rpc('has_role', {_user_id:userId,_role:role})));
+      if (!permissions.some(p => !p.error && p.data === true)) return response({error:'Forbidden'},403);
+      client = userClient;
+    }
     const load = async (table: 'expenses' | 'inventory_items', columns: string) => {
       const rows: PendingRecord[] = [];
       for (let offset=0; ;offset+=1000) {
-        let q = userClient.from(table).select(columns).eq('restaurant_id',RESTAURANT_ID).order('id').range(offset,offset+999);
+        let q = client.from(table).select(columns).eq('restaurant_id',RESTAURANT_ID).order('id').range(offset,offset+999);
         if (table==='expenses') q=q.eq('tenant_id',TENANT_ID).is('deleted_at',null);
         else q=q.eq('is_active',true);
         const {data,error}=await q;

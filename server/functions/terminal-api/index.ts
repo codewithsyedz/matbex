@@ -11,7 +11,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 // module-level response helpers below can spread them without a ReferenceError.
 let corsHeaders: Record<string, string> = buildCorsHeaders(new Request("https://matbex.com"));
 import { withMetrics } from "../_shared/metrics.ts";
-import { assertVersion, recordVersion, type VersionEnvelope } from "./versionGuard.ts";
+import { assertVersion, recordVersion, type VersionCheckError, type VersionEnvelope } from "./versionGuard.ts";
 const API_URL = env("API_URL")!;
 const SERVICE_ROLE = env("SERVICE_ROLE_KEY")!;
 const ANON_KEY = env("ANON_KEY")!;
@@ -494,7 +494,7 @@ async function handleCloseShift(ctx: TerminalCtx, body: any) {
     entityId: String(body.shift_id),
     envelope: env,
   });
-  if (!check.ok) return versionErr(check);
+  if (check.ok === false) return versionErr(check as VersionCheckError);
   const { data, error } = await ctx.cashierClient
     .from("shifts")
     .update({
@@ -567,7 +567,7 @@ async function handleSale(ctx: TerminalCtx, body: any) {
       entityId: String(env.entity_id),
       envelope: env,
     });
-    if (!pre.ok) return versionErr(pre);
+    if (pre.ok === false) return versionErr(pre as VersionCheckError);
   }
 
   const subtotal = body.items.reduce(
@@ -655,7 +655,7 @@ async function handleVoidSale(ctx: TerminalCtx, id: string, body: any) {
     entityId: String(id),
     envelope: env,
   });
-  if (!check.ok) return versionErr(check);
+  if (check.ok === false) return versionErr(check as VersionCheckError);
   // Use ledger-safe update; trigger logic in DB will handle reversal entries.
   const { data, error } = await ctx.cashierClient
     .from("sales_transactions")

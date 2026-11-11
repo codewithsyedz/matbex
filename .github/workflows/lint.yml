@@ -78,6 +78,8 @@ jobs:
       - run: npm --prefix server ci --no-audit --no-fund
       - name: Typecheck API
         run: npm --prefix server run typecheck
+      - name: Typecheck server functions
+        run: npm --prefix server run typecheck:functions
       - name: Function unit tests
         run: npm --prefix server test
       - name: Apply migrations to a clean database

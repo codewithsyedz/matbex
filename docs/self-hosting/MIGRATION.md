@@ -179,7 +179,7 @@ corrected balances it was given in their old state.
 | SECURITY DEFINER audit | Done: 436 → 44 functions callable by `anon`, new functions private by default, and every definer function a logged-in page calls now checks tenant access (or is revoked); see `FUNCTION_ACCESS_REVIEW.md`. |
 | Function typing | `npm --prefix server run typecheck:functions` reports 29 loose-typing issues in the ported function code (Deno never type-checked them strictly; runtime unaffected). |
 | Docs | `docs/terminal-api*`, Android and runbook docs still mention the old host; the paths are unchanged, only the base URL differs. |
-| Image transforms | The hosted image-resize endpoint is not replicated; the app already rewrites public storage URLs to `VITE_STORAGE_CDN_HOST` (Cloudflare). |
+| Image transforms | The hosted image-resize endpoint is not replicated; the app already rewrites public storage URLs to `VITE_STORAGE_CDN_HOST` (Cloudflare), and nothing requests resized images (uploads are shrunk in the browser). At cutover, point the `cdn.matbex.com` Worker's origin at `https://api.matbex.com`; until then it serves the old hosted storage, so files uploaded only on staging are not reachable through it. |
 | Horizontal scaling | Run several `api` replicas behind Caddy; jobs are leader-elected via an advisory lock. Realtime fan-out is per instance and driven by Postgres NOTIFY, so it already works across replicas. |
 
 ## 8. Roadmap — finishing the strangler

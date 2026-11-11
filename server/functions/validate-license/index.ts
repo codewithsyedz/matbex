@@ -250,7 +250,8 @@ async function refreshFromStripe(db: any, tenantId: string, _email: string) {
         if (subs.data.length > 0) {
           const sub = subs.data[0];
           status = sub.status;
-          periodEnd = new Date(sub.current_period_end * 1000).toISOString();
+          const end = sub.items?.data?.[0]?.current_period_end;
+          periodEnd = end ? new Date(end * 1000).toISOString() : null;
         }
       }
     } catch (e) {

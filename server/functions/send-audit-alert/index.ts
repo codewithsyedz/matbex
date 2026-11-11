@@ -117,7 +117,7 @@ const handler = async (req: Request): Promise<Response> => {
       .eq("tenant_id", tenant_id)
       .in("user_id", ownerIds);
 
-    const preferencesMap = new Map((preferences || []).map(p => [p.user_id, p]));
+    const preferencesMap = new Map<string, Record<string, any>>((preferences || []).map((p: Record<string, any>) => [p.user_id, p]));
     const preferenceColumn = ACTION_TO_PREFERENCE[action];
 
     // Process each owner

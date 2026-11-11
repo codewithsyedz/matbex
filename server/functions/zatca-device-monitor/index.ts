@@ -300,8 +300,8 @@ serve(async (req) => {
           .select("user_id, in_app_enabled, notify_zatca_alerts, email_enabled")
           .eq("tenant_id", a.tenantId)
           .in("user_id", userIds);
-        const prefByUser = new Map(
-          (prefs ?? []).map((p) => [p.user_id as string, p]),
+        const prefByUser = new Map<string, Record<string, any>>(
+          (prefs ?? []).map((p: Record<string, any>) => [p.user_id as string, p]),
         );
         const inAppRows = userIds
           .filter((uid) => {

@@ -30,7 +30,7 @@ serve(async (req) => {
       .not("tenant_id", "is", null);
     if (tErr) throw tErr;
 
-    const tenantIds = Array.from(new Set((tenants ?? []).map((r: { tenant_id: string }) => r.tenant_id)));
+    const tenantIds = Array.from(new Set<string>((tenants ?? []).map((r: { tenant_id: string }) => r.tenant_id)));
     const summary: Array<{ tenant_id: string; intact: boolean; broken_seq: number | null; alerted: number }> = [];
 
     for (const tenantId of tenantIds) {

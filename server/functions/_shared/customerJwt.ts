@@ -133,7 +133,7 @@ export async function verifyCustomerJwt(token: string): Promise<CustomerClaims> 
   const key = await hmacKey(secret);
   const data = new TextEncoder().encode(`${h}.${p}`);
   const sig = b64urlDecode(s);
-  const ok = await crypto.subtle.verify("HMAC", key, sig, data);
+  const ok = await crypto.subtle.verify("HMAC", key, sig as BufferSource, data);
   if (!ok) throw new Error("Invalid signature");
   const claims = JSON.parse(new TextDecoder().decode(b64urlDecode(p))) as CustomerClaims;
   if (claims.exp < Math.floor(Date.now() / 1000)) throw new Error("Token expired");

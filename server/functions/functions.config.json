@@ -1,6 +1,7 @@
 {
   "_comment": "Functions that accept requests without a Matbex JWT (webhooks, public endpoints, scheduler). They must authenticate callers themselves.",
   "public": [
+    "accountant-pending-alerts",
     "application-verification",
     "auto-shift-manager",
     "cache-proxy",

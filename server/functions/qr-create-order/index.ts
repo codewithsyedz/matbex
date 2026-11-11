@@ -83,7 +83,7 @@ serve(async (req) => {
     });
   }
 
-  const menuById = new Map((menuRows ?? []).map((m) => [m.id as string, m]));
+  const menuById = new Map<string, Record<string, any>>((menuRows ?? []).map((m: Record<string, any>) => [m.id as string, m]));
   const pricedItems: Array<{
     menu_item_id: string; name: string; variant?: string;
     quantity: number; price: number; line_total: number; notes?: string;

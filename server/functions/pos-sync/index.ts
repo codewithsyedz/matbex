@@ -109,7 +109,7 @@ serve(async (req) => {
     const parsed = validateBatch(rawBody);
     if (!parsed.ok) {
       return json(
-        { error: "invalid_batch", field_errors: parsed.errors },
+        { error: "invalid_batch", field_errors: (parsed as Extract<typeof parsed, { ok: false }>).errors },
         400,
         requestId,
       );

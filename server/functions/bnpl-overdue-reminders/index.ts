@@ -63,7 +63,7 @@ serve(async (req: Request) => {
         .from("installment_plans")
         .select("id, provider, supplier_name, description, status")
         .in("id", planIds);
-      const planMap = new Map((plans ?? []).map((p: any) => [p.id, p]));
+      const planMap = new Map<string, Record<string, any>>((plans ?? []).map((p: any) => [p.id, p]));
       const active = rows.filter((r) => planMap.get(r.plan_id)?.status === "active");
       if (active.length === 0) {
         results.push({ tenant: tenantId, skipped: "no-active-plans" });
