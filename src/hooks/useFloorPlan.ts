@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 export type TableStatus = "free" | "seated" | "ordered" | "billing" | "dirty";
 export type TableShape = "rect" | "circle";
@@ -128,20 +129,13 @@ export function useFloorTables(floorPlanId: string | null) {
   });
 
   // Realtime subscription
-  useEffect(() => {
-    if (!restaurantId) return;
-    const ch = db
-      .channel(`pos_tables_${restaurantId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "pos_tables", filter: `restaurant_id=eq.${restaurantId}` },
-        () => qc.invalidateQueries({ queryKey: ["floor-tables", restaurantId] })
-      )
-      .subscribe();
-    return () => {
-      db.removeChannel(ch);
-    };
-  }, [restaurantId, qc]);
+  // Live updates over the event channel (topic "pos").
+  useTableChanges({
+    topic: "pos",
+    restaurantId,
+    tables: ["pos_tables"],
+    onChange: () => qc.invalidateQueries({ queryKey: ["floor-tables", restaurantId] }),
+  });
 
   const createTable = useMutation({
     mutationFn: async (input: Partial<FloorTable> & { label: string; code: string }) => {

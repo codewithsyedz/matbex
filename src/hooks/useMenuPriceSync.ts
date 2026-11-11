@@ -3,6 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatZonedYMD } from "@/lib/timezone";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 /** Query keys that hold menu prices on POS/menu surfaces. */
 const PRICE_QUERY_KEYS = [
@@ -82,28 +83,16 @@ export function useMenuPriceSync(branchId: string | null | undefined): MenuPrice
   );
 
   // 1. Realtime push on the version counter (covers menu items + branch prices).
-  useEffect(() => {
-    if (!restaurantId || !branchId) return;
-    const channel = db
-      .channel(`menu-price-sync-${branchId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "pos_entity_versions",
-          filter: `restaurant_id=eq.${restaurantId}`,
-        },
-        (payload: any) => {
-          const row = payload.new ?? payload.old;
-          if (!row || row.entity_type !== "menu_prices") return;
-          if (row.entity_id !== branchId && row.entity_id !== "tenant") return;
-          void checkVersion(true);
-        },
-      )
-      .subscribe();
-    return () => { void db.removeChannel(channel); };
-  }, [restaurantId, branchId, checkVersion]);
+  // A price version bump for this branch (or the whole tenant) triggers a check, over the
+  // event channel (topic "pos").
+  useTableChanges({
+    topic: "pos",
+    restaurantId,
+    tables: ["pos_entity_versions"],
+    enabled: !!branchId,
+    filter: (c) => c.entity_type === "menu_prices" && (c.entity_id === branchId || c.entity_id === "tenant"),
+    onChange: () => void checkVersion(true),
+  });
 
   // 2. Poll every 60s + initial read.
   useEffect(() => {

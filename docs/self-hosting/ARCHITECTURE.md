@@ -321,10 +321,25 @@ They used to be emitted as UBL `CreditNote` documents, which the signer rejected
   pgcrypto lives in `extensions`; every update of a sale's `zatca_clearance_status` rolled back
   (`20261110170020`). Supabase also installs pgcrypto in `extensions`, so check production.
 
+### Live updates: event channel vs /realtime/v1
+
+Restaurant-scoped, high-traffic screens use the event channel: `platform.trg_outbox_row_change`
+(`20261111095309`) emits `<table>.<op>` events with ids only (no row contents, since one
+restaurant room holds users with different roles) on topic `pos` (pos_tables, online_orders,
+menu_items, menu_item_branch_prices, pos_entity_versions, inventory_items,
+kiosk_unlock_requests) or `sales` (sales_transactions, sales_items, shifts, cash_events,
+expenses); screens refetch through `useTableChanges()`, which merges bursts and refetches after a
+reconnect. Moved: floor plan, online orders, branch prices, price sync, kiosk unlock, dashboard,
+today ticker, top sellers, shifts, Sales page (plus the KDS earlier).
+
+Still on `/realtime/v1`, on purpose: subscriptions scoped to a user or conversation
+(notifications, chat), global rows (feature flags), the public storefront menu
+(`useLiveMenuItems`: visitors are not signed in and cannot join a restaurant room), and
+low-traffic back-office screens whose rows need per-user RLS (audit logs, journal entries,
+posting jobs, projects, ZATCA alerts, VAT incidents, ZATCA status).
+
 ## Next steps, in order
 
-1. Move the POS terminal's own live updates (ticket ready, table status) onto events, then retire
-   the matching `/realtime/v1` subscriptions screen by screen.
 2. R2 and managed PostgreSQL/Redis: settings and a test run.
 3. GitHub Actions: typecheck, unit tests, migrations on a fresh database, smoke test, image build
    and push, deploy.

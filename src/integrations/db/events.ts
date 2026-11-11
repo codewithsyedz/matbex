@@ -16,7 +16,7 @@ import { io, type Socket } from "socket.io-client";
 import { db } from "./client";
 import { API_URL } from "./config";
 
-export type EventTopic = "kds" | "pos";
+export type EventTopic = "kds" | "pos" | "sales";
 
 export interface AppEvent<P = Record<string, unknown>> {
   id: number;

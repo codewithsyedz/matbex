@@ -26,6 +26,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 interface TopSeller {
   menuItemId: string;
@@ -102,19 +103,13 @@ export function TopSellersCard({ dateRange }: TopSellersCardProps = {}) {
   });
 
   // Real-time refresh on new sales line items for this restaurant.
-  useEffect(() => {
-    if (!restaurant?.id) return;
-    const filter = `restaurant_id=eq.${restaurant.id}`;
-    const channel = db
-      .channel(`top-sellers-rt-${restaurant.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales_items", filter }, () => {
-        qc.invalidateQueries({ queryKey: ["top-sellers", restaurant.id] });
-      })
-      .subscribe();
-    return () => {
-      db.removeChannel(channel);
-    };
-  }, [restaurant?.id, qc]);
+  // Refresh on new sales lines for this restaurant (event channel, topic "sales").
+  useTableChanges({
+    topic: "sales",
+    restaurantId: restaurant?.id,
+    tables: ["sales_items"],
+    onChange: () => qc.invalidateQueries({ queryKey: ["top-sellers", restaurant?.id] }),
+  });
 
   const topFive = useMemo(() => (data ?? []).slice(0, 5), [data]);
 

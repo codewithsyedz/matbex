@@ -4,7 +4,7 @@
  *
  *   connect      handshake auth: { token: <user access token> }   (websocket transport only,
  *                so several API replicas work without sticky sessions)
- *   subscribe    { topic: "kds", restaurantId }  → ack { ok } ; joins room "kds:<restaurantId>"
+ *   subscribe    { topic: "kds" | "pos" | "sales", restaurantId }  → ack { ok } ; joins room "kds:<restaurantId>"
  *                only if public.can_access_restaurant() is true for this user (checked in
  *                Postgres as the caller, the same rule RLS uses)
  *   unsubscribe  { topic, restaurantId }
@@ -23,7 +23,7 @@ import { registry } from "../lib/metrics.js";
 import { redis } from "../lib/redis.js";
 import { EVENTS_CHANNEL, setLocalEventSink, type OutboxEvent } from "./outbox.js";
 
-const TOPICS = new Set(["kds", "pos"]);
+const TOPICS = new Set(["kds", "pos", "sales"]);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const emitted = new client.Counter({

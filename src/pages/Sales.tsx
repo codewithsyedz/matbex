@@ -82,6 +82,7 @@ import { editSale, recordSummarySales, voidSale } from "@/lib/api/pos";
 import { VoidSaleDialog } from "@/components/sales/VoidSaleDialog";
 import { useTranslation } from "react-i18next";
 import { splitInclusive } from "@/lib/vatInclusive";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 interface SalesItem {
   id: string;
@@ -861,35 +862,18 @@ export default function Sales() {
   }, [restaurant?.id]);
 
   // Realtime: refresh today's metrics + transactions list when sales change
-  useEffect(() => {
-    if (!restaurant?.id) return;
-    const channel = db
-      .channel(`sales-realtime-${restaurant.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "sales_transactions",
-          filter: `restaurant_id=eq.${restaurant.id}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["sales-today-total"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-today-count"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-today-by-shift"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-count"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-filtered-stats"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-this-month"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-fiscal-month-paid-unpaid"] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      db.removeChannel(channel);
-    };
-  }, [restaurant?.id, queryClient]);
+  // Live updates over the event channel (topic "sales").
+  useTableChanges({
+    topic: "sales",
+    restaurantId: restaurant?.id,
+    tables: ["sales_transactions"],
+    onChange: () => {
+      for (const key of ["sales-today-total", "sales-today-count", "sales-today-by-shift", "sales-transactions",
+        "sales-count", "sales-filtered-stats", "sales-this-month", "sales-fiscal-month-paid-unpaid"]) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+    },
+  });
 
   const fetchOpenShifts = async () => {
     if (!restaurant?.id) return;

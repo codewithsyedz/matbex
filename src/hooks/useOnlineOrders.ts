@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 export type OnlineOrderStatus =
   | "pending"
@@ -70,20 +71,13 @@ export function useOnlineOrders(restaurantId?: string | null) {
     },
   });
 
-  useEffect(() => {
-    if (!restaurantId) return;
-    const channel = db
-      .channel(`online-orders-${restaurantId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "online_orders", filter: `restaurant_id=eq.${restaurantId}` },
-        () => qc.invalidateQueries({ queryKey: ["online-orders", restaurantId] })
-      )
-      .subscribe();
-    return () => {
-      db.removeChannel(channel);
-    };
-  }, [restaurantId, qc]);
+  // New and updated online orders, over the event channel (topic "pos").
+  useTableChanges({
+    topic: "pos",
+    restaurantId,
+    tables: ["online_orders"],
+    onChange: () => qc.invalidateQueries({ queryKey: ["online-orders", restaurantId] }),
+  });
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: OnlineOrderStatus }) => {

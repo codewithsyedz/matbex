@@ -15,6 +15,7 @@ import { useDashboardFilterStore } from "@/stores/dashboardFilterStore";
 import { startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 interface TodayTickerBadgesProps {
   /** Hide uppercase metric labels (Today Sales / Expenses / Transactions). */
@@ -115,22 +116,14 @@ function TodayTickerBadgesInner({ compact }: { compact: boolean }) {
 
   // Real-time refresh: invalidate the ticker whenever a sale or expense
   // is created, updated, or deleted for this restaurant.
-  useEffect(() => {
-    if (!restaurant?.id) return;
-    const filter = `restaurant_id=eq.${restaurant.id}`;
-    const channel = db
-      .channel(`ticker-rt-${restaurant.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales_transactions", filter }, () => {
-        qc.invalidateQueries({ queryKey: ["today-ticker", restaurant.id, activeBranchId] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "expenses", filter }, () => {
-        qc.invalidateQueries({ queryKey: ["today-ticker", restaurant.id, activeBranchId] });
-      })
-      .subscribe();
-    return () => {
-      db.removeChannel(channel);
-    };
-  }, [restaurant?.id, qc, activeBranchId]);
+  // Real-time refresh: invalidate the ticker whenever a sale or expense changes for this
+  // restaurant (event channel, topic "sales").
+  useTableChanges({
+    topic: "sales",
+    restaurantId: restaurant?.id,
+    tables: ["sales_transactions", "expenses"],
+    onChange: () => qc.invalidateQueries({ queryKey: ["today-ticker", restaurant?.id, activeBranchId] }),
+  });
 
   if (isLoading) {
     return (

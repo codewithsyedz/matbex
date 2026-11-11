@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import { db } from "@/integrations/db/client";
+import { subscribeEvents } from "@/integrations/db/events";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTerminalId } from "@/lib/offline/terminal";
 import { exitKioskMode, isNativeKioskAvailable } from "@/lib/kiosk";
@@ -82,19 +83,17 @@ export function KioskUnlockListener() {
     void check();
     const timer = window.setInterval(check, POLL_MS);
 
-    const channel = db
-      .channel(`kiosk-unlock-${restaurantId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "kiosk_unlock_requests" },
-        () => void check(),
-      )
-      .subscribe();
+    // A new unlock request for this restaurant triggers a check at once (event channel,
+    // topic "pos"); polling above covers missed events.
+    const unsubscribe = subscribeEvents("pos", restaurantId, (e) => {
+      const change = e.payload as { table?: string; op?: string };
+      if (change.table === "kiosk_unlock_requests" && change.op === "insert") void check();
+    });
 
     return () => {
       cancelled = true;
       if (timer) window.clearInterval(timer);
-      db.removeChannel(channel);
+      unsubscribe();
     };
   }, [restaurantId]);
 

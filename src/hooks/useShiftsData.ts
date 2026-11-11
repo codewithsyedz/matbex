@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 export interface Shift {
   id: string;
@@ -171,31 +172,18 @@ export function useShiftsData() {
   useEffect(() => {
     if (restaurant?.id) {
       fetchAll();
-
-      // Real-time subscription for shifts
-      const channel = db
-        .channel("shifts-realtime")
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "shifts",
-            filter: `restaurant_id=eq.${restaurant.id}`,
-          },
-          () => {
-            fetchShifts();
-          }
-        )
-        .subscribe();
-
-      return () => {
-        db.removeChannel(channel);
-      };
     }
     // refetch when branch switch happens
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurant?.id, activeBranchId]);
+
+  // Live updates for shifts (event channel, topic "sales").
+  useTableChanges({
+    topic: "sales",
+    restaurantId: restaurant?.id,
+    tables: ["shifts"],
+    onChange: () => fetchShifts(),
+  });
 
   const getOpenShiftForDrawer = (drawerId: string) => {
     return shifts.find((s) => s.drawer_id === drawerId && s.status === "open");

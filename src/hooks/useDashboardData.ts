@@ -10,6 +10,7 @@ import { cachedQueryFn, CACHE_TTL } from "@/lib/redisCache";
 import { fetchReconciledSalesByDay } from "@/lib/reconciledSales";
 import { qk } from "@/lib/query/queryKeys";
 import { dashboardQueryOptions, referenceQueryOptions } from "@/lib/query/queryPolicy";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 interface ShiftData {
   id: string;
@@ -353,35 +354,23 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
   });
 
   // Realtime invalidation
-  useEffect(() => {
-    if (!restaurantId) return;
-    const invalidate = (entities: string[]) =>
-      entities.forEach((entity) =>
-        queryClient.invalidateQueries({ queryKey: qk.dashboard.entityAll(entity, restaurantId) }),
-      );
-
-    const ch1 = db
-      .channel("dashboard-shifts")
-      .on("postgres_changes", { event: "*", schema: "public", table: "shifts", filter: `restaurant_id=eq.${restaurantId}` },
-        () => invalidate(["shifts", "closedShifts"]))
-      .subscribe();
-    const ch2 = db
-      .channel("dashboard-cash-events")
-      .on("postgres_changes", { event: "*", schema: "public", table: "cash_events", filter: `restaurant_id=eq.${restaurantId}` },
-        () => invalidate(["closedShifts", "shifts"]))
-      .subscribe();
-    const ch3 = db
-      .channel("dashboard-sales")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales_transactions", filter: `restaurant_id=eq.${restaurantId}` },
-        () => invalidate(["salesAgg", "compSalesAgg", "reconciledSales", "compReconciledSales", "vatSplit"]))
-      .subscribe();
-
-    return () => {
-      db.removeChannel(ch1);
-      db.removeChannel(ch2);
-      db.removeChannel(ch3);
-    };
-  }, [restaurantId, queryClient]);
+  // Live updates over the event channel (topic "sales").
+  const invalidateDashboard = (entities: string[]) =>
+    entities.forEach((entity) =>
+      queryClient.invalidateQueries({ queryKey: qk.dashboard.entityAll(entity, restaurantId) }),
+    );
+  useTableChanges({
+    topic: "sales",
+    restaurantId,
+    tables: ["shifts", "cash_events"],
+    onChange: () => invalidateDashboard(["shifts", "closedShifts"]),
+  });
+  useTableChanges({
+    topic: "sales",
+    restaurantId,
+    tables: ["sales_transactions"],
+    onChange: () => invalidateDashboard(["salesAgg", "compSalesAgg", "reconciledSales", "compReconciledSales", "vatSplit"]),
+  });
 
   // Derived data
   const drawerMap = useMemo(
