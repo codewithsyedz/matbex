@@ -31,6 +31,8 @@ export interface DailySalesSummary {
   card_sales: number;
   delivery_sales: number;
   other_sales: number;
+  /** Sales put on customers' tabs (posted to Customer Accounts receivable, not cash). */
+  account_sales?: number;
   total_sales: number;
   pos_reported_total: number | null;
   system_calculated_total: number | null;
@@ -115,6 +117,23 @@ function parseDailySalesError(error: Error | string): { message: string; field?:
   return { message: message || 'An error occurred while saving sales data.' };
 }
 
+/**
+ * What each customer sale of the day put on the customer's tab (sale_account_amounts,
+ * migration 20261111190452). End of Day leaves these out of cash/card and posts them to the
+ * Customer Accounts receivable.
+ */
+async function fetchAccountAmounts(restaurantId: string, branchId: string | null, from: Date, to: Date) {
+  const { data, error } = await db.rpc("sale_account_amounts", {
+    p_restaurant_id: restaurantId,
+    p_branch_id: branchId as string,
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
+  });
+  if (error) throw error;
+  return new Map<string, number>((data ?? []).map((r: { sale_id: string; on_account: number }) => [r.sale_id, Number(r.on_account) || 0]));
+}
+const sumAccount = (m: Map<string, number>) => Math.round([...m.values()].reduce((a, b) => a + b, 0) * 100) / 100;
+
 export function useDailySales(date?: string) {
   const { user, restaurant, tenant } = useAuth();
   const { activeBranchId, isAllBranches, hasMultipleBranches, isBranchReady } = useBranch();
@@ -180,6 +199,8 @@ export function useDailySales(date?: string) {
         card: 0,
         delivery: 0,
         other: 0,
+        /** Put on customers' tabs: left out of cash/card, posted as receivable. */
+        account: 0,
         transactions: [] as Array<{
           id: string;
           receipt_number: string | null;
@@ -187,6 +208,8 @@ export function useDailySales(date?: string) {
           total: number;
           created_at: string;
           bucket: 'cash' | 'card' | 'delivery' | 'other';
+          /** Part of the sale put on the customer's tab (not taken at the till). */
+          on_account: number;
         }>,
         startISO: '',
         endExclusiveISO: '',
@@ -206,9 +229,10 @@ export function useDailySales(date?: string) {
       const { data, error } = await q;
 
       if (error) throw error;
-      const [overrides, rules] = await Promise.all([
+      const [overrides, rules, onAccount] = await Promise.all([
         fetchPaymentMap(restaurant.id),
         fetchPaymentRules(restaurant.id),
+        fetchAccountAmounts(restaurant.id, activeBranchId ?? null, start, endExclusive),
       ]);
       const acc = {
         ...empty,
@@ -220,7 +244,10 @@ export function useDailySales(date?: string) {
       for (const r of data || []) {
         const amt = Number(r.total) || 0;
         const bucket = bucketForPaymentMethod(r.payment_method as string, overrides, rules);
-        acc[bucket] += amt;
+        // A tab sale's unpaid part was not taken at the till: it is not cash or card.
+        const owedPart = onAccount.get(r.id as string) ?? 0;
+        acc[bucket] += amt - owedPart;
+        acc.account += owedPart;
         acc.transactions.push({
           id: r.id as string,
           receipt_number: (r as { receipt_number: string | null }).receipt_number,
@@ -228,6 +255,7 @@ export function useDailySales(date?: string) {
           total: amt,
           created_at: r.created_at as string,
           bucket,
+          on_account: owedPart,
         });
       }
       return acc;
@@ -259,6 +287,7 @@ export function useDailySales(date?: string) {
       const { data: txData } = await txQ;
       
       const systemCalcTotal = txData?.reduce((sum, t) => sum + (Number(t.total) || 0), 0) || 0;
+      const accountSales = sumAccount(await fetchAccountAmounts(restaurant.id, activeBranchId ?? null, cStart, cEnd));
 
       const { data: result, error } = await db
         .from('daily_sales_summary')
@@ -271,6 +300,7 @@ export function useDailySales(date?: string) {
           card_sales: data.card_sales,
           delivery_sales: data.delivery_sales,
           other_sales: data.other_sales || 0,
+          account_sales: accountSales,
           pos_reported_total: data.pos_reported_total,
           system_calculated_total: systemCalcTotal,
           variance_notes: data.variance_notes,
@@ -323,6 +353,7 @@ export function useDailySales(date?: string) {
       // keep the total captured when the row was first created, otherwise the
       // variance shown on the day-end screen is computed against stale data.
       let systemCalcTotal: number | undefined;
+      let accountSales: number | undefined;
       if (restaurant?.id) {
         const { data: existing } = await db
           .from('daily_sales_summary')
@@ -344,6 +375,7 @@ export function useDailySales(date?: string) {
           if (scopeBranch) sysQ = sysQ.eq('branch_id', scopeBranch);
           const { data: sysRows } = await sysQ;
           systemCalcTotal = (sysRows || []).reduce((sum, t) => sum + (Number(t.total) || 0), 0);
+          accountSales = sumAccount(await fetchAccountAmounts(restaurant.id, scopeBranch ?? null, uStart, uEnd));
         }
       }
 
@@ -352,6 +384,7 @@ export function useDailySales(date?: string) {
         .update({
           ...updateData,
           ...(systemCalcTotal !== undefined ? { system_calculated_total: systemCalcTotal } : {}),
+          ...(accountSales !== undefined ? { account_sales: accountSales } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)

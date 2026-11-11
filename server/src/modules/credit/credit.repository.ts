@@ -165,10 +165,21 @@ export function creditRepository({ tx }: ServiceTx) {
     },
 
     async lockAdjustment(restaurantId: string, adjustmentId: string) {
-      const [a] = await tx<{ id: string; customer_id: string; adjustment_type: string; amount: number; reason: string; transaction_id: string | null; reference_number: string | null; created_at: string }[]>`
-        select id, customer_id, adjustment_type, amount::float8 as amount, reason, transaction_id, reference_number, created_at::text as created_at
+      const [a] = await tx<{ id: string; customer_id: string; adjustment_type: string; amount: number; reason: string; transaction_id: string | null; reference_number: string | null; created_at: string; ledger_posted: boolean }[]>`
+        select id, customer_id, adjustment_type, amount::float8 as amount, reason, transaction_id, reference_number, created_at::text as created_at,
+               coalesce(ledger_posted, false) as ledger_posted
         from public.customer_balance_adjustments where id = ${adjustmentId} and restaurant_id = ${restaurantId} for update`;
       return a ?? null;
+    },
+
+    /**
+     * Ledger entry for an instalment, write-off or write-off reversal, in this transaction
+     * (post_customer_credit_to_ledger, migrations 20261111124900 / 20261111190452):
+     * DR cash/bank or Bad Debt, CR Customer Accounts receivable (1130), or the reverse.
+     * Marks the adjustment posted.
+     */
+    async postToLedger(adjustmentId: string, kind: "collection" | "write_off" | "write_off_reversal", opts: { paymentMethod?: string; reverses?: string } = {}) {
+      await tx`select public.post_customer_credit_to_ledger(${adjustmentId}, ${kind}, ${opts.paymentMethod ?? null}, ${opts.reverses ?? null})`;
     },
 
     async reversalExists(adjustmentId: string) {

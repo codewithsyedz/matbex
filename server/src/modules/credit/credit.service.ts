@@ -12,6 +12,9 @@
  * - An instalment pays one credit sale directly (not one that is on an invoice).
  * - A write-off settles what a sale still owes and keeps a write_off adjustment tied to it;
  *   reverting puts the sale back on the customer's tab.
+ * - Ledger: tab sales are debited to Customer Accounts receivable (1130) at End of Day.
+ *   Instalments, write-offs (on a sale or manual) and write-off reversals credit/debit it in
+ *   the same transaction as the adjustment (repo.postToLedger); invoice payments do so by trigger.
  */
 import { badRequest, HttpError } from "../../lib/errors.js";
 import type { DbClaims } from "../../db.js";
@@ -184,12 +187,13 @@ export async function paySale(saleId: string, input: PaymentInput, claims: Claim
     const fully = newPaid + 0.004 >= sale.total;
     await repo.setSalePaid(sale.id, newPaid, fully ? "paid" : "unpaid");
     // Tied to the sale: a record of the instalment, not a second reduction of the balance.
-    await repo.insertAdjustment({
+    const adj = await repo.insertAdjustment({
       restaurantId: input.restaurantId, tenantId: customer.tenant_id, customerId: customer.id, type: "credit", amount,
       reason: `Payment for ${sale.receipt_number ?? sale.id}`,
       notes: `${input.paymentMethod.toUpperCase()} payment${input.notes ? `: ${input.notes}` : ""}`,
       userId: claims.sub, saleId: sale.id, reference: sale.receipt_number,
     });
+    await repo.postToLedger(adj.id, "collection", { paymentMethod: input.paymentMethod });
     return { fullyPaid: fully, paidAmount: newPaid, balance: await repo.balance(customer.id) };
   });
 }
@@ -211,6 +215,7 @@ export async function writeOffSale(saleId: string, input: WriteOffInput, claims:
       notes: input.notes ?? `Transaction dated ${sale.created_at.slice(0, 10)} written off`,
       userId: claims.sub, saleId: sale.id,
     });
+    await repo.postToLedger(adj.id, "write_off");
     return { adjustmentId: adj.id, amount, balance: await repo.balance(customer.id) };
   });
 }
@@ -230,12 +235,14 @@ export async function revertWriteOff(adjustmentId: string, restaurantId: string,
       if (!sale || sale.voided_at) throw conflict("The written-off sale was voided", "sale_voided");
       if (sale.settlement_status === "settled") await repo.setSalePaid(sale.id, sale.paid_amount, "unpaid");
     }
-    await repo.insertAdjustment({
+    const reversal = await repo.insertAdjustment({
       restaurantId, tenantId: customer.tenant_id, customerId: customer.id, type: "debit", amount: adj.amount,
       reason: `Reversal of write-off: ${adj.reason}`,
       notes: `Reverted write-off from ${adj.created_at.slice(0, 10)}. Original reference: ${adj.reference_number ?? "N/A"}`,
       userId: claims.sub, saleId: adj.transaction_id, reference: `REV-${adj.id}`,
     });
+    // Only undo in the ledger what reached it (write-offs from before posting began did not).
+    if (adj.ledger_posted) await repo.postToLedger(reversal.id, "write_off_reversal", { reverses: adj.id });
     return { balance: await repo.balance(customer.id) };
   });
 }
@@ -253,6 +260,9 @@ export async function addAdjustment(input: AdjustmentInput, claims: Claims) {
       amount: roundMoney(input.amount), reason: input.reason.trim(), notes: input.notes?.trim() || null,
       userId: claims.sub, createdAt: input.createdAt ?? null,
     });
+    // A manual write-off reduces what the customer owes like one on a sale. Other manual
+    // adjustments (opening balances, goodwill, corrections) stay off the ledger.
+    if (input.type === "write_off") await repo.postToLedger(adj.id, "write_off");
     return { adjustment: adj, balance: await repo.balance(customer.id) };
   });
 }

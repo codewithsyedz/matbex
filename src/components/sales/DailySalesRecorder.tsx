@@ -214,11 +214,15 @@ export function DailySalesRecorder() {
   }, [deliveryBreakdown]);
 
   // Calculated values
+  // Sales put on customers' tabs: worked out from the POS (not typed), left out of cash/card
+  // and posted to the Customer Accounts receivable when the day is posted.
+  const accountSales = Number(dailySales?.account_sales ?? systemBreakdown?.account ?? 0) || 0;
   const totalSales = 
     (parseFloat(cashSales) || 0) + 
     (parseFloat(cardSales) || 0) + 
     (parseFloat(deliverySales) || 0) + 
-    (parseFloat(otherSales) || 0);
+    (parseFloat(otherSales) || 0) +
+    accountSales;
   
   const isLocked = dailySales?.status === 'closed';
   const isPrefilling = isBreakdownLoading && !dailySales;
@@ -842,6 +846,11 @@ export function DailySalesRecorder() {
                   />
                 </div>
               </div>
+              {accountSales > 0 && (
+                <p className="text-xs text-muted-foreground" data-testid="account-sales-note">
+                  {t('app.dailySalesRecorder.accountSales', { amount: formatCurrency(accountSales) })}
+                </p>
+              )}
 
               {/* Total Display */}
               <div className="flex items-center justify-between pt-4 border-t">

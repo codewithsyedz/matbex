@@ -132,6 +132,17 @@ Do a full dry run on a staging server with a copy of production first; time each
 7. **On cutover day:** freeze writes (step 3), then run `--yes --fresh` against production's new database, then
    `--steps urls --rewrite-urls --yes`. Do not switch DNS until `verify` passes with 0 mismatches.
 
+7b. **Ledger fixes** (accounting decisions of 2026-11-11), right after the data move, before switching:
+   `DATABASE_URL=... node server/scripts/cutover-ledger-fixes.mjs` reports what it will do; add `--apply`
+   to do it. Per business it creates a **draft** journal (reference `CUTOVER-AR`, pending, nothing posted)
+   that moves customer receipts wrongly credited to 1100 (delivery-platform receivables) to 1130 Customer
+   Accounts and sets 1130 to what customers owe, against 1999 Cutover Clearing; an owner or manager approves
+   it on the pending journal entries screen once the accountant agrees. It also marks unpaid cash/bank
+   expenses that have a receipt attached as paid (Accounts Payable → payment account); those without a
+   receipt stay open, and invoice payments missing from the ledger are only listed. Safe to re-run.
+   Lists for the accountant: `accountant-review/` (not in git). On the production copy (2026-11-11):
+   2,541 SAR of receipts to move, 1,841 owed on tabs, 30 receipted expenses (41,558.19 SAR) to mark paid,
+   4 without a receipt (3,330 SAR) left open.
 8. **Switch:** point DNS / `VITE_API_URL`, rebuild the web app and Android APK (`vars.VITE_API_URL`/`VITE_API_KEY`
     in GitHub), update webhook URLs at Stripe, Checkout.com, Hala, Twilio and delivery platforms to
     `https://<API_DOMAIN>/functions/v1/<name>`.

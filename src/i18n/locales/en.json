@@ -3461,7 +3461,8 @@
       },
       "salesPosted": "Sales posted to Chart of Accounts successfully",
       "aiSalesPosted": "Sales posted to {{account}} with {{confidence}}% AI confidence",
-      "ledgerFailed": "Failed to post to ledger"
+      "ledgerFailed": "Failed to post to ledger",
+      "accountSales": "On customer accounts (from the POS, not in cash or card): {{amount}}. Posted to Customer Accounts receivable; leave it out of the cash you count."
     }
   },
   "productNav": {

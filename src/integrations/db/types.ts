@@ -4359,6 +4359,7 @@ export type Database = {
       }
       daily_sales_summary: {
         Row: {
+          account_sales: number
           ai_revenue_account_id: string | null
           approved_at: string | null
           approved_by: string | null
@@ -4390,6 +4391,7 @@ export type Database = {
           variance_status: string | null
         }
         Insert: {
+          account_sales?: number
           ai_revenue_account_id?: string | null
           approved_at?: string | null
           approved_by?: string | null
@@ -4421,6 +4423,7 @@ export type Database = {
           variance_status?: string | null
         }
         Update: {
+          account_sales?: number
           ai_revenue_account_id?: string | null
           approved_at?: string | null
           approved_by?: string | null
@@ -20948,6 +20951,11 @@ export type Database = {
         Args: never
         Returns: string
       }
+      customer_receivable_account:
+        | {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
       dashboard_expense_summary:
         | {
         Args: { p_restaurant_id: string; p_start_date: string; p_end_date: string }
@@ -22328,6 +22336,14 @@ export type Database = {
         | {
         Args: { p_date?: string }
         Returns: number
+      }
+      sale_account_amounts:
+        | {
+        Args: { p_restaurant_id: string; p_branch_id: string; p_from: string; p_to: string }
+        Returns: {
+          sale_id: string
+          on_account: number
+        }[]
       }
       sale_posting_monitor:
         | {
