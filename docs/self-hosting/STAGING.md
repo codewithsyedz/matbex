@@ -108,3 +108,7 @@ the superadmin has no role in; that restaurant's owner can copy them with the sa
 they can be downloaded by hand. The 123 `menu_items.image_url` links were then switched from the
 old host to `https://staging-api.matbex.com` (on cutover day the data move's
 `--steps urls --rewrite-urls --yes` does this against the restored export).
+
+## Backups
+
+Nightly encrypted database and file backups to Cloudflare R2, with a tested restore: see [BACKUPS.md](BACKUPS.md).
