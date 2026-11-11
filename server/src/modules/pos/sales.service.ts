@@ -20,21 +20,13 @@ import { inServiceTx, type ServiceTx } from "../shared/db.js";
 import { requireRestaurantRole } from "../shared/access.js";
 import { salesRepository } from "./sales.repository.js";
 import type { CreateSaleInput, CreateSaleResult, SaleLineSize, SaleQuote } from "./sales.schema.js";
+import { comboLines, priceFor, type PricedLine } from "./pricing.js";
+export { comboLines, priceFor } from "./pricing.js";
 import { DEFAULT_PRICES_VAT_INCLUSIVE, lineGross, roundMoney, splitListed, sumMoney, VAT_RATE } from "../../../../src/lib/vatInclusive.ts";
 
 const SALE_ROLES = ["owner", "manager", "cashier", "waiter"] as const;
 /** How far back an offline sale may be replayed. */
 const OFFLINE_MAX_AGE_MS = 30 * 24 * 3600_000;
-
-type PriceRow = { selling: number; quarter: number; half: number; full: number };
-
-/** Same tier rule as the POS cart (RecordSale addToCart): a missing tier falls back to the regular price. */
-export function priceFor(p: PriceRow, size: SaleLineSize = "regular"): number {
-  if (size === "quarter" && p.quarter > 0) return p.quarter;
-  if (size === "half" && p.half > 0) return p.half;
-  if (size === "full" && p.full > 0) return p.full;
-  return p.selling;
-}
 
 export interface CreateSaleOptions {
   claims: DbClaims & { sub: string };
@@ -54,7 +46,20 @@ async function priceSale(
   { offline, saleAt }: { offline: boolean; saleAt: string | null },
 ) {
     // ---- references must belong to this restaurant ---------------------------------------
-    const ids = [...new Set(input.lines.map((l) => l.menuItemId))];
+    const comboIds = [...new Set(input.lines.flatMap((l) => (l.comboId ? [l.comboId] : [])))];
+    const combos = new Map((await repo.combos(input.restaurantId, comboIds)).map((c) => [c.id, c] as const));
+    const unknownCombos = comboIds.filter((id) => !combos.has(id));
+    if (unknownCombos.length) throw badRequest(`Unknown combos for this restaurant: ${unknownCombos.join(", ")}`, "combo_not_found");
+    const inactiveCombos = [...combos.values()].filter((c) => !c.isActive);
+    if (inactiveCombos.length) throw badRequest(`Combos are inactive: ${inactiveCombos.map((c) => c.name).join(", ")}`, "combo_inactive");
+    const emptyCombos = [...combos.values()].filter((c) => !c.items.length);
+    if (emptyCombos.length) throw badRequest(`Combos have no items: ${emptyCombos.map((c) => c.name).join(", ")}`, "combo_empty");
+    const ids = [
+      ...new Set([
+        ...input.lines.flatMap((l) => (l.menuItemId ? [l.menuItemId] : [])),
+        ...[...combos.values()].flatMap((c) => c.items.map((i) => i.menuItemId)),
+      ]),
+    ];
     const items = await repo.activeMenuItems(input.restaurantId, ids);
     const byId = new Map(items.map((i) => [i.id, i]));
     const unknown = ids.filter((id) => !byId.has(id));
@@ -89,14 +94,24 @@ async function priceSale(
     // shows base menu prices (all-branches view), so those are what we charge.
     const prices = new Map((await repo.menuPrices(input.restaurantId, input.branchId ?? null, day, ids)).map((p) => [p.id, p]));
     const changed: { menuItemId: string; size: SaleLineSize; shown: number; current: number }[] = [];
-    const priced = input.lines.map((l) => {
-      const size = l.size ?? "regular";
-      const current = roundMoney(priceFor(prices.get(l.menuItemId)!, size));
-      if (offline) return { ...l, unitPrice: roundMoney(l.unitPrice!) };
-      if (l.unitPrice != null && Math.abs(roundMoney(l.unitPrice) - current) >= 0.005) {
-        changed.push({ menuItemId: l.menuItemId, size, shown: roundMoney(l.unitPrice), current });
+    // The terminal's price for a line: checked against the server's (online) or, for an offline
+    // replay, charged as shown. A combo is reported under its own id in price_changed.
+    const charge = (id: string, size: SaleLineSize, current: number, shown: number | undefined) => {
+      if (offline) return roundMoney(shown!);
+      if (shown != null && Math.abs(roundMoney(shown) - current) >= 0.005) {
+        changed.push({ menuItemId: id, size, shown: roundMoney(shown), current });
       }
-      return { ...l, unitPrice: current };
+      return current;
+    };
+    const lines: PricedLine[] = input.lines.flatMap((l): PricedLine[] => {
+      if (l.comboId) {
+        const combo = combos.get(l.comboId)!;
+        const unit = charge(combo.id, "regular", roundMoney(combo.price), l.unitPrice);
+        return comboLines(combo, l.quantity, lineGross(unit, l.quantity), prices);
+      }
+      const size = l.size ?? "regular";
+      const unit = charge(l.menuItemId!, size, roundMoney(priceFor(prices.get(l.menuItemId!)!, size)), l.unitPrice);
+      return [{ menuItemId: l.menuItemId!, size, quantity: l.quantity, unitPrice: unit, lineTotal: lineGross(unit, l.quantity), comboId: null }];
     });
     if (changed.length) {
       throw new HttpError(409, "Prices changed since the menu was loaded; refresh and check the order", "price_changed", { lines: changed });
@@ -105,7 +120,6 @@ async function priceSale(
     // ---- totals (same rounding as the POS screen) ----------------------------------------
     const rate = vat.branch?.vatRate != null ? Number(vat.branch.vatRate) / 100 : VAT_RATE;
     const inclusive = vat.branch?.inclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE;
-    const lines = priced.map((l) => ({ ...l, lineTotal: lineGross(l.unitPrice, l.quantity) }));
     const documentDiscount = roundMoney(input.documentDiscount ?? 0);
     const documentSurcharge = roundMoney(input.documentSurcharge ?? 0);
     const linesTotal = sumMoney(lines.map((l) => l.lineTotal));
@@ -233,6 +247,7 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
         quantity: l.quantity,
         unitPrice: String(l.unitPrice),
         totalPrice: String(l.lineTotal),
+        comboId: l.comboId,
       })),
     );
 

@@ -24,9 +24,12 @@ export const createSaleBody = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["menuItemId", "quantity"],
+        required: ["quantity"],
+        // A line is a menu item, or a combo package (recorded as its component items).
+        oneOf: [{ required: ["menuItemId"] }, { required: ["comboId"] }],
         properties: {
           menuItemId: uuid,
+          comboId: uuid,
           /** Price tier; the server looks the price up (menu item + branch price list). */
           size: { type: "string", enum: ["regular", "quarter", "half", "full"], default: "regular" },
           quantity: { type: "integer", minimum: 1, maximum: 10000 },
@@ -99,7 +102,7 @@ export interface CreateSaleInput {
   paymentMethod: "cash" | "card" | "other";
   settlement?: "paid" | "unpaid";
   createdAt?: string | null;
-  lines: { menuItemId: string; size?: SaleLineSize; quantity: number; unitPrice?: number }[];
+  lines: { menuItemId?: string; comboId?: string; size?: SaleLineSize; quantity: number; unitPrice?: number }[];
   offline?: { receiptNumber: string; createdAt: string } | null;
   documentDiscount?: number;
   documentSurcharge?: number;

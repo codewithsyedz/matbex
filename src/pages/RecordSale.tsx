@@ -845,6 +845,7 @@ export default function RecordSale() {
       pricesVatInclusive: pricesInclusive,
       items: cart.map((c) => ({
         menu_item_id: c.menuItemId,
+        combo_id: c.isCombo ? c.menuItemId : null,
         name: c.name,
         size: c.size === "combo" ? undefined : c.size,
         quantity: c.quantity,
@@ -1329,12 +1330,16 @@ export default function RecordSale() {
               // Same amounts the receipt and the ZATCA invoice use (zatcaTotals).
               documentDiscount: zatcaTotals.discountSar,
               documentSurcharge: zatcaTotals.surchargeSar,
-              lines: cart.map((item) => ({
-                menuItemId: item.menuItemId,
-                size: item.size === "combo" ? undefined : (item.size as SaleLineSize),
-                quantity: item.quantity,
-                unitPrice: item.price,
-              })),
+              lines: cart.map((item) =>
+                item.isCombo
+                  ? { comboId: item.menuItemId, quantity: item.quantity, unitPrice: item.price }
+                  : {
+                      menuItemId: item.menuItemId,
+                      size: item.size as SaleLineSize,
+                      quantity: item.quantity,
+                      unitPrice: item.price,
+                    },
+              ),
               invoice: {
                 subtype: invoiceSubtype,
                 buyerName: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,

@@ -34,6 +34,18 @@ export function salesRepository({ db, tx }: ServiceTx) {
         .where(and(eq(menuItems.restaurantId, restaurantId), inArray(menuItems.id, ids)));
     },
 
+    /** Combo packages of this restaurant with their component items (combo_package_items). */
+    async combos(restaurantId: string, ids: string[]) {
+      if (!ids.length) return [];
+      return tx<{ id: string; name: string; price: number; isActive: boolean; items: { menuItemId: string; quantity: number; portion: string | null }[] }[]>`
+        select c.id, c.name, coalesce(c.price, 0)::float8 as price, coalesce(c.is_active, true) as "isActive",
+               coalesce(json_agg(json_build_object('menuItemId', i.menu_item_id, 'quantity', i.quantity, 'portion', i.portion_type)
+                        order by i.created_at) filter (where i.id is not null), '[]') as items
+        from public.combo_packages c left join public.combo_package_items i on i.combo_id = c.id
+        where c.restaurant_id = ${restaurantId} and c.id in ${tx(ids)}
+        group by c.id`;
+    },
+
     /**
      * Server-side price list: the menu item's prices with the branch's price row active on
      * `day` laid over them (same rule as get_branch_menu_prices + applyBranchPrices on the

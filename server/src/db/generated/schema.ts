@@ -182,12 +182,14 @@ export const salesItems = pgTable("sales_items", {
 	restaurantId: uuid("restaurant_id").notNull(),
 	createdAt: timestamp("created_at", { withTimezone: true, mode: 'string' }).defaultNow().notNull(),
 	branchId: uuid("branch_id"),
+	comboId: uuid("combo_id"),
 }, (table) => [
 	index("idx_sales_items_created_at").using("btree", table.createdAt.asc().nullsLast().op("timestamptz_ops")),
 	index("idx_sales_items_menu_item").using("btree", table.menuItemId.asc().nullsLast().op("uuid_ops")),
 	index("idx_sales_items_restaurant_branch").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops"), table.branchId.asc().nullsLast().op("uuid_ops")),
-	index("idx_sales_items_restaurant_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.desc().nullsFirst().op("uuid_ops")),
+	index("idx_sales_items_restaurant_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
 	index("idx_sales_items_transaction").using("btree", table.transactionId.asc().nullsLast().op("uuid_ops")),
+	index("sales_items_combo_id_idx").using("btree", table.comboId.asc().nullsLast().op("uuid_ops")).where(sql`(combo_id IS NOT NULL)`),
 ]);
 
 export const userTenantRoles = pgTable("user_tenant_roles", {

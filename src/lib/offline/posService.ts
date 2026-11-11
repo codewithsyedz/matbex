@@ -33,7 +33,10 @@ async function stampIntegrity(
 }
 
 export interface OfflineCartItem {
+  /** For a combo line, the combo's id (also in combo_id). */
   menu_item_id: string;
+  /** Set when the line is a combo package: the server records its component items. */
+  combo_id?: string | null;
   name: string;
   /** Price tier ("regular" | "quarter" | "half" | "full"). */
   size?: string | null;
@@ -113,6 +116,7 @@ export async function recordOfflineSale(
     branch_id: input.saleBranchId ?? null,
     items: input.items.map((it) => ({
       menu_item_id: it.menu_item_id,
+      combo_id: it.combo_id ?? null,
       size: it.size ?? null,
       quantity: it.quantity,
       unit_price: it.unit_price,

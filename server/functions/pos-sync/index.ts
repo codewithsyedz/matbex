@@ -358,12 +358,16 @@ async function syncOrder(item: BatchItem, restaurantId: string, terminalUid: str
     paymentMethod: methods.has(p.payment_method) ? p.payment_method : "other",
     settlement: p.settlement_status === "unpaid" ? "unpaid" : "paid",
     offline: { receiptNumber: String(p.receipt_number), createdAt: p.created_at ?? new Date().toISOString() },
-    lines: items.map((it: any) => ({
-      menuItemId: it.menu_item_id,
-      ...(sizes.has(it.size) ? { size: it.size } : {}),
-      quantity: Number(it.quantity ?? 1),
-      unitPrice: Number(it.unit_price ?? 0),
-    })),
+    lines: items.map((it: any) =>
+      it.combo_id
+        ? { comboId: it.combo_id, quantity: Number(it.quantity ?? 1), unitPrice: Number(it.unit_price ?? 0) }
+        : {
+            menuItemId: it.menu_item_id,
+            ...(sizes.has(it.size) ? { size: it.size } : {}),
+            quantity: Number(it.quantity ?? 1),
+            unitPrice: Number(it.unit_price ?? 0),
+          },
+    ),
   };
   const res = await fetch(`${API_URL}/api/v1/pos/sales`, {
     method: "POST",

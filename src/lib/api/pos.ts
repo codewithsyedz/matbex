@@ -22,7 +22,8 @@ export interface RecordSaleInput {
    * screen showed) to be told about stale prices (409 price_changed) instead of the server
    * silently charging a different amount. Offline replays must send it.
    */
-  lines: { menuItemId: string; size?: SaleLineSize; quantity: number; unitPrice?: number }[];
+  /** A line is a menu item, or a combo package (comboId; the server records its component items). */
+  lines: { menuItemId?: string; comboId?: string; size?: SaleLineSize; quantity: number; unitPrice?: number }[];
   /** Only for replaying a sale rung up offline: the printed receipt number and time of sale. */
   offline?: { receiptNumber: string; createdAt: string } | null;
   /** Document-level discount / surcharge in listed amounts, applied before VAT is split. */

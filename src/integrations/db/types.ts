@@ -15485,6 +15485,7 @@ export type Database = {
       sales_items: {
         Row: {
           branch_id: string | null
+          combo_id: string | null
           created_at: string
           id: string
           menu_item_id: string
@@ -15496,6 +15497,7 @@ export type Database = {
         }
         Insert: {
           branch_id?: string | null
+          combo_id?: string | null
           created_at?: string
           id?: string
           menu_item_id: string
@@ -15507,6 +15509,7 @@ export type Database = {
         }
         Update: {
           branch_id?: string | null
+          combo_id?: string | null
           created_at?: string
           id?: string
           menu_item_id?: string
@@ -15522,6 +15525,13 @@ export type Database = {
               columns: ["branch_id"]
               isOneToOne: false
               referencedRelation: "branches"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "sales_items_combo_id_fkey"
+              columns: ["combo_id"]
+              isOneToOne: false
+              referencedRelation: "combo_packages"
               referencedColumns: ["id"]
             },
             {
