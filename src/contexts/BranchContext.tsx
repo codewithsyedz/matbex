@@ -26,6 +26,8 @@ function releaseBodyPointerLock() {
   // single delayed clear races with Radix's own cleanup, leaving the
   // page unclickable. Poll for ~1s and clear every time it reappears.
   const clear = () => {
+    // Delayed calls can outlive the page (tests tear the DOM down within the 1 s window).
+    if (typeof document === "undefined" || !document.body) return;
     if (document.body.style.pointerEvents === "none") {
       document.body.style.pointerEvents = "";
     }
