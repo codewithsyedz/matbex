@@ -7,6 +7,7 @@ import { Check, Building2, Rocket, Crown, Sparkles, Gift } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useRegion } from "@/hooks/useRegion";
+import { PLAN_PRICES_SAR, SAR_PER_USD, annualTotalSar, planKeyFromName } from "@/data/pricing";
 import { OptimizedLottie } from "@/components/performance/OptimizedLottie";
 
 interface Plan {
@@ -53,6 +54,7 @@ const planSelectedColors: Record<string, string> = {
 const planFeatureKeys: Record<string, string[]> = {
   trial: ["trial1", "trial2", "trial3"],
   free: ["free1", "free2", "free3"],
+  starter: ["free1", "free2", "free3"],
   essentials: ["essentials1", "essentials2", "essentials3", "essentials4"],
   pro: ["pro1", "pro2", "pro3", "pro4", "pro5"],
   enterprise: ["enterprise1", "enterprise2", "enterprise3", "enterprise4", "enterprise5"],
@@ -99,8 +101,15 @@ export function PlanSelector({
     fetchPlans();
   }, []);
 
-  const getAnnualPrice = (monthlyPrice: number) => {
-    return Math.round(monthlyPrice * 12 * 0.83);
+  /**
+   * Prices come from src/data/pricing.ts (SAR per branch per month; yearly = 10 months), the
+   * same list as the pricing page. formatPrice expects USD, so SAR is divided by SAR_PER_USD.
+   */
+  const priceOf = (planName: string, dbPrice: number) => {
+    const key = planKeyFromName(planName);
+    if (!key) return planName.toLowerCase() === "trial" ? 0 : dbPrice / SAR_PER_USD;
+    const sar = billingInterval === "annual" ? annualTotalSar(key) : PLAN_PRICES_SAR[key].monthly;
+    return sar / SAR_PER_USD;
   };
 
   if (loading) {
@@ -163,9 +172,7 @@ export function PlanSelector({
           const planKey = plan.name.toLowerCase();
           const featureKeys = planFeatureKeys[planKey] || [];
           const features = featureKeys.map((k) => t(`register.plans.features.${k}`));
-          const displayPrice = billingInterval === "annual" 
-            ? getAnnualPrice(plan.price)
-            : plan.price;
+          const displayPrice = priceOf(plan.name, Number(plan.price) || 0);
           const isPro = planKey === "pro";
           const isTrial = planKey === "trial";
 

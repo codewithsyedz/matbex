@@ -652,14 +652,15 @@
       "termsNotice": "By continuing, you agree to Matbex Terms of Service & Privacy Policy",
       "names": {
         "trial": "Trial",
-        "free": "Starter Core",
+        "free": "Starter (legacy)",
         "essentials": "Essentials",
-        "pro": "Pro",
-        "enterprise": "Enterprise"
+        "pro": "Growth",
+        "enterprise": "Enterprise",
+        "starter": "Starter Core"
       },
       "features": {
         "trial1": "14 Days Free",
-        "trial2": "Full Pro Features",
+        "trial2": "Growth features, 1 branch",
         "trial3": "No Credit Card Required",
         "free1": "1 branch, up to 3 users",
         "free2": "POS + Cash Drawer + Shifts",

@@ -54,8 +54,10 @@ serve(async (req) => {
       return json({ ok: true, already_exists: true, tenant_id: existing[0].tenant_id, restaurant_id: rest?.id ?? null })
     }
 
-    // Starter and Growth trial on Pro features; Enterprise on Enterprise.
-    const planName = plan === 'enterprise' ? 'enterprise' : plan === 'starter' ? 'starter' : 'pro'
+    // Every trial runs on Growth ('pro'): Growth features, one branch (enforced by the database
+    // while the tenant is on trial). The plan they picked is kept in settings.trial.chosen_plan
+    // for checkout; Enterprise is set up with sales.
+    const planName = 'pro'
     const { data: planRow } = await admin.from('plans').select('id').eq('name', planName).maybeSingle()
     const trialEndsAt = new Date(Date.now() + TRIAL_DAYS * 86400000).toISOString()
 

@@ -1,5 +1,14 @@
+import { env } from "../_runtime/env.ts";
+
+/**
+ * Plans that can be bought online: plan name -> Stripe price and its amount in halalas (SAR,
+ * monthly). The amount must equal plans.price * 100 and the Stripe price itself (checked in
+ * create-checkout). Growth (plan 'pro', 349 SAR) is sold online once STRIPE_PRICE_GROWTH holds
+ * its Stripe price id; Enterprise is set up with sales.
+ */
 export const SUBSCRIPTION_PRICES: Record<string, { id: string; amount: number }> = {
   starter: { id: "price_1UZbqQ2MlXQdnUvpbGXV5fsY", amount: 14900 },
+  ...(env("STRIPE_PRICE_GROWTH") ? { pro: { id: env("STRIPE_PRICE_GROWTH")!, amount: 34900 } } : {}),
 };
 
 export function verifiedPaidPlan(session: {

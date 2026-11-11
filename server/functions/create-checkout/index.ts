@@ -16,7 +16,13 @@ serve(async (req) => {
     if (typeof planName !== "string") return respond({ error: "Select a subscription plan" }, 400);
     const name = planName.toLowerCase();
     const priceConfig = SUBSCRIPTION_PRICES[name];
-    if (!priceConfig) return respond({ error: "This plan is not available for checkout yet" }, 400);
+    if (!priceConfig) {
+      return respond({
+        error: name === "enterprise"
+          ? "Enterprise is set up with our team. Contact sales and we will move your account over."
+          : "This plan is not available for online payment yet. Contact sales to switch.",
+      }, 400);
+    }
     const { data: plan } = await admin.from("plans").select("id,price").eq("name", name).eq("is_active", true).single();
     if (!plan || Number(plan.price) * 100 !== priceConfig.amount) throw new Error("Subscription price is unavailable");
     const stripe = new Stripe(env("STRIPE_SECRET_KEY") ?? "", { apiVersion: "2025-08-27.basil" });
