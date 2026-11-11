@@ -195,7 +195,6 @@ export default function Sales() {
     const el = detailsScrollRef.current;
     if (!el) return;
     let frame = 0;
-    let timeout: number | undefined;
     const updateScrollState = () => {
       setShowScrollTop(el.scrollTop > 240);
       const max = el.scrollHeight - el.clientHeight;
@@ -204,7 +203,7 @@ export default function Sales() {
     const resizeObserver = new ResizeObserver(() => updateScrollState());
     updateScrollState();
     frame = window.requestAnimationFrame(() => updateScrollState());
-    timeout = window.setTimeout(() => updateScrollState(), 120);
+    const timeout = window.setTimeout(() => updateScrollState(), 120);
     el.addEventListener("scroll", updateScrollState, { passive: true });
     resizeObserver.observe(el);
     Array.from(el.children).forEach((child) => resizeObserver.observe(child));

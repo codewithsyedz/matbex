@@ -111,7 +111,7 @@ export function useFiscalPeriodLocks() {
     const now = new Date();
     
     // Start from previous fiscal month
-    let current = new Date(now);
+    const current = new Date(now);
     current.setMonth(current.getMonth() - 1);
     
     for (let i = 0; i < count; i++) {

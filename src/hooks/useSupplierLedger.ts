@@ -161,7 +161,7 @@ export function useSupplierLedger({ supplierId, from, to, branchId }: Args) {
       const supplierIds = Array.from(
         new Set(expenses.map((e) => e.supplier_id).filter(Boolean)),
       ) as string[];
-      let supplierMap: Record<string, string> = Object.fromEntries(
+      const supplierMap: Record<string, string> = Object.fromEntries(
         (suppliersQuery.data ?? []).map((s) => [s.id, s.name]),
       );
       if (supplierIds.length) {

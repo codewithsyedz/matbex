@@ -19,7 +19,7 @@ export const FINE_EVIDENCE_BUCKET = "fine-evidence";
 
 /** Uploads a file to the private evidence bucket and returns its storage path. */
 export async function uploadFineEvidenceFile(restaurantId: string, file: File) {
-  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+  const safeName = file.name.replace(/[^\w.-]+/g, "_");
   const path = `${restaurantId}/${crypto.randomUUID()}-${safeName}`;
   const { error } = await db.storage.from(FINE_EVIDENCE_BUCKET).upload(path, file, {
     contentType: file.type || undefined,

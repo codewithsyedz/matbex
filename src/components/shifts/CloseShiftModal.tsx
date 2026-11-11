@@ -181,7 +181,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
         const expenseIds = (movs || [])
           .filter((m: any) => m.reference_type === 'expense' && m.reference_id)
           .map((m: any) => m.reference_id);
-        let expenseAmounts: Record<string, number> = {};
+        const expenseAmounts: Record<string, number> = {};
         if (expenseIds.length > 0) {
           const { data: exps } = await db
             .from('expenses')

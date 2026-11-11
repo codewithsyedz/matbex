@@ -156,7 +156,7 @@ export default function ZatcaProviderApplication() {
     setUploading(docKey);
     try {
       const id = await ensureApp();
-      const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(-80);
+      const safe = file.name.replace(/[^\w.-]+/g, "_").slice(-80);
       const path = `${tenantId}/${docKey}/${Date.now()}-${safe}`;
       const { error: upErr } = await db.storage.from("zatca-application-docs").upload(path, file, { upsert: false });
       if (upErr) throw upErr;

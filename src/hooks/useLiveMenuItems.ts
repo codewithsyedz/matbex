@@ -3,7 +3,7 @@ import { useEffect } from "react";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
-import { useBranch } from "@/contexts/BranchContext";
+import { useOptionalBranch } from "@/contexts/BranchContext";
 
 export interface LiveMenuItem {
   id: string;
@@ -34,9 +34,7 @@ export function useLiveMenuItems(restaurantId?: string, branchIdArg?: string | n
   const { restaurant } = useAuth();
   const resolvedRestaurantId = restaurantId || restaurant?.id;
   const queryClient = useQueryClient();
-  const branchCtx = (() => {
-    try { return useBranch(); } catch { return null; }
-  })();
+  const branchCtx = useOptionalBranch();
   const resolvedBranchId =
     branchIdArg !== undefined
       ? branchIdArg

@@ -179,7 +179,7 @@ export function TenantLocationsManager({ tenantId, onChanged }: Props) {
       }
     });
     return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [locations, search, statusFilter, sortKey, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));

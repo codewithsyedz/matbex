@@ -168,6 +168,13 @@ vi.mock("@/integrations/db/client", () => {
     let rows = tables[table] ?? [];
     const api: any = {
       select: () => api,
+      order: () => api,
+      is: () => api,
+      // Paging, as PostgREST: inclusive row window.
+      range: (from: number, to: number) => {
+        rows = rows.slice(from, to + 1);
+        return api;
+      },
       eq: (_c: string, _v: any) => api,
       gte: (_c: string, _v: any) => api,
       lt: (_c: string, _v: any) => api,

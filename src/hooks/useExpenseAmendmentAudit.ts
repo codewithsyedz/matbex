@@ -52,7 +52,7 @@ export function useExpenseAmendmentAudit(expenseId: string | null | undefined) {
         new Set(rows.map((r) => r.amended_by).filter(Boolean)),
       ) as string[];
 
-      let names: Record<string, string> = {};
+      const names: Record<string, string> = {};
       if (userIds.length > 0) {
         const { data: profiles } = await (db as any)
           .from("profiles")

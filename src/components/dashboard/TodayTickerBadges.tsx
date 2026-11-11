@@ -46,10 +46,16 @@ function useChangeFlash(value: number) {
   return { flash, pulseKey };
 }
 
+/** Gate; the badges are a separate component so their hooks always run in the same order. */
 export function TodayTickerBadges({ compact = false }: TodayTickerBadgesProps = {}) {
   const { restaurant } = useAuth();
   const { isCashierOnly } = useRoleGuard();
   if (!restaurant || isCashierOnly) return null;
+  return <TodayTickerBadgesInner compact={compact} />;
+}
+
+function TodayTickerBadgesInner({ compact }: { compact: boolean }) {
+  const { restaurant } = useAuth();
 
   const { activeBranchId } = useBranch();
   const { format: formatCurrency } = useCurrency();

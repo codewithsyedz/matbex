@@ -160,7 +160,7 @@ export default function BranchPriceList() {
       const actorIds = Array.from(
         new Set(rows.map((r) => r.changed_by).filter(Boolean)),
       ) as string[];
-      let nameMap: Record<string, string> = {};
+      const nameMap: Record<string, string> = {};
       if (actorIds.length > 0) {
         const { data: profs } = await db
           .from("profiles")

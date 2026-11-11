@@ -50,7 +50,7 @@ export type ReceiptTemplateInput = Omit<
 >;
 
 // Cast: types.ts is regenerated post-migration; use untyped client here.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+ 
 export function useReceiptTemplates() {
   const auth = useAuth() as {
     restaurant?: { id?: string; tenant_id?: string } | null;

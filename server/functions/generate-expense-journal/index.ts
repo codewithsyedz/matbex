@@ -115,7 +115,7 @@ serve(async (req) => {
       return json(cors, { error: "Select Cash in Hand, Cash in Bank, Petty Cash, or a capital account before posting" }, 422);
     }
 
-    let accountQuery = admin
+    const accountQuery = admin
       .from("chart_of_accounts")
       .select("id, account_code, account_name, account_type, description, help_text, vat_applicable, requires_cost_center, is_fixed_asset_account")
       .eq("tenant_id", expense.tenant_id)

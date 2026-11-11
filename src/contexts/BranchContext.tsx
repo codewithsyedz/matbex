@@ -435,6 +435,11 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   );
 }
 
+/** Branch context, or null outside <BranchProvider> (for hooks also used on public pages). */
+export function useOptionalBranch() {
+  return useContext(BranchContext) ?? null;
+}
+
 export function useBranch() {
   const ctx = useContext(BranchContext);
   if (!ctx) {

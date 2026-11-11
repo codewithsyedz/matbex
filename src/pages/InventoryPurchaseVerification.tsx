@@ -165,7 +165,7 @@ export default function InventoryPurchaseVerification() {
         ])
       ).filter(Boolean);
 
-      let items: Record<string, ItemMeta> = {};
+      const items: Record<string, ItemMeta> = {};
       if (itemIds.length > 0) {
         const { data: itemRows } = await (db as any)
           .from("inventory_items")

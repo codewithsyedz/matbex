@@ -61,16 +61,11 @@ const DATABASES = [
   { code: "us", label: "United States" },
 ];
 
+/** Access gate; the dashboard is a separate component so its hooks always run in order. */
 export default function AdminSEO() {
   const { hasRole } = useAuth();
   const { isSuperAdmin } = useSuperAdmin();
-  const [domain, setDomain] = useState("matbex.com");
-  const [database, setDatabase] = useState("sa");
-  const canViewSeo = useMemo(
-    () => isSuperAdmin || hasRole("owner") || hasRole("manager"),
-    [isSuperAdmin, hasRole],
-  );
-
+  const canViewSeo = isSuperAdmin || hasRole("owner") || hasRole("manager");
   if (!canViewSeo) {
     return (
       <div className="min-h-screen bg-background">
@@ -87,6 +82,16 @@ export default function AdminSEO() {
       </div>
     );
   }
+
+  return <AdminSEOScreen />;
+}
+
+function AdminSEOScreen() {
+  const { hasRole } = useAuth();
+  const { isSuperAdmin } = useSuperAdmin();
+  const [domain, setDomain] = useState("matbex.com");
+  const [database, setDatabase] = useState("sa");
+
 
   const overview = useQuery({
     queryKey: ["seo", "ranks", domain, database],

@@ -99,7 +99,7 @@ function tablesWithColumn(typesSrc: string, column: string): Set<string> {
   let inRow = false;
   let rowDepth = -1;
 
-  const tableHeaderRe = /^      ([a-z][a-z0-9_]*):\s*\{/;
+  const tableHeaderRe = /^ {6}([a-z][a-z0-9_]*):\s*\{/;
   const rowHeaderRe = /^\s+Row:\s*\{/;
   const columnRe = new RegExp(`^\\s+${column}\\s*:`);
 

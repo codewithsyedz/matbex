@@ -313,21 +313,6 @@ export default function CFD() {
     localOnly,
   });
 
-  // Ask for code if no params and not local-only
-  if (!localOnly && !paired) {
-    return (
-      <PairPrompt
-        onPair={(rid, code) => {
-          // Persist into the URL so a reload keeps the pairing.
-          const url = new URL(window.location.href);
-          url.searchParams.set("restaurant", rid);
-          url.searchParams.set("code", code);
-          window.history.replaceState(null, "", url.toString());
-          setPaired({ rid, code });
-        }}
-      />
-    );
-  }
 
   const view = useMemo(() => {
     if (snap.state === "payment") {
@@ -358,6 +343,22 @@ export default function CFD() {
     }
     return <IdleScreen branding={branding} settings={idleSettings} promos={promos} />;
   }, [snap, branding, idleSettings, promos]);
+
+  // Ask for code if no params and not local-only
+  if (!localOnly && !paired) {
+    return (
+      <PairPrompt
+        onPair={(rid, code) => {
+          // Persist into the URL so a reload keeps the pairing.
+          const url = new URL(window.location.href);
+          url.searchParams.set("restaurant", rid);
+          url.searchParams.set("code", code);
+          window.history.replaceState(null, "", url.toString());
+          setPaired({ rid, code });
+        }}
+      />
+    );
+  }
 
   return <div className="min-h-screen bg-background">{view}</div>;
 }

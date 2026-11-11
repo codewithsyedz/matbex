@@ -69,7 +69,7 @@ export function CreateFineDialog() {
   const { data: staffList = [] } = useQuery({
     queryKey: ["staff-for-fines", restaurant?.id, activeBranchId],
     queryFn: async () => {
-      let q = db
+      const q = db
         .from("staff")
         .select("id,name,role,branch_id")
         .eq("restaurant_id", restaurant!.id)

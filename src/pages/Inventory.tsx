@@ -89,10 +89,14 @@ interface InventoryCategory {
   cogs_account_code: string;
 }
 
+/**
+ * Plan gate. The screen itself is a separate component so its hooks always run in the same
+ * order: returning the locked screen before them broke the rules of hooks and crashed the
+ * page ("Rendered more hooks than during the previous render") when the plan's features
+ * changed while it was open.
+ */
 export default function Inventory() {
-  const { restaurant, isManager, hasRole, hasFeature, loading: authLoading } = useAuth();
-  const { activeBranchId } = useBranch();
-  const canCreateInventory = canAddInventory(hasRole);
+  const { hasFeature, loading: authLoading } = useAuth();
   const { t } = useTranslation();
 
   // Show locked screen if inventory feature is not enabled
@@ -107,6 +111,16 @@ export default function Inventory() {
       </>
     );
   }
+
+  return <InventoryScreen />;
+}
+
+function InventoryScreen() {
+  const { restaurant, isManager, hasRole, hasFeature, loading: authLoading } = useAuth();
+  const { activeBranchId } = useBranch();
+  const canCreateInventory = canAddInventory(hasRole);
+  const { t } = useTranslation();
+
 
   const { toast } = useToast();
   const [items, setItems] = useState<InventoryItem[]>([]);

@@ -51,16 +51,18 @@ export function SortableBlock({
     switch (block.block_type) {
       case 'hero':
         return (content.title as string) || 'Hero Section';
-      case 'menu':
+      case 'menu': {
         const cats = (content.categories as string[]) || [];
         return cats.length > 0 ? `Categories: ${cats.join(', ')}` : 'All menu items';
+      }
       case 'hours':
         return 'Opening hours schedule';
       case 'location':
         return (content.address as string) || 'Location & contact';
-      case 'gallery':
+      case 'gallery': {
         const images = (content.images as unknown[]) || [];
         return `${images.length} photos`;
+      }
       case 'cta':
         return (content.heading as string) || 'Call to action';
       case 'testimonials':

@@ -86,7 +86,7 @@ export function ShiftSummary({ shift, endAtOverride, compact = false, className 
       if (e1) throw e1;
 
       // 2. Pull last N closed shifts of the same template (excluding this one) for baseline
-      let historicalExpensesByAccount: Record<string, { total: number; shiftIds: Set<string> }> = {};
+      const historicalExpensesByAccount: Record<string, { total: number; shiftIds: Set<string> }> = {};
 
       let histShiftQuery = db
         .from("shifts")

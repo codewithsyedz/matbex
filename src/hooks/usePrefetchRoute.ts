@@ -26,7 +26,7 @@ const lastPrefetchAt = new Map<string, number>();
  * without surfacing toasts or breaking the UI.
  */
 function logPrefetchFailure(scope: string, err: unknown) {
-  // eslint-disable-next-line no-console
+   
   console.warn(`[prefetch] ${scope} failed (non-fatal):`, err);
 }
 

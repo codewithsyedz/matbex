@@ -79,6 +79,9 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default list still includes the removed 'tools' package and fails.
+          packages: platform-tools platforms;android-36
 
       - name: Setup Ruby + Bundler cache
         uses: ruby/setup-ruby@v1

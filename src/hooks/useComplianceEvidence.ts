@@ -19,7 +19,7 @@ export interface ComplianceEvidence {
 }
 
 export async function uploadComplianceFile(restaurantId: string, file: File, prefix = "violations") {
-  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+  const safeName = file.name.replace(/[^\w.-]+/g, "_");
   const path = `${restaurantId}/${prefix}/${crypto.randomUUID()}-${safeName}`;
   const { error } = await db.storage
     .from(COMPLIANCE_EVIDENCE_BUCKET)

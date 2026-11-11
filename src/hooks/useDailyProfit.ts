@@ -668,7 +668,7 @@ export function useDailyProfit(selectedDate?: Date) {
 
     // Calculate labor cost from staff salaries (monthly ÷ operational days)
     // Per memory: payroll-daily-profit-calculation-method - labor should be included as daily overhead
-    let laborCost = 0;
+    const laborCost = 0;
     // Labor cost is included in the prime cost calculation, not separately tracked
     // Setting to 0 as payroll is fetched separately in the overhead calculation
 

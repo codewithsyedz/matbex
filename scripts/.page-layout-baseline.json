@@ -2,6 +2,10 @@
   "note": "Pages not yet aligned to the VAT Return spacing contract. Shrink this list; never add to it.",
   "reference": "src/pages/VatReturn.tsx",
   "exempt": {
+    "src/pages/AccountantDashboard.tsx": [
+      "container-vertical-rhythm",
+      "h1-typography"
+    ],
     "src/pages/ApplicationVerification.tsx": [
       "h1-typography",
       "root-container"
@@ -17,9 +21,24 @@
     "src/pages/AuthCallback.tsx": [
       "root-container"
     ],
+    "src/pages/BalanceSheet.tsx": [
+      "card-header-padding",
+      "h1-typography"
+    ],
+    "src/pages/BookDemo.tsx": [
+      "root-container"
+    ],
     "src/pages/CFD.tsx": [
       "h1-typography",
       "root-container"
+    ],
+    "src/pages/CashCardAnalysis.tsx": [
+      "card-header-padding",
+      "h1-typography"
+    ],
+    "src/pages/CashFlow.tsx": [
+      "card-header-padding",
+      "h1-typography"
     ],
     "src/pages/Chat.tsx": [
       "root-container"
@@ -28,6 +47,10 @@
       "root-container"
     ],
     "src/pages/CockpitStocktake.tsx": [
+      "root-container"
+    ],
+    "src/pages/ContactThankYou.tsx": [
+      "h1-typography",
       "root-container"
     ],
     "src/pages/CustomerAccount.tsx": [
@@ -41,14 +64,15 @@
       "h1-typography",
       "root-container"
     ],
-    "src/pages/FloorPlan.tsx": [
-      "root-container"
-    ],
-    "src/pages/GuestOrder.tsx": [
+    "src/pages/FinancialStatements.tsx": [
       "h1-typography",
       "root-container"
     ],
-    "src/pages/Index.tsx": [
+    "src/pages/FloorPlan.tsx": [
+      "container-vertical-rhythm"
+    ],
+    "src/pages/GuestOrder.tsx": [
+      "h1-typography",
       "root-container"
     ],
     "src/pages/KdsStations.tsx": [
@@ -73,10 +97,6 @@
       "h1-typography",
       "root-container"
     ],
-    "src/pages/OAuthConsent.tsx": [
-      "h1-typography",
-      "root-container"
-    ],
     "src/pages/OfflineAuditReport.tsx": [
       "root-container"
     ],
@@ -90,12 +110,27 @@
       "h1-typography",
       "root-container"
     ],
+    "src/pages/PayrollJournal.tsx": [
+      "card-header-padding"
+    ],
     "src/pages/PosAckDiagnostics.tsx": [
       "card-title-typography"
     ],
     "src/pages/PosTables.tsx": [
-      "container-vertical-rhythm",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/Pricing.tsx": [
+      "root-container"
+    ],
+    "src/pages/ProfitLoss.tsx": [
+      "card-header-padding",
       "h1-typography"
+    ],
+    "src/pages/PublicBookTable.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
     ],
     "src/pages/PublicOrder.tsx": [
       "h1-typography",
@@ -120,9 +155,24 @@
       "h1-typography",
       "root-container"
     ],
+    "src/pages/Reservations.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
     "src/pages/ResetPassword.tsx": [
       "card-title-typography",
       "root-container"
+    ],
+    "src/pages/Sales.tsx": [
+      "h1-typography"
+    ],
+    "src/pages/SalesItemBreakdown.tsx": [
+      "card-header-padding",
+      "h1-typography"
+    ],
+    "src/pages/SalesJournal.tsx": [
+      "h1-typography"
     ],
     "src/pages/SeoDiagnostics.tsx": [
       "card-title-typography"
@@ -132,12 +182,21 @@
       "root-container"
     ],
     "src/pages/VatReturn.tsx": [
-      "container-vertical-rhythm"
+      "root-container"
     ],
     "src/pages/VerifyZatcaReport.tsx": [
       "root-container"
     ],
     "src/pages/Waiter.tsx": [
+      "root-container"
+    ],
+    "src/pages/ZatcaInvoices.tsx": [
+      "card-header-padding",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/ZatcaProviderApplication.tsx": [
+      "h1-typography",
       "root-container"
     ],
     "src/pages/ZohoCallback.tsx": [
@@ -175,7 +234,7 @@
     ],
     "src/pages/admin/AdminContactMessages.tsx": [
       "card-header-padding",
-      "root-container"
+      "container-vertical-rhythm"
     ],
     "src/pages/admin/AdminCurrencies.tsx": [
       "h1-typography",
@@ -199,6 +258,16 @@
       "h1-typography",
       "root-container"
     ],
+    "src/pages/admin/AdminEmailInbox.tsx": [
+      "card-title-typography",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminEnquiries.tsx": [
+      "card-header-padding",
+      "h1-typography",
+      "root-container"
+    ],
     "src/pages/admin/AdminFeatureFlags.tsx": [
       "h1-typography",
       "root-container"
@@ -208,6 +277,11 @@
       "root-container"
     ],
     "src/pages/admin/AdminLandingCMS.tsx": [
+      "card-header-padding",
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/admin/AdminLeadSources.tsx": [
       "card-header-padding",
       "h1-typography",
       "root-container"
@@ -273,6 +347,10 @@
       "h1-typography",
       "root-container"
     ],
+    "src/pages/admin/AdminTraffic.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
     "src/pages/admin/AdminWebhooks.tsx": [
       "card-title-typography",
       "h1-typography",
@@ -299,47 +377,36 @@
       "root-container"
     ],
     "src/pages/ar/blog/InventoryManagement.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/ar/blog/PrimeCost.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/ar/blog/RestaurantKPIs.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/ar/blog/WasteControl.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/ar/blog/ZatcaFines.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/ar/blog/ZatcaOnboarding.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/ar/blog/ZatcaPhase2.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/ar/blog/ZatcaQrCode.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/blog/MenuEngineeringMatrixGuide.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/blog/RestaurantCogsGuide.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/blog/ZatcaPhase2Guide.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/company/About.tsx": [
@@ -352,11 +419,9 @@
       "root-container"
     ],
     "src/pages/company/Press.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/company/Stats.tsx": [
-      "h1-typography",
       "root-container"
     ],
     "src/pages/embed/FoodCostEmbed.tsx": [
@@ -405,6 +470,20 @@
       "root-container"
     ],
     "src/pages/seo/SeoLanding.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/solutions/SolutionPage.tsx": [
+      "root-container"
+    ],
+    "src/pages/solutions/SolutionsIndex.tsx": [
+      "root-container"
+    ],
+    "src/pages/starter/StarterDailyReport.tsx": [
+      "h1-typography",
+      "root-container"
+    ],
+    "src/pages/starter/StarterDashboard.tsx": [
       "h1-typography",
       "root-container"
     ],

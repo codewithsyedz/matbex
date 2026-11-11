@@ -108,7 +108,7 @@ function loadMeta(id: string) {
   /* Meta base snippet */
   const n = function (...args: unknown[]) {
     const f = n as unknown as NonNullable<Window["fbq"]>;
-    if (f.callMethod) f.callMethod.apply(f, args);
+    if (f.callMethod) f.callMethod(...args);
     else (f.queue as unknown[]).push(args);
   } as unknown as NonNullable<Window["fbq"]>;
   if (!window.fbq) {

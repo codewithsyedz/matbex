@@ -2,7 +2,9 @@ name: Android Build
 
 on:
   push:
-    branches: ["**"]
+    branches: [main]
+  pull_request:
+    paths: ["android/**", "android-overlay/**", "capacitor.config.ts", "scripts/apply-android-signing.sh", ".github/workflows/android-build.yml"]
   workflow_dispatch:
 
 jobs:
@@ -28,6 +30,9 @@ jobs:
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
+        with:
+          # The action's default list still includes the removed 'tools' package and fails.
+          packages: platform-tools platforms;android-36
 
       - name: Install dependencies
         run: npm ci

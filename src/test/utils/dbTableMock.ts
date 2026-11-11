@@ -21,6 +21,11 @@ export function createDbTableMock(seed: Tables) {
         rows = rows.slice(0, n);
         return api;
       },
+      // Paging, as PostgREST: inclusive row window.
+      range: (from: number, to: number) => {
+        rows = rows.slice(from, to + 1);
+        return api;
+      },
       eq: (c: string, v: any) => {
         rows = rows.filter((r) => r[c] === v);
         return api;

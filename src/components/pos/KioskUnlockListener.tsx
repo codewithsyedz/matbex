@@ -27,7 +27,6 @@ export function KioskUnlockListener() {
     if (!restaurantId || !isNativeKioskAvailable()) return;
 
     let cancelled = false;
-    let timer: number | undefined;
 
     const check = async () => {
       if (cancelled || handling.current) return;
@@ -81,7 +80,7 @@ export function KioskUnlockListener() {
     };
 
     void check();
-    timer = window.setInterval(check, POLL_MS);
+    const timer = window.setInterval(check, POLL_MS);
 
     const channel = db
       .channel(`kiosk-unlock-${restaurantId}`)

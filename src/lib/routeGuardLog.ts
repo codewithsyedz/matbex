@@ -107,7 +107,7 @@ export function logRouteGuard(entry: Omit<RouteGuardLogEntry, "id" | "ts">) {
   listeners.forEach(l => l(buffer));
 
   if (isRouteDebugEnabled()) {
-    // eslint-disable-next-line no-console
+     
     console.info(
       `[route-guard] ${full.decision.toUpperCase()} ${full.pathname}${full.to ? ` -> ${full.to}` : ""} (${full.reason})`,
       full.context ?? {}

@@ -82,10 +82,14 @@ interface RecipeCost {
   total_cost: number;
 }
 
+/**
+ * Plan gate. The screen itself is a separate component so its hooks always run in the same
+ * order: returning the locked screen before them broke the rules of hooks and crashed the
+ * page ("Rendered more hooks than during the previous render") when the plan's features
+ * changed while it was open.
+ */
 export default function Menu() {
-  const { restaurant, tenant, isOwner, hasFeature, loading: authLoading } = useAuth();
-  const { t } = useTranslation();
-  const { activeBranchId, isAllBranches, activeBranch, hasMultipleBranches, branches } = useBranch();
+  const { hasFeature, loading: authLoading } = useAuth();
 
   // Show locked screen if menu feature is not enabled
   if (!authLoading && !hasFeature("menu")) {
@@ -99,6 +103,15 @@ export default function Menu() {
       </>
     );
   }
+
+  return <MenuScreen />;
+}
+
+function MenuScreen() {
+  const { restaurant, tenant, isOwner, hasFeature, loading: authLoading } = useAuth();
+  const { t } = useTranslation();
+  const { activeBranchId, isAllBranches, activeBranch, hasMultipleBranches, branches } = useBranch();
+
 
   const { format: formatCurrency } = useCurrency();
   const { usage, quotaLimits } = useQuota();

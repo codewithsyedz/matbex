@@ -53,7 +53,7 @@ export function ApplicationDocumentsPanel({ applicationId }: { applicationId: st
     setLoading(false);
   };
 
-  useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [applicationId]);
+  useEffect(() => { refresh();   }, [applicationId]);
 
   const review = async (doc: Doc, status: "approved" | "rejected") => {
     setBusyId(doc.id);

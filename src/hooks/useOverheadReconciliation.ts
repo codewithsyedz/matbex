@@ -90,7 +90,7 @@ export function useOverheadReconciliation({ branchId, periodStart, periodEnd }: 
 
       // 3. Account metadata
       const accountIds = Array.from(new Set(lines.map(l => l.account_id).filter(Boolean)));
-      let accounts: Record<string, { code: string; name: string; type: string }> = {};
+      const accounts: Record<string, { code: string; name: string; type: string }> = {};
       if (accountIds.length) {
         const { data: accs } = await db
           .from("chart_of_accounts")
@@ -103,7 +103,7 @@ export function useOverheadReconciliation({ branchId, periodStart, periodEnd }: 
 
       // 4. Branch names
       const branchIds = Array.from(new Set(rows.map(r => r.branch_id).filter(Boolean)));
-      let branches: Record<string, string> = {};
+      const branches: Record<string, string> = {};
       if (branchIds.length) {
         const { data: bs } = await db.from("branches").select("id, name").in("id", branchIds);
         for (const b of bs || []) branches[b.id] = b.name;

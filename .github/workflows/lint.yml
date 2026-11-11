@@ -82,6 +82,8 @@ jobs:
         run: npm --prefix server test
       - name: Apply migrations to a clean database
         run: node db/migrate.mjs
+      - name: Tenant isolation audit (RLS on every tenant table, no unapproved open policies)
+        run: node db/check-rls.mjs
       - name: Generated DB types are up to date
         run: node scripts/generate-db-types.mjs --check
       - name: Keys for CI

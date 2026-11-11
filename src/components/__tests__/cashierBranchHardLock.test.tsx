@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 
 /**
  * Behavior test for the cashier branch hard-lock.
@@ -142,9 +143,12 @@ function renderApp() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <BranchProvider>
-        <Probe />
-      </BranchProvider>
+      {/* BranchProvider reads the router location. */}
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <BranchProvider>
+          <Probe />
+        </BranchProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

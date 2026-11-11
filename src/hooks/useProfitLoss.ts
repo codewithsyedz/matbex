@@ -133,25 +133,29 @@ export function useProfitLoss(
   // Calculate previous period
   const getPreviousPeriod = () => {
     switch (periodType) {
-      case "day":
+      case "day": {
         const prevDay = new Date(startDate);
         prevDay.setDate(prevDay.getDate() - 1);
         return { start: prevDay, end: prevDay };
-      case "week":
+      }
+      case "week": {
         const prevWeekStart = subWeeks(startDate, 1);
         const prevWeekEnd = subWeeks(endDate, 1);
         return { start: prevWeekStart, end: prevWeekEnd };
-      case "month":
+      }
+      case "month": {
         const prevMonthStart = subMonths(startDate, 1);
         const prevMonthEnd = subMonths(endDate, 1);
         return { start: prevMonthStart, end: prevMonthEnd };
-      default:
+      }
+      default: {
         const daysDiff = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
         const prevStart = new Date(startDate);
         prevStart.setDate(prevStart.getDate() - daysDiff - 1);
         const prevEnd = new Date(startDate);
         prevEnd.setDate(prevEnd.getDate() - 1);
         return { start: prevStart, end: prevEnd };
+      }
     }
   };
   

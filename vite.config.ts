@@ -119,6 +119,9 @@ export default defineConfig(({ mode }) => {
     // chunk — grouping them caused a TDZ crash in production.
     rollupOptions: {
       output: {
+        // Distinct name for the startup entry, so the size budget (.size-limit.json) measures
+        // it alone and not lazily loaded chunks that also end up named "index-*".
+        entryFileNames: "assets/entry-[hash].js",
         manualChunks(id: string) {
           if (!id.includes("node_modules")) return;
           if (id.includes("framer-motion") || id.includes("motion-dom") || id.includes("motion-utils")) {

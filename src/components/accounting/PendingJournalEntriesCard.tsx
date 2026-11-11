@@ -39,7 +39,14 @@ interface PendingLine {
   description?: string | null;
 }
 
+/** Role gate; the card is a separate component so its hooks always run in the same order. */
 export function PendingJournalEntriesCard() {
+  const { isManager, isAccountant } = useAuth();
+  if (!isManager && !isAccountant) return null;
+  return <PendingJournalEntriesCardInner />;
+}
+
+function PendingJournalEntriesCardInner() {
   const { user, profile, isManager, isAccountant } = useAuth();
   const { branches, activeBranch, isAllBranches, pinnedBranchId } = useBranch();
   const tenantId = profile?.tenant_id;
@@ -137,7 +144,7 @@ export function PendingJournalEntriesCard() {
         name: id === "untagged" ? null : branches.find((x) => x.id === id)?.name ?? null,
       }))
       .sort((a, b) => b.count - a.count);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [batches, statusFilter, branches]);
 
   // Account ids per pending batch — from pending_lines when present, otherwise
@@ -236,7 +243,6 @@ export function PendingJournalEntriesCard() {
     .filter((b) => b.approval_status === "rejected")
     .slice(0, 5);
 
-  if (!isManager && !isAccountant) return null;
 
   const canDecide = isManager;
 
