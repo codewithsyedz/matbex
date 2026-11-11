@@ -21108,6 +21108,11 @@ export type Database = {
         Args: { _tenant_id: string }
         Returns: undefined
       }
+      ensure_bad_debt_account:
+        | {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
       ensure_fixed_asset_accounts:
         | {
         Args: { _tenant_id: string }
@@ -21760,6 +21765,11 @@ export type Database = {
       post_card_settlement_deposit:
         | {
         Args: { p_deposit_date?: unknown }
+        Returns: string
+      }
+      post_customer_credit_to_ledger:
+        | {
+        Args: { p_adjustment_id?: unknown }
         Returns: string
       }
       post_daily_overhead:
