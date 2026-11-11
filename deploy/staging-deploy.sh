@@ -9,7 +9,8 @@ cd ~/matbex
 COMPOSE=(docker compose -f docker-compose.yml -f docker-compose.observability.yml)
 
 echo "== deploying $(cat .deployed-commit 2>/dev/null || echo unknown)"
-"${COMPOSE[@]}" build api worker web
+# migrate is its own image (same Dockerfile): rebuild it too, or it runs the migrations baked in at its first build.
+"${COMPOSE[@]}" build api worker web migrate
 "${COMPOSE[@]}" run --rm migrate
 "${COMPOSE[@]}" up -d --remove-orphans
 
