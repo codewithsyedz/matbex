@@ -15,6 +15,8 @@
  * - Ledger: tab sales are debited to Customer Accounts receivable (1130) at End of Day.
  *   Instalments, write-offs (on a sale or manual) and write-off reversals credit/debit it in
  *   the same transaction as the adjustment (repo.postToLedger); invoice payments do so by trigger.
+ * - Cash payments are also added to the open shift's drawer (repo.cashIntoDrawer), so the
+ *   cashier's expected cash at close includes them.
  */
 import { badRequest, HttpError } from "../../lib/errors.js";
 import type { DbClaims } from "../../db.js";
@@ -106,6 +108,13 @@ export async function payInvoice(invoiceId: string, input: PaymentInput, claims:
       if (!fully && left <= 0) break;
     }
 
+    const drawerShiftId = input.paymentMethod === "cash"
+      ? await repo.cashIntoDrawer({
+          restaurantId: input.restaurantId, branchId: await repo.invoiceBranch(inv.id), amount,
+          description: `Customer payment - invoice ${inv.invoice_number}`, referenceId: payment.id, userId: claims.sub,
+        })
+      : null;
+
     const customer = await repo.customer(input.restaurantId, inv.customer_id);
     if (fully && customer) {
       // History row for the customer's timeline. It does not change the balance (the payments
@@ -121,7 +130,7 @@ export async function payInvoice(invoiceId: string, input: PaymentInput, claims:
       restaurantId: input.restaurantId, invoiceId: inv.id, customerId: inv.customer_id, action: fully ? "invoice_settled" : "payment_recorded",
       userId: claims.sub, details: { amount, payment_method: input.paymentMethod },
     });
-    return { invoice: updated, paymentId: payment.id, fullyPaid: fully, balance: await repo.balance(inv.customer_id) };
+    return { invoice: updated, paymentId: payment.id, fullyPaid: fully, drawerShiftId, balance: await repo.balance(inv.customer_id) };
   });
 }
 
@@ -194,7 +203,13 @@ export async function paySale(saleId: string, input: PaymentInput, claims: Claim
       userId: claims.sub, saleId: sale.id, reference: sale.receipt_number,
     });
     await repo.postToLedger(adj.id, "collection", { paymentMethod: input.paymentMethod });
-    return { fullyPaid: fully, paidAmount: newPaid, balance: await repo.balance(customer.id) };
+    const drawerShiftId = input.paymentMethod === "cash"
+      ? await repo.cashIntoDrawer({
+          restaurantId: input.restaurantId, branchId: sale.branch_id, amount,
+          description: `Customer payment - ${sale.receipt_number ?? "sale"}`, referenceId: adj.id, userId: claims.sub,
+        })
+      : null;
+    return { fullyPaid: fully, paidAmount: newPaid, drawerShiftId, balance: await repo.balance(customer.id) };
   });
 }
 

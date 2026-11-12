@@ -551,8 +551,12 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
                             e.event_type === "adjustment" &&
                             e.payment_method === "cash" &&
                             e.reference_type !== "installment_payment" &&
-                            e.reference_type !== "installment_payment_void",
+                            e.reference_type !== "installment_payment_void" &&
+                            e.reference_type !== "customer_credit_payment",
                         )
+                        .reduce((sum, e) => sum + e.amount, 0);
+                      const tabPayments = cashEvents
+                        .filter((e) => e.event_type === "adjustment" && e.reference_type === "customer_credit_payment")
                         .reduce((sum, e) => sum + e.amount, 0);
                       const openingFloat = shift?.opening_float || 0;
                       
@@ -572,6 +576,12 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
                               <span>+ Cash sales</span>
                               <span>SAR {cashSales.toLocaleString()}</span>
                             </div>
+                            {tabPayments !== 0 && (
+                              <div className="flex justify-between">
+                                <span>+ Customer tab payments</span>
+                                <span>SAR {tabPayments.toLocaleString()}</span>
+                              </div>
+                            )}
                             {cashRefunds > 0 && (
                               <div className="flex justify-between text-destructive">
                                 <span>− Refunds</span>

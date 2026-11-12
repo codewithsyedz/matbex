@@ -14,6 +14,7 @@ export interface CreditSale {
   settlement_invoice_id: string | null;
   voided_at: string | null;
   customer_id: string | null;
+  branch_id: string | null;
   created_at: string;
 }
 
@@ -29,7 +30,7 @@ export interface Invoice {
 
 const SALE = `id, receipt_number, total::float8 as total, coalesce(paid_amount, 0)::float8 as paid_amount,
   settlement_status::text as settlement_status, settlement_invoice_id, voided_at::text as voided_at, customer_id,
-  created_at::text as created_at`;
+  branch_id, created_at::text as created_at`;
 
 export function creditRepository({ tx }: ServiceTx) {
   return {
@@ -186,6 +187,36 @@ export function creditRepository({ tx }: ServiceTx) {
       const [r] = await tx<{ ok: boolean }[]>`
         select exists(select 1 from public.customer_balance_adjustments where reference_number = ${"REV-" + adjustmentId}) as ok`;
       return !!r?.ok;
+    },
+
+    /**
+     * Cash taken from a customer goes into the till: add it to the open shift's drawer
+     * (cash_events, reference_type 'customer_credit_payment') so the shift's expected cash
+     * includes it. The branch's open shift when the branch is known; with no branch, only when
+     * the restaurant has exactly one open shift. No open shift: nothing (cash received outside a
+     * shift is counted in the back office). Returns the shift id used, or null.
+     */
+    async cashIntoDrawer(v: { restaurantId: string; branchId: string | null; amount: number; description: string; referenceId: string; userId: string }) {
+      const shifts = await tx<{ id: string; branch_id: string | null }[]>`
+        select id, branch_id from public.shifts
+        where restaurant_id = ${v.restaurantId} and status = 'open'
+          and (${v.branchId}::uuid is null or branch_id = ${v.branchId}::uuid)
+        order by opened_at desc`;
+      const shift = v.branchId ? shifts[0] : shifts.length === 1 ? shifts[0] : undefined;
+      if (!shift) return null;
+      await tx`
+        insert into public.cash_events (shift_id, restaurant_id, branch_id, event_type, amount, payment_method,
+                                        description, created_by, reference_type, reference_id)
+        values (${shift.id}, ${v.restaurantId}, ${shift.branch_id}, 'adjustment', ${v.amount}, 'cash',
+                ${v.description}, ${v.userId}, 'customer_credit_payment', ${v.referenceId})`;
+      return shift.id;
+    },
+
+    /** The one branch an invoice's sales belong to, or null when none or several. */
+    async invoiceBranch(invoiceId: string) {
+      const rows = await tx<{ branch_id: string | null }[]>`
+        select distinct branch_id from public.sales_transactions where settlement_invoice_id = ${invoiceId}`;
+      return rows.length === 1 ? rows[0].branch_id : null;
     },
 
     async audit(v: { restaurantId: string; invoiceId: string | null; customerId: string; action: string; userId: string; details: Record<string, unknown> }) {
