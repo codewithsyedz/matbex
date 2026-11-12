@@ -11,6 +11,8 @@
 # 3. Uploaded as one .bak (tar) per item to r2:<bucket>/daily/, and on the 1st of the month
 #    also to monthly/. Retention: daily 31 days, monthly 370 days.
 # 4. On success writes ~/backup/last-success (UTC time + sizes); exits non-zero on any failure.
+# 5. Publishes ~/backup/metrics/backup.prom for node-exporter (alerts: docs/self-hosting/MONITORING.md):
+#    matbex_backup_last_run_success (1/0), matbex_backup_last_success_timestamp_seconds, sizes.
 #
 # Needs in ~/matbex/.env: R2_ENDPOINT, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BACKUP_BUCKET.
 set -euo pipefail
@@ -51,9 +53,26 @@ seal() {
   rm -rf "$d"
 }
 
-mkdir -p "$STATE"
+mkdir -p "$STATE/metrics"
 WORK=$(mktemp -d "$STATE/work.XXXX")
-trap 'rm -rf "$WORK"' EXIT
+# Metrics for the alert rules, written on every exit (success or failure), atomically.
+metrics() {
+  local ok=$1 last tmp
+  last=$(cat "$STATE/last-success-ts" 2>/dev/null || echo 0)
+  tmp=$(mktemp "$STATE/metrics/.backup.XXXX")
+  {
+    echo "# HELP matbex_backup_last_run_success 1 if the last nightly backup succeeded."
+    echo "# TYPE matbex_backup_last_run_success gauge"
+    echo "matbex_backup_last_run_success $ok"
+    echo "# HELP matbex_backup_last_success_timestamp_seconds Unix time of the last successful backup."
+    echo "# TYPE matbex_backup_last_success_timestamp_seconds gauge"
+    echo "matbex_backup_last_success_timestamp_seconds $last"
+    if [ -n "${DB_BYTES:-}" ]; then echo "matbex_backup_size_bytes{item=\"db\"} $DB_BYTES"; fi
+    if [ -n "${FILES_BYTES:-}" ]; then echo "matbex_backup_size_bytes{item=\"files\"} $FILES_BYTES"; fi
+  } > "$tmp"
+  chmod 644 "$tmp"; mv "$tmp" "$STATE/metrics/backup.prom"
+}
+trap 'code=$?; rm -rf "$WORK"; [ $code -eq 0 ] || metrics 0' EXIT
 STAMP=$(date -u +%Y-%m-%dT%H%MZ)
 cd "$APP"
 
@@ -82,4 +101,7 @@ rclone delete "r2:$BUCKET/monthly/" --min-age 370d
 
 sizes=$(du -h "$WORK/up/"* | awk '{printf "%s %s; ", $1, $2}' | sed "s#$WORK/up/##g")
 echo "$STAMP $sizes" > "$STATE/last-success"
+date -u +%s > "$STATE/last-success-ts"
+DB_BYTES=$(stat -c %s "$WORK/up/$STAMP-db.bak"); FILES_BYTES=$(stat -c %s "$WORK/up/$STAMP-files.bak")
+metrics 1
 echo "== done: $sizes"

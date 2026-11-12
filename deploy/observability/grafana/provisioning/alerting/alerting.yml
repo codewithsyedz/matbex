@@ -1,0 +1,220 @@
+# Matbex alerts (docs/self-hosting/MONITORING.md). Grafana evaluates these against Prometheus and
+# sends to Telegram and email. Environment values come from the grafana service in
+# docker-compose.observability.yml (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID, ALERT_EMAIL, GF_SMTP_*).
+# Each rule's query returns one number; "no data" counts as a problem where it means a target or
+# the backup status is missing.
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: matbex-alerts
+    receivers:
+      - uid: matbex-telegram
+        type: telegram
+        disableResolveMessage: false
+        settings:
+          bottoken: ${TELEGRAM_BOT_TOKEN}
+          chatid: ${TELEGRAM_CHAT_ID}   # see TELEGRAM_CHAT_ID in docker-compose.observability.yml
+          # Plain text: Grafana's default is HTML, and its standard message has characters
+          # Telegram rejects as HTML (400 "can't parse entities").
+          parse_mode: None
+      - uid: matbex-email
+        type: email
+        disableResolveMessage: false
+        settings:
+          addresses: ${ALERT_EMAIL}
+          singleEmail: true
+
+policies:
+  - orgId: 1
+    receiver: matbex-alerts
+    group_by: [alertname]
+    group_wait: 30s
+    group_interval: 5m
+    repeat_interval: 4h
+
+groups:
+  - orgId: 1
+    name: matbex
+    folder: Matbex
+    interval: 1m
+    rules:
+      - uid: matbex-api-down
+        title: API is down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: 'min(up{job="matbex-api"})' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: lt, params: [1] } }] }
+        for: 2m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: critical }
+        annotations:
+          summary: The API stopped answering Prometheus for 2 minutes. Tills fall back to offline mode.
+
+      - uid: matbex-worker-down
+        title: Worker is down
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: 'min(up{job="matbex-worker"})' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: lt, params: [1] } }] }
+        for: 2m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: critical }
+        annotations:
+          summary: The worker is down for 2 minutes. Scheduled jobs, emails and live updates stop.
+
+      - uid: matbex-database-down
+        title: Database or Redis unreachable
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: 'min(min(pg_up) or vector(0)) * min(min(redis_up) or vector(0)) * min(min(matbex_dependency_up) or vector(0))' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: lt, params: [1] } }] }
+        for: 2m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: critical }
+        annotations:
+          summary: PostgreSQL or Redis has been unreachable for 2 minutes (exporters or the API/worker report it down).
+
+      - uid: matbex-http-5xx
+        title: Server errors
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: 'sum(increase(matbex_http_request_duration_seconds_count{status="5xx"}[10m])) or vector(0)' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [20] } }] }
+        for: 5m
+        noDataState: OK
+        execErrState: Alerting
+        labels: { severity: warning }
+        annotations:
+          summary: More than 20 server errors (5xx) in 10 minutes. Check the API logs in Grafana (Loki).
+
+      - uid: matbex-job-failures
+        title: Scheduled jobs failing
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 3600, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: 'sum(increase(matbex_job_runs_total{result="failed"}[1h])) or vector(0)' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [3] } }] }
+        for: 0s
+        noDataState: OK
+        execErrState: Alerting
+        labels: { severity: warning }
+        annotations:
+          summary: More than 3 scheduled job runs failed in the last hour (matbex_job_runs_total, result=failed).
+
+      - uid: matbex-outbox-backlog
+        title: Live updates backed up
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: 'max(matbex_outbox_pending) or vector(0)' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [200] } }] }
+        for: 10m
+        noDataState: OK
+        execErrState: Alerting
+        labels: { severity: warning }
+        annotations:
+          summary: Over 200 events have waited 10 minutes in the outbox; kitchen and POS screens are not updating.
+
+      - uid: matbex-disk-space
+        title: Disk almost full
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: 'min(node_filesystem_avail_bytes{mountpoint="/",fstype!~"tmpfs|overlay"} / node_filesystem_size_bytes{mountpoint="/",fstype!~"tmpfs|overlay"})' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: lt, params: [0.15] } }] }
+        for: 10m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: critical }
+        annotations:
+          summary: Less than 15% disk space left on the server. The database stops writing when it runs out.
+
+      - uid: matbex-memory
+        title: Memory almost full
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: 'min(node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes)' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: lt, params: [0.1] } }] }
+        for: 10m
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: warning }
+        annotations:
+          summary: Less than 10% memory available for 10 minutes.
+
+      - uid: matbex-backup-failed
+        title: Backup failed
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: 'min(matbex_backup_last_run_success)' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: lt, params: [1] } }] }
+        for: 0s
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: critical }
+        annotations:
+          summary: The last nightly backup failed. See ~/backup/backup.log on the server (docs/self-hosting/BACKUPS.md).
+
+      - uid: matbex-backup-stale
+        title: No backup in over a day
+        condition: C
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model: { refId: A, instant: true, expr: '(time() - max(matbex_backup_last_success_timestamp_seconds)) / 3600' }
+          - refId: C
+            datasourceUid: __expr__
+            model: { refId: C, type: threshold, expression: A, conditions: [{ evaluator: { type: gt, params: [26] } }] }
+        for: 0s
+        noDataState: Alerting
+        execErrState: Alerting
+        labels: { severity: critical }
+        annotations:
+          summary: The last successful backup is more than 26 hours old (the nightly job did not run or did not finish).

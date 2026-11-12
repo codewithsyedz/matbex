@@ -72,6 +72,18 @@ services:
       REDIS_ADDR: redis://redis:6379
       REDIS_PASSWORD: ${REDIS_PASSWORD}
 
+  # Host disk, memory and CPU, plus the backup status file written by deploy/backup.sh
+  # (textfile collector: ~/backup/metrics/*.prom).
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.textfile.directory=/textfile
+    volumes:
+      - /:/host:ro,rslave
+      - ${HOME}/backup/metrics:/textfile:ro
+
   grafana:
     image: grafana/grafana:12.0.2
     restart: unless-stopped
@@ -82,6 +94,21 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
       GF_ANALYTICS_REPORTING_ENABLED: "false"
       GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Alerts (provisioning/alerting/alerting.yml): email through Resend's SMTP, and Telegram.
+      # Defaults are empty so a missing value only affects Grafana, never `docker compose` itself.
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: smtp.resend.com:587
+      GF_SMTP_USER: resend
+      GF_SMTP_PASSWORD: ${RESEND_API_KEY:-}
+      GF_SMTP_FROM_ADDRESS: alerts@${EMAIL_FROM_DOMAIN:-}
+      GF_SMTP_FROM_NAME: Matbex Alerts
+      GF_SMTP_STARTTLS_POLICY: MandatoryStartTLS
+      ALERT_EMAIL: ${ALERT_EMAIL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # Trailing space on purpose: Grafana turns a substituted all-digit value into a number,
+      # which the Telegram integration rejects (chatid must be a string), and keeps quotes
+      # literally. Telegram accepts the id with a trailing space.
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-} "
     volumes:
       - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
       - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro

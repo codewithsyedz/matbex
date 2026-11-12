@@ -112,3 +112,7 @@ old host to `https://staging-api.matbex.com` (on cutover day the data move's
 ## Backups
 
 Nightly encrypted database and file backups to Cloudflare R2, with a tested restore: see [BACKUPS.md](BACKUPS.md).
+
+## Monitoring
+
+Alerts to Telegram and email from Grafana: see [MONITORING.md](MONITORING.md).
