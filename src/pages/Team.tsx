@@ -531,6 +531,8 @@ export default function Team() {
       setInviteEmail("");
       setInviteRole("cashier");
       fetchInvitations();
+      // send-invite creates the account and its role right away: the member list changes too.
+      fetchTeamMembers();
     } catch (error: any) {
       console.error("Error inviting team member:", error);
       const friendly = await getFriendlyInviteError(error, inviteEmail);
