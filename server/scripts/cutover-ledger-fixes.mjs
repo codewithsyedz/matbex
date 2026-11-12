@@ -23,13 +23,19 @@
  *    Expenses without a receipt stay open for the accountant. Rows the database refuses
  *    (for example a locked period) are reported and skipped.
  *
- * Safe to re-run: a business that already has the draft (reference CUTOVER-AR) is skipped
- * for step 1, and step 2 only touches expenses that are still unpaid.
+ * 3. Delivery revenue: End of Day credited delivery sales to 4100 "Beverage Sales" until
+ *    migration 20261112113233. A DRAFT journal (reference CUTOVER-DLV-REV) moves it:
+ *      DR 4100 / CR 4020 Food Sales - Delivery   (net of voids and reposts)
+ *    Total revenue does not change.
+ *
+ * Safe to re-run: a business that already has a draft (reference CUTOVER-AR or CUTOVER-DLV-REV)
+ * is skipped for that draft, and step 2 only touches expenses that are still unpaid.
  */
 import postgres from "postgres";
 
 const APPLY = process.argv.includes("--apply");
 const REF = "CUTOVER-AR";
+const REV_REF = "CUTOVER-DLV-REV";
 const url = process.env.DATABASE_URL;
 if (!url) {
   console.error("DATABASE_URL is required");
@@ -52,7 +58,7 @@ async function clearingAccount(tx, tenantId) {
 }
 
 async function tenantFixes(tx, t) {
-  const out = { name: t.name, draft: null, unposted: [], paid: [], refused: [], open: [] };
+  const out = { name: t.name, draft: null, unposted: [], paid: [], refused: [], open: [], revenue: null };
 
   // --- 1. Customer receivables draft ---
   const [{ exists }] = await tx`
@@ -130,6 +136,33 @@ async function tenantFixes(tx, t) {
       out.refused.push({ ...e, reason: err.message });
     }
   }
+  // --- 3. Delivery revenue posted to 4100 ---
+  const [{ dlv }] = await tx`select public.delivery_revenue_account(${t.id}) as dlv`;
+  const [bev] = await tx`select id from chart_of_accounts where tenant_id = ${t.id} and account_code = '4100' limit 1`;
+  if (dlv && bev && bev.id !== dlv) {
+    const [{ revExists }] = await tx`
+      select exists (select 1 from journal_entry_batches where tenant_id = ${t.id} and reference_number = ${REV_REF}) as "revExists"`;
+    // All rows, voided ones included: a void's reversal line carries the same description.
+    const [{ moved }] = await tx`
+      select coalesce(sum(credit - debit), 0)::float8 as moved from account_transactions
+      where tenant_id = ${t.id} and account_id = ${bev.id} and description ilike '%Delivery Revenue (net of VAT)%'`;
+    const amount = money(moved);
+    out.revenue = { exists: revExists, amount };
+    if (APPLY && !revExists && amount > 0) {
+      const d = "Delivery revenue posted to 4100 Beverage Sales by End of Day: moved to delivery sales";
+      const revLines = [
+        { account_id: bev.id, debit: amount, credit: 0, description: d },
+        { account_id: dlv, debit: 0, credit: amount, description: d },
+      ];
+      const [owner] = await tx`
+        select user_id from user_tenant_roles where tenant_id = ${t.id} and role = 'owner' order by created_at limit 1`;
+      await tx`
+        insert into journal_entry_batches (tenant_id, batch_date, description, reference_number, entry_type, journal_type,
+                                           created_by, is_posted, approval_status, pending_lines)
+        values (${t.id}, current_date, 'Cutover: delivery revenue reclassification (draft for approval)', ${REV_REF}, 'adjustment', 'manual',
+                ${owner?.user_id ?? null}, false, 'pending', ${tx.json(revLines)})`;
+    }
+  }
   return out;
 }
 
@@ -140,7 +173,8 @@ for (const t of tenants) {
   try {
     const r = await sql.begin((tx) => tenantFixes(tx, t));
     const d = r.draft;
-    if (!d.lines && !r.paid.length && !r.open.length && !r.unposted.length) continue;
+    const rev = r.revenue && r.revenue.amount > 0 ? r.revenue : null;
+    if (!d.lines && !r.paid.length && !r.open.length && !r.unposted.length && !rev) continue;
     console.log(`\n## ${r.name}`);
     if (d.exists) console.log(`  receivables draft: already created (${REF}), skipped`);
     else if (d.lines) {
@@ -152,6 +186,8 @@ for (const t of tenants) {
     for (const u of r.unposted) console.log(`  in the draft: ${u.paid_on} ${u.invoice_number} ${fmt(u.amount)} (${u.payment_method}) DR 1010 Bank`);
     if (r.paid.length) console.log(`  receipted expenses ${APPLY ? "marked paid" : "to mark paid"}: ${r.paid.length}, ${fmt(r.paid.reduce((a, e) => a + e.amount, 0))}`);
     for (const e of r.refused) console.log(`  refused: ${e.expense_date} ${fmt(e.amount)} ${e.description ?? ""}: ${e.reason}`);
+    if (rev) console.log(rev.exists ? `  revenue draft: already created (${REV_REF}), skipped`
+      : `  revenue draft${APPLY ? " created (pending approval)" : ""}: move delivery revenue ${fmt(rev.amount)} DR 4100 Beverage Sales / CR 4020`);
     if (r.open.length) console.log(`  left open, no receipt: ${r.open.length}, ${fmt(r.open.reduce((a, e) => a + e.amount, 0))}`);
   } catch (err) {
     failed = true;

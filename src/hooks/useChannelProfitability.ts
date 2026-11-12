@@ -15,14 +15,14 @@ export interface ChannelRow {
   margin_pct: number;
 }
 
+/** One platform's reconciled payouts on one day (v_channel_profitability, from the ledger). */
 interface RawRow {
   tenant_id: string;
   channel: string;
   transaction_date: string;
-  account_code: string;
-  account_type: string;
-  total_debit: number;
-  total_credit: number;
+  gross: number | null;
+  commission: number | null;
+  net: number | null;
 }
 
 export function useChannelProfitability(from: Date, to: Date) {
@@ -77,21 +77,14 @@ export function useChannelProfitability(from: Date, to: Date) {
       const cur = byChannel.get(c) ?? {
         channel: c, gross: 0, commission: 0, net: 0, orders: 0, aov: 0, margin_pct: 0,
       };
-      if (r.account_code === "4010") {
-        cur.net += Number(r.total_credit) - Number(r.total_debit);
-      } else if (r.account_code === "6300") {
-        cur.commission += Number(r.total_debit) - Number(r.total_credit);
-      } else if (r.account_code === "2150") {
-        // 2150 debits = gross billed to aggregator
-        cur.gross += Number(r.total_debit);
-      }
+      cur.gross += Number(r.gross ?? 0);
+      cur.commission += Number(r.commission ?? 0);
+      cur.net += Number(r.net ?? 0);
       byChannel.set(c, cur);
     }
     const out = Array.from(byChannel.values()).map((r) => {
       r.orders = orderCounts[r.channel] ?? 0;
-      // For aggregator channels the 2150 debits already capture gross; for others use net
-      if (!r.gross) r.gross = r.net + r.commission;
-      r.aov = r.orders ? r.net / r.orders : 0;
+      r.aov = r.orders ? r.gross / r.orders : 0;
       r.margin_pct = r.gross > 0 ? ((r.net) / r.gross) * 100 : 0;
       return r;
     });

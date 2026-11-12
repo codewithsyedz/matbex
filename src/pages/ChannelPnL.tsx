@@ -75,7 +75,7 @@ export default function ChannelPnL() {
       <header className="mb-6 fade-slide-in">
         <h1 className="font-display text-2xl md:text-3xl font-semibold tracking-tight">Channel Profitability</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Revenue, commission and margin by sales channel — {monthLabel}
+          Delivery-app payouts marked reconciled: gross, commission and what reached the bank — {monthLabel}
         </p>
       </header>
 

@@ -20386,12 +20386,11 @@ export type Database = {
       }
       v_channel_profitability: {
         Row: {
-          account_code: string | null
-          account_type: Database["public"]["Enums"]["account_type"] | null
           channel: string | null
+          commission: number | null
+          gross: number | null
+          net: number | null
           tenant_id: string | null
-          total_credit: number | null
-          total_debit: number | null
           transaction_date: string | null
         }
         Relationships: []
@@ -21044,6 +21043,11 @@ export type Database = {
         Args: { p_tenant_id: string }
         Returns: string
       }
+      delivery_revenue_account:
+        | {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
       detect_installment_vat_mismatch:
         | {
         Args: { p_plan_id: string }
@@ -21127,11 +21131,6 @@ export type Database = {
         | {
         Args: { p_tenant_id: unknown }
         Returns: string
-      }
-      ensure_aggregator_accounts:
-        | {
-        Args: { _tenant_id: string }
-        Returns: undefined
       }
       ensure_bad_debt_account:
         | {
