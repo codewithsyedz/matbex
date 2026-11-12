@@ -40,7 +40,11 @@ interface Staff {
   name: string;
   role: string;
   is_active: boolean;
+  user_id?: string | null;
 }
+
+/** "Me": the signed-in user runs the shift without a staff record (cashier_staff_id null). */
+const SELF = "__self__";
 
 interface OpenShiftModalProps {
   open: boolean;
@@ -70,7 +74,8 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
   const [selectedDrawer, setSelectedDrawer] = useState<string>("");
   const [openingFloat, setOpeningFloat] = useState<number>(500);
 
-  const { user, restaurant } = useAuth();
+  const { user, restaurant, profile } = useAuth();
+  const profileName = profile?.full_name || user?.email || "signed-in user";
 
   useEffect(() => {
     if (open && restaurant) {
@@ -112,7 +117,7 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
           .order("name"),
         db
           .from("staff")
-          .select("id, name, role, is_active")
+          .select("id, name, role, is_active, user_id")
           .eq("restaurant_id", restaurant!.id)
           .eq("is_active", true)
           .order("name"),
@@ -129,9 +134,10 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
       if (drawersRes.data?.length) {
         setSelectedDrawer(drawersRes.data[0].id);
       }
-      if (staffRes.data?.length) {
-        setSelectedCashier(staffRes.data[0].id);
-      }
+      // Default to the signed-in user's own staff record, else to the user themself: a new
+      // business has no staff records yet, and a cashier must still be able to open a shift.
+      const own = (staffRes.data as Staff[] | null)?.find((s) => s.user_id === user?.id);
+      setSelectedCashier(own?.id ?? SELF);
     } catch (error) {
       console.error("Error loading data:", error);
     } finally {
@@ -172,7 +178,7 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
         drawer_id: selectedDrawer,
         template_id: selectedTemplate || null,
         cashier_user_id: user.id,
-        cashier_staff_id: selectedCashier,
+        cashier_staff_id: selectedCashier === SELF ? null : selectedCashier,
         opening_float: openingFloat,
         status: "open",
       });
@@ -287,6 +293,12 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
                         <SelectValue placeholder="Select a cashier" />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value={SELF}>
+                          <div className="flex flex-col">
+                            <span>Me ({profileName})</span>
+                            <span className="text-xs text-muted-foreground">Signed-in user</span>
+                          </div>
+                        </SelectItem>
                         {staffMembers.map((staff) => (
                           <SelectItem key={staff.id} value={staff.id}>
                             <div className="flex flex-col">
@@ -350,6 +362,12 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
                         ))}
                       </SelectContent>
                     </Select>
+                    {!loadingData && drawers.length === 0 && (
+                      <div className="flex items-center gap-2 text-xs text-destructive">
+                        <AlertCircle className="h-3 w-3" />
+                        <span>No cash drawer yet. An owner or manager adds one in Settings → Drawers.</span>
+                      </div>
+                    )}
                     {conflictingShift && (
                       <div className="flex items-center gap-2 text-xs text-destructive animate-shake-error">
                         <AlertCircle className="h-3 w-3" />

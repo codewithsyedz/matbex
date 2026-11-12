@@ -69,17 +69,16 @@ export default function Onboarding() {
   const [currency, setCurrency] = useState("SAR");
   const [timezone, setTimezone] = useState("Asia/Riyadh");
   
-  // Step 2: Shift templates
-  const [shiftTemplates, setShiftTemplates] = useState([
-    { name: "", startTime: "11:00", endTime: "23:00", defaultFloat: 500 },
-    { name: "", startTime: "23:00", endTime: "11:00", defaultFloat: 500 },
+  // Step 2: Shift templates. Pre-filled: an owner who just presses Continue still gets
+  // templates and a drawer (with blank names nothing was saved and cashiers could not open
+  // a shift); the names stay editable.
+  const [shiftTemplates, setShiftTemplates] = useState(() => [
+    { name: t("app.onboarding.step2.defaultDayShift"), startTime: "11:00", endTime: "23:00", defaultFloat: 500 },
+    { name: t("app.onboarding.step2.defaultNightShift"), startTime: "23:00", endTime: "11:00", defaultFloat: 500 },
   ]);
-  
+
   // Step 3: Drawers
-  const [drawers, setDrawers] = useState([
-    { name: "" },
-    { name: "" },
-  ]);
+  const [drawers, setDrawers] = useState(() => [{ name: t("app.onboarding.step3.defaultDrawer") }]);
 
   const [createdRestaurantId, setCreatedRestaurantId] = useState<string | null>(null);
   const [createdTenantId, setCreatedTenantId] = useState<string | null>(null);
@@ -198,11 +197,13 @@ export default function Onboarding() {
           name: d.name.trim(),
         }));
 
-      if (drawersData.length > 0) {
-        const { error } = await db.from("drawers").insert(drawersData);
-
-        if (error) throw error;
+      // Cashiers open shifts on a drawer: setup is not complete without one.
+      if (drawersData.length === 0) {
+        toast.error(t("app.onboarding.step3.drawerRequired"));
+        return;
       }
+      const { error } = await db.from("drawers").insert(drawersData);
+      if (error) throw error;
 
       setSetupDone(true);
       await refreshProfile();

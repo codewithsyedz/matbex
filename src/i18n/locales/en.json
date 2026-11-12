@@ -2715,6 +2715,8 @@
         "title": "Configure shift templates",
         "subtitle": "Set up your typical shift schedules (e.g., 11-11 for 24/7 coverage)",
         "shiftName": "Shift name",
+        "defaultDayShift": "Day shift",
+        "defaultNightShift": "Night shift",
         "start": "Start",
         "end": "End",
         "float": "Float ({{currency}})",
@@ -2726,6 +2728,8 @@
         "title": "Set up cash drawers",
         "subtitle": "Add your cash registers or terminals",
         "drawerName": "Drawer name",
+        "defaultDrawer": "Main drawer",
+        "drawerRequired": "Add at least one cash drawer: cashiers open their shifts on it.",
         "addDrawer": "Add another drawer",
         "complete": "Setup complete! Welcome to your dashboard.",
         "saveFailed": "Failed to save drawers"
