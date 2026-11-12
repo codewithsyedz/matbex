@@ -54,6 +54,11 @@ and Telegram, then cleared when restored.
 
 ## Outside check
 
-Everything above runs on the server it watches: if the whole server goes down, nothing alerts. An
-external monitor (e.g. UptimeRobot, free) should check `https://staging-api.matbex.com/health` and
-`https://staging.matbex.com` every 5 minutes and notify the same Telegram and email.
+Everything above runs on the server it watches: if the whole server goes down, nothing alerts. So
+UptimeRobot (free plan, set up 2026-11-12) checks from outside every 5 minutes and emails the owner:
+
+- **Keyword** monitor on `https://staging-api.matbex.com/health`, keyword `"ok":true`, alert when the
+  keyword is **missing** (the reverse setting reports "Keyword has been found" as down).
+- **HTTP** monitor on `https://staging.matbex.com`.
+
+At cutover add the same for `https://api.matbex.com/health` and `https://www.matbex.com`.
