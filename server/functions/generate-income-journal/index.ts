@@ -162,7 +162,29 @@ serve(async (req) => {
 
     const prompt = `You are the revenue-account classification control in a Saudi restaurant accounting system. Choose exactly one revenue account for the standard (non-delivery) daily sales below from the supplied catalogue. Never invent an ID. The application deterministically controls gross amounts, payment-account debits, delivery receivables, VAT, branch routing, balancing, locking, permissions, and posting. Delivery revenue remains separately mapped by deterministic rules. If the sales context is ambiguous, lower confidence. Confidence must be between 0 and 1. Keep rationale under 240 characters.\n\nSales day:\n${JSON.stringify({ date: sales.sales_date, cash_sales: sales.cash_sales, card_sales: sales.card_sales, delivery_sales: sales.delivery_sales, other_sales: sales.other_sales, gross_total: sales.total_sales, notes: sales.variance_notes })}\n\nEligible revenue accounts:\n${JSON.stringify(eligibleAccounts)}`;
 
-    if (!aiConfigured()) return json(cors, { error: "AI is not configured (ANTHROPIC_API_KEY)" }, 500);
+    // Without the AI (no key, or it fails after retries) End of Day must still post: suggest the
+    // standard sales account (4000, else the first eligible revenue account) for a finance user
+    // to confirm, through the same confirm flow as a low-confidence suggestion. Nothing posts
+    // without that confirmation.
+    const standardAccount = eligibleAccounts.find((account) => account.account_code === "4000") ?? eligibleAccounts[0];
+    const confirmStandard = async (reason: string) => {
+      auditContext.outcome = "blocked";
+      auditContext.error_message = reason;
+      await admin.from("ai_income_journal_audit").insert({ ...auditContext, selected_account_id: standardAccount.id, model: MODEL, prompt_version: PROMPT_VERSION });
+      return json(cors, {
+        posted: false,
+        needs_review: true,
+        message: reason,
+        account: { id: standardAccount.id, code: standardAccount.account_code, name: standardAccount.account_name },
+        confidence: 0,
+        classification: "Standard sales account",
+        rationale: `${reason}. Confirm to post to the standard sales account.`,
+      }, 200, runId);
+    };
+    if (!aiConfigured()) {
+      if (previewOnly) return json(cors, { error: "AI is not configured (ANTHROPIC_API_KEY)" }, 503);
+      return await confirmStandard("AI account suggestion is unavailable");
+    }
     const key = "anthropic";
 
     let suggestion: z.infer<typeof SuggestionSchema> | null = null;
@@ -183,6 +205,9 @@ serve(async (req) => {
         const details = errorDetails(error);
         if (details.status !== 429 && details.status < 500) break;
       }
+    }
+    if (!suggestion && !previewOnly) {
+      return await confirmStandard(`AI account suggestion failed (${errorDetails(lastError).message})`);
     }
     if (!suggestion) {
       const details = errorDetails(lastError);

@@ -500,7 +500,7 @@ export function DailySalesRecorder() {
         const s = error.result;
         const salesId = dailySales.id;
         toast.warning(`Please confirm: post to ${s.account.code} · ${s.account.name}?`, {
-          description: `AI was only ${Math.round(s.confidence * 100)}% sure. ${s.rationale}`,
+          description: s.confidence > 0 ? `AI was only ${Math.round(s.confidence * 100)}% sure. ${s.rationale}` : s.rationale,
           duration: 30000,
           action: {
             label: "Confirm & post",
