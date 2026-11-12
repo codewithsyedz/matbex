@@ -146,6 +146,8 @@ interface MenuItem {
   full_price?: number | null;
   image_url?: string | null;
   is_chefs_special?: boolean | null;
+  /** A combo package shown as a card; sold as a combo line (the server records its items). */
+  is_combo?: boolean;
 }
 
 type Variant = "quarter" | "half" | "full" | "default";
@@ -158,6 +160,8 @@ interface CartLine {
   price: number;
   qty: number;
   image_url?: string | null;
+  /** The line is a combo package: `id` is the combo's id. */
+  combo?: boolean;
 }
 
 type PaymentMethod = "cash" | "card" | "other";
@@ -273,6 +277,31 @@ export default function RecordSaleMobile() {
     });
   }, [rawMenuItems, priceMap]);
 
+  // Combo packages: shown under their own category as one card each, at the combo price.
+  const combosLabel = t("app.pos.order.combos", { defaultValue: "Combos" });
+  const { data: comboItems = [] } = useQuery({
+    queryKey: ["pos-tablet-combos", restaurant?.id],
+    queryFn: async () => {
+      if (!restaurant?.id) return [] as MenuItem[];
+      const { data, error } = await db
+        .from("combo_packages")
+        .select("id, name, price")
+        .eq("restaurant_id", restaurant.id)
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        category: combosLabel,
+        selling_price: Number(c.price) || 0,
+        is_combo: true,
+      })) as MenuItem[];
+    },
+    enabled: !!restaurant?.id,
+  });
+  const sellableItems = useMemo(() => [...menuItems, ...comboItems], [menuItems, comboItems]);
+
   const { data: activeShifts = [] } = useQuery({
     queryKey: ["pos-tablet-shifts", restaurant?.id],
     queryFn: async () => {
@@ -358,7 +387,7 @@ export default function RecordSaleMobile() {
 
   const categories = useMemo(() => {
     const set = new Set<string>();
-    menuItems.forEach((m) => m.category && set.add(m.category));
+    sellableItems.forEach((m) => m.category && set.add(m.category));
     const all = Array.from(set);
     // Surface "Main" (case-insensitive) first
     all.sort((a, b) => {
@@ -368,7 +397,7 @@ export default function RecordSaleMobile() {
       return a.localeCompare(b);
     });
     return all;
-  }, [menuItems]);
+  }, [sellableItems]);
 
   useEffect(() => {
     if (categoryInitialized || categories.length === 0) return;
@@ -386,7 +415,7 @@ export default function RecordSaleMobile() {
 
   const visibleItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let items = menuItems.filter((m) => {
+    let items = sellableItems.filter((m) => {
       if (category !== ALL && m.category !== category) return false;
       if (q && !m.name.toLowerCase().includes(q)) return false;
       return true;
@@ -400,7 +429,7 @@ export default function RecordSaleMobile() {
       });
     }
     return items;
-  }, [menuItems, search, category, sortByTopSales, salesRankMap]);
+  }, [sellableItems, search, category, sortByTopSales, salesRankMap]);
 
   const { activeBranchId, activeBranch } = useBranch();
   // VAT rate is configured per branch (Settings → Branches).
@@ -481,6 +510,7 @@ export default function RecordSaleMobile() {
       pricesVatInclusive: pricesInclusive,
       items: cart.map((l) => ({
         menu_item_id: l.id,
+        combo_id: l.combo ? l.id : null,
         name: l.name,
         size: sizeOf(l.variant),
         quantity: l.qty,
@@ -583,7 +613,7 @@ export default function RecordSaleMobile() {
       }
       return [
         ...prev,
-        { key, id: m.id, name: m.name, variant, price, qty: 1, image_url: toCdnUrl(m.image_url) },
+        { key, id: m.id, name: m.name, variant, price, qty: 1, image_url: toCdnUrl(m.image_url), combo: m.is_combo || undefined },
       ];
     });
     setJustAdded(key);
@@ -697,7 +727,11 @@ export default function RecordSaleMobile() {
               customerId: unpaid ? selectedCustomer?.id ?? null : null,
               paymentMethod: payment,
               settlement: unpaid ? "unpaid" : "paid",
-              lines: cart.map((l) => ({ menuItemId: l.id, size: sizeOf(l.variant), quantity: l.qty, unitPrice: l.price })),
+              lines: cart.map((l) =>
+                l.combo
+                  ? { comboId: l.id, quantity: l.qty, unitPrice: l.price }
+                  : { menuItemId: l.id, size: sizeOf(l.variant), quantity: l.qty, unitPrice: l.price },
+              ),
             },
             { idempotencyKey: saleKey },
           ),
