@@ -72,6 +72,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [closedStatus, setClosedStatus] = useState<string | null>(null);
 
   const [cashEvents, setCashEvents] = useState<CashEvent[]>([]);
   const [inventoryMovements, setInventoryMovements] = useState<Array<{
@@ -122,6 +123,11 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
     .reduce((sum, e) => sum + e.amount, 0);
 
   const variance = countedCash - expectedCash;
+
+  /** Card the terminal should show: card sales less card refunds (saved as expected_card). */
+  const expectedCardNet = cashEvents
+    .filter((e) => e.payment_method === "card")
+    .reduce((sum, e) => (e.event_type === "sale" ? sum + e.amount : e.event_type === "refund" ? sum - e.amount : sum), 0);
   const varianceStatus = getVarianceStatus(variance, thresholds);
   const explanationRequired = isExplanationRequired(variance, thresholds);
 
@@ -235,6 +241,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
           counted_cash: countedCash,
           counted_card: countedCard,
           expected_cash: expectedCash,
+          expected_card: expectedCardNet,
           variance: variance,
           variance_status: varianceStatus,
           variance_explanation: explanationRequired ? varianceExplanation : null,
@@ -250,6 +257,9 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
 
       if (error) throw error;
 
+      // The list refetch below drops this shift, after which the live values recompute
+      // against nothing; the success screen shows what was saved.
+      setClosedStatus(varianceStatus);
       toast.success("Shift closed successfully!");
       
       // Immediately call refetch before showing success
@@ -307,14 +317,14 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
             <div className="text-center space-y-1">
               <h3 className="text-lg font-semibold">Shift Closed!</h3>
               <p className="text-sm text-muted-foreground">
-                {varianceStatus === "perfect" 
+                {closedStatus === "perfect"
                   ? "Perfect close with zero variance"
-                  : varianceStatus === "minor"
+                  : closedStatus === "minor"
                   ? "Great job! Minor variance recorded"
                   : "Variance recorded for review"}
               </p>
             </div>
-            {varianceStatus === "perfect" && (
+            {closedStatus === "perfect" && (
               <div className="px-3 py-1 bg-success/10 text-success text-xs font-medium rounded-full">
                 🏆 Perfect Close
               </div>

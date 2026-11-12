@@ -1261,8 +1261,11 @@ export default function RecordSaleMobile() {
           </div>
           <ScrollArea className="max-h-[55vh] px-3 py-3">
             {filteredCustomers.length === 0 ? (
-              <div className="text-center text-sm text-muted-foreground py-10">
-                {t("app.pos.mobile.noCustomers")}
+              <div className="text-center text-sm text-muted-foreground py-10 px-4 space-y-1">
+                <p>{t("app.pos.mobile.noCustomers")}</p>
+                {/* Account customers carry a credit limit, so they are added in the back office,
+                    not at the till. */}
+                <p className="text-xs">{t("app.pos.mobile.customersAddedBy")}</p>
               </div>
             ) : (
               <div className="space-y-1.5">

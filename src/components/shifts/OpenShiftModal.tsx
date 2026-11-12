@@ -213,7 +213,8 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
     return false;
   };
 
-  const selectedCashierName = staffMembers.find((s) => s.id === selectedCashier)?.name;
+  const selectedCashierName =
+    selectedCashier === SELF ? `Me (${profileName})` : staffMembers.find((s) => s.id === selectedCashier)?.name;
   const selectedTemplateName = templates.find((t) => t.id === selectedTemplate)?.name;
   const selectedDrawerName = drawers.find((d) => d.id === selectedDrawer)?.name;
 
@@ -365,7 +366,7 @@ export function OpenShiftModal({ open, onOpenChange, onShiftOpened }: OpenShiftM
                     {!loadingData && drawers.length === 0 && (
                       <div className="flex items-center gap-2 text-xs text-destructive">
                         <AlertCircle className="h-3 w-3" />
-                        <span>No cash drawer yet. An owner or manager adds one in Settings → Drawers.</span>
+                        <span>No cash drawer yet. An owner or manager adds one in Settings → Shifts.</span>
                       </div>
                     )}
                     {conflictingShift && (

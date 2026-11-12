@@ -786,6 +786,7 @@ export default function Shifts() {
               drawer_id: shifts.find(s => s.id === selectedShiftId)?.drawer_id || "",
               opening_float: shifts.find(s => s.id === selectedShiftId)?.opening_float || 0,
               opened_at: shifts.find(s => s.id === selectedShiftId)?.opened_at || "",
+              drawers: { name: shifts.find(s => s.id === selectedShiftId)?.drawer_name || "drawer" },
             } : null}
             onShiftClosed={refetch}
           />

@@ -323,7 +323,7 @@ export default function CustomerDetail() {
       toast.success("Transaction voided");
     },
     onError: (error: any) => {
-      toast.error(error.message || "Failed to delete transaction");
+      toast.error(error.message || "Failed to void the sale");
     },
   });
 
@@ -701,7 +701,8 @@ export default function CustomerDetail() {
                                     e.stopPropagation();
                                     setTransactionToDelete(tx);
                                   }}
-                                  title="Delete"
+                                  title="Void sale"
+                                  aria-label="Void sale"
                                 >
                                   <Trash2 className="h-4 w-4" />
                                 </Button>

@@ -1911,6 +1911,7 @@
         "selectItems": "Choose items",
         "searchCustomer": "Search customer…",
         "noCustomers": "No customers found",
+        "customersAddedBy": "Customers who buy on account are added by an owner or manager on the Customers page.",
         "noPhone": "No phone",
         "balance": "Balance",
         "change": "Change",
@@ -1971,6 +1972,7 @@
         "selectCustomer": "Select customer",
         "searchCustomer": "Search by name or phone…",
         "noCustomers": "No customers found",
+        "customersAddedBy": "Customers who buy on account are added by an owner or manager on the Customers page.",
         "noPhone": "No phone",
         "balance": "Balance",
         "drawer": {
