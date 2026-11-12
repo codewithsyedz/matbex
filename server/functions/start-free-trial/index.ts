@@ -76,6 +76,17 @@ serve(async (req) => {
     }).select('id').single()
     if (rErr) { await admin.from('tenants').delete().eq('id', tenant.id); throw rErr }
 
+    // The trial's one branch. Records are stamped with it (auto_stamp_branch_id) and End of
+    // Day reads its VAT rate (column defaults: 15%, prices including VAT).
+    const { error: bErr } = await admin.from('branches').insert({
+      restaurant_id: restaurant.id, name: restaurantName, timezone, is_primary: true, is_active: true,
+    })
+    if (bErr) {
+      await admin.from('restaurants').delete().eq('id', restaurant.id)
+      await admin.from('tenants').delete().eq('id', tenant.id)
+      throw bErr
+    }
+
     const { error: roleErr } = await admin.from('user_tenant_roles').insert({ user_id: user.id, tenant_id: tenant.id, role: 'owner' })
     if (roleErr) throw roleErr
     const { error: legacyErr } = await admin.from('user_roles').insert({ user_id: user.id, restaurant_id: restaurant.id, role: 'owner' })
