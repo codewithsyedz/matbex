@@ -1,4 +1,6 @@
 import { useMemo, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -173,8 +175,29 @@ function SettlementsPanel({ canEdit }: { canEdit: boolean }) {
   const [commission, setCommission] = useState("0");
   const [reference, setReference] = useState("");
   const [notes, setNotes] = useState("");
+  const [bankCode, setBankCode] = useState("1010");
 
-  const net = Math.max(0, (Number(gross) || 0) - (Number(commission) || 0));
+  // Where the payout landed: active cash/bank accounts (1000-1099) of this business.
+  const { data: bankAccounts = [] } = useQuery({
+    queryKey: ["cash-bank-accounts"],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("chart_of_accounts")
+        .select("account_code, account_name")
+        .eq("account_type", "asset")
+        .eq("is_active", true)
+        .gte("account_code", "1000")
+        .lte("account_code", "1099")
+        .order("account_code");
+      if (error) throw error;
+      return data ?? [];
+    },
+  });
+
+  const grossNum = Number(gross) || 0;
+  const commissionNum = Number(commission) || 0;
+  const net = Math.round((grossNum - commissionNum) * 100) / 100;
+  const amountsOk = grossNum > 0 && commissionNum >= 0 && net >= 0;
 
   const submit = async () => {
     await create.mutateAsync({
@@ -183,6 +206,7 @@ function SettlementsPanel({ canEdit }: { canEdit: boolean }) {
       gross_amount: Number(gross) || 0,
       commission_amount: Number(commission) || 0,
       net_payout: net,
+      bank_account_code: bankCode,
       reference: reference || undefined,
       notes: notes || undefined,
     });
@@ -212,7 +236,11 @@ function SettlementsPanel({ canEdit }: { canEdit: boolean }) {
                           <SelectItem value="hungerstation">HungerStation</SelectItem>
                           <SelectItem value="jahez">Jahez</SelectItem>
                           <SelectItem value="mrsool">Mrsool</SelectItem>
+                          <SelectItem value="toyou">ToYou</SelectItem>
+                          <SelectItem value="carriage">Carriage</SelectItem>
                           <SelectItem value="talabat">Talabat</SelectItem>
+                          <SelectItem value="uber_eats">Uber Eats</SelectItem>
+                          <SelectItem value="other">Other</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -231,7 +259,24 @@ function SettlementsPanel({ canEdit }: { canEdit: boolean }) {
                   </div>
                   <div className="rounded-md border bg-muted/30 p-3 text-sm flex justify-between">
                     <span className="text-muted-foreground">Net payout</span>
-                    <span className="font-medium">{fmt(net)}</span>
+                    <span className={net < 0 ? "font-medium text-destructive" : "font-medium"}>{fmt(net)}</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label>Paid into</Label>
+                    <Select value={bankCode} onValueChange={setBankCode}>
+                      <SelectTrigger><SelectValue placeholder="Bank account" /></SelectTrigger>
+                      <SelectContent>
+                        {bankAccounts.map((a) => (
+                          <SelectItem key={a.account_code} value={a.account_code}>
+                            {a.account_code} {a.account_name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      When reconciled: net to this account, commission to Delivery Platform Commissions, and the
+                      gross clears Delivery Sales Receivable (1100) booked at End of Day.
+                    </p>
                   </div>
                   <div className="space-y-1.5">
                     <Label>Reference</Label>
@@ -245,7 +290,7 @@ function SettlementsPanel({ canEdit }: { canEdit: boolean }) {
               </ScrollArea>
               <DialogFooter>
                 <Button variant="ghost" onClick={() => setOpen(false)}>Cancel</Button>
-                <Button onClick={submit} disabled={create.isPending}>Save</Button>
+                <Button onClick={submit} disabled={create.isPending || !amountsOk || !bankCode}>Save</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>

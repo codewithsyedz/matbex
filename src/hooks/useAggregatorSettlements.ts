@@ -3,7 +3,8 @@ import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
-export type SettlementChannel = "hungerstation" | "jahez" | "mrsool" | "talabat";
+/** Same list as the app's delivery platforms (useDailySales DeliveryPlatform). */
+export type SettlementChannel = "hungerstation" | "jahez" | "toyou" | "mrsool" | "carriage" | "talabat" | "uber_eats" | "other";
 export type SettlementStatus = "pending" | "reconciled" | "disputed";
 
 export interface AggregatorSettlement {
@@ -67,7 +68,8 @@ export function useAggregatorSettlements() {
           net_payout: input.net_payout,
           reference: input.reference ?? null,
           notes: input.notes ?? null,
-          bank_account_code: input.bank_account_code ?? "1100",
+          // Cash/bank account the payout landed in (1000-1099); 1100 is the receivable it clears.
+          bank_account_code: input.bank_account_code ?? "1010",
         })
         .select()
         .single();

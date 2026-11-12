@@ -21039,6 +21039,11 @@ export type Database = {
         Args: { p_repayment_id: string }
         Returns: undefined
       }
+      delivery_commission_account:
+        | {
+        Args: { p_tenant_id: string }
+        Returns: string
+      }
       detect_installment_vat_mismatch:
         | {
         Args: { p_plan_id: string }
