@@ -22473,6 +22473,11 @@ export type Database = {
         Args: never
         Returns: number
       }
+      sync_bill_header_from_expenses:
+        | {
+        Args: { p_invoice_id: string }
+        Returns: undefined
+      }
       sync_branch_seats_for_tenant:
         | {
         Args: { _tenant_id: string }
