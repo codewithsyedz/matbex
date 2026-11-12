@@ -26,6 +26,8 @@ export const DEFAULT_FUNCTION_SCHEDULES: Record<string, string | null> = {
   "send-daily-profit-summary": "0 23 * * *",
   "send-daily-whatsapp-summary": "5 23 * * *",
   "send-weekly-digest": "0 9 * * 0",
+  // Subscription quantity = active branches (report-only unless BRANCH_BILLING_ENABLED=true).
+  "sync-branch-billing": "20 * * * *",
   // Same check the accountant dashboard runs on refresh; unchanged backlogs are not re-sent.
   "accountant-pending-alerts": "0 9 * * *",
   // Present but not scheduled by default — enable via JOB_SCHEDULES_JSON if you used them:

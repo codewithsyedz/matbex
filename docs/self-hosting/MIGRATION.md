@@ -146,6 +146,11 @@ Do a full dry run on a staging server with a copy of production first; time each
    balances (open tab sales are 1,841; manual adjustments and custom-invoice payments make up the
    difference), 3,871 via Cutover Clearing; none of the 10 invoice payments (4,823 SAR) is in the ledger;
    30 receipted expenses (41,558.19 SAR) to mark paid, 4 without a receipt (3,330 SAR) left open.
+7c. **Billing settings** in production's `.env`: `STRIPE_PRICE_GROWTH` (the 349 SAR/month Growth price) and
+   `BRANCH_BILLING_ENABLED=true`, so `sync-branch-billing` (hourly) sets each Starter/Growth subscription's
+   quantity to the business's active branches (at least 1, prorated by Stripe; each change in `audit_logs`,
+   action `branch_billing_quantity`). Run it once by hand first without the flag and read its report.
+   Never set the flag on staging: it holds real Stripe customer ids.
 8. **Switch:** point DNS / `VITE_API_URL`, rebuild the web app and Android APK (`vars.VITE_API_URL`/`VITE_API_KEY`
     in GitHub), update webhook URLs at Stripe, Checkout.com, Hala, Twilio and delivery platforms to
     `https://<API_DOMAIN>/functions/v1/<name>`.
