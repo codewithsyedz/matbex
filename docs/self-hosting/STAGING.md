@@ -27,7 +27,9 @@ follow latency and Saudi data-residency requirements.
   gets Let's Encrypt certificates over HTTP-01 through Cloudflare.
 * `.env` was generated on the server (own JWT secret, keys and passwords; never production's).
   Differences from production: `AUTH_AUTOCONFIRM=true` (no email is sent from staging),
-  `STORAGE_DRIVER=fs` (files in the `objects` volume until R2 is set up), and every integration
+  `STORAGE_DRIVER=s3` with files in the R2 bucket `matbex-staging-files` (since 2026-11-13; its own
+  token, read/write on that bucket only; `S3_ENDPOINT` is the account's R2 endpoint, `S3_REGION=auto`),
+  and every integration
   key (Resend, Twilio, Stripe, Checkout.com, Hala, Anthropic) and `ZATCA_BASE_URL` empty, so
   staging sends no messages or payments and ZATCA runs in simulation.
 * Email: staging uses the production Resend account but `EMAIL_ALLOWED_RECIPIENTS` limits it to
