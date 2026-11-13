@@ -69,7 +69,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
-import { postSalesWithAi, postSalesToConfirmedAccount, AiIncomeNeedsReviewError } from "@/lib/aiIncomeJournal";
+import { postSalesWithAi, AiIncomeNeedsReviewError, promptConfirmSalesAccount } from "@/lib/aiIncomeJournal";
 
 interface DeliveryEntry {
   platform: DeliveryPlatform;
@@ -497,24 +497,9 @@ export function DailySalesRecorder() {
       queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
     } catch (error: any) {
       if (error instanceof AiIncomeNeedsReviewError) {
-        const s = error.result;
-        const salesId = dailySales.id;
-        toast.warning(`Please confirm: post to ${s.account.code} · ${s.account.name}?`, {
-          description: s.confidence > 0 ? `AI was only ${Math.round(s.confidence * 100)}% sure. ${s.rationale}` : s.rationale,
-          duration: 30000,
-          action: {
-            label: "Confirm & post",
-            onClick: async () => {
-              try {
-                await postSalesToConfirmedAccount(salesId, s.account.id);
-                toast.success(`Posted to ${s.account.code} · ${s.account.name}`);
-                queryClient.invalidateQueries({ queryKey: ["daily-sales"] });
-                queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
-              } catch (e: any) {
-                toast.error(e?.message ?? "Posting failed");
-              }
-            },
-          },
+        promptConfirmSalesAccount(dailySales.id, error.result, toast, () => {
+          queryClient.invalidateQueries({ queryKey: ["daily-sales"] });
+          queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
         });
         return;
       }

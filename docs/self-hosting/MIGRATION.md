@@ -146,6 +146,16 @@ Do a full dry run on a staging server with a copy of production first; time each
    balances (open tab sales are 1,841; manual adjustments and custom-invoice payments make up the
    difference), 3,871 via Cutover Clearing; none of the 10 invoice payments (4,823 SAR) is in the ledger;
    30 receipted expenses (41,558.19 SAR) to mark paid, 4 without a receipt (3,330 SAR) left open.
+   The same run also drafts `CUTOVER-DLV-REV`: delivery revenue End of Day posted to 4100 Beverage Sales,
+   moved to 4020 (9,193.05 SAR on the production copy).
+   **Accountant decision, not changed by `--apply`:** expenses older than 30 days still waiting for
+   approval are not in the ledger or the P&L. On the production copy (2026-11-13): Smoke Grill, 187
+   cashier entries, 57,270 SAR (April 39 / 19,859; May 133 / 35,111, May's only expenses; June 15 /
+   2,300), no account assigned, about three quarters food purchases (supplier "sale man" payments, meat)
+   and the rest overheads (gas, water, charcoal); 167 marked unpaid, some apparently on supplier credit.
+   `--csv=<file>` writes them; the list is `accountant-review/unapproved-expenses-smoke-grill.csv`. The
+   accountant decides per month: food as inventory purchases / COGS, overheads as expenses, and whether
+   each was paid from cash or is owed to the supplier.
 7c. **Billing settings** in production's `.env`: `STRIPE_PRICE_GROWTH` (the 349 SAR/month Growth price) and
    `BRANCH_BILLING_ENABLED=true`, so `sync-branch-billing` (hourly) sets each Starter/Growth subscription's
    quantity to the business's active branches (at least 1, prorated by Stripe; each change in `audit_logs`,

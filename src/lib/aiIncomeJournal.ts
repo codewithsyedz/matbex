@@ -43,3 +43,31 @@ export async function postSalesWithAi(salesId: string): Promise<AiIncomeJournalR
 export function postSalesToConfirmedAccount(salesId: string, accountId: string) {
   return invoke({ sales_id: salesId, confirm_account_id: accountId });
 }
+
+/**
+ * A day whose revenue account a person has to confirm (the AI was unsure or unavailable):
+ * a toast with "Confirm & post". Bulk flows never confirm on the user's behalf.
+ */
+export function promptConfirmSalesAccount(
+  salesId: string,
+  s: AiIncomeJournalResult,
+  toastApi: { warning: (m: string, o?: any) => unknown; success: (m: string) => unknown; error: (m: string) => unknown },
+  onPosted?: () => void,
+) {
+  toastApi.warning(`Please confirm: post to ${s.account.code} · ${s.account.name}?`, {
+    description: s.confidence > 0 ? `AI was only ${Math.round(s.confidence * 100)}% sure. ${s.rationale}` : s.rationale,
+    duration: 30000,
+    action: {
+      label: "Confirm & post",
+      onClick: async () => {
+        try {
+          await postSalesToConfirmedAccount(salesId, s.account.id);
+          toastApi.success(`Posted to ${s.account.code} · ${s.account.name}`);
+          onPosted?.();
+        } catch (e: any) {
+          toastApi.error(e?.message ?? "Posting failed");
+        }
+      },
+    },
+  });
+}

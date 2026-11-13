@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/db/client";
-import { postSalesWithAi } from "@/lib/aiIncomeJournal";
+import { AiIncomeNeedsReviewError, postSalesWithAi, promptConfirmSalesAccount } from "@/lib/aiIncomeJournal";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatZonedYMD } from "@/lib/timezone";
 import { toast } from "sonner";
@@ -181,26 +181,40 @@ export function usePostDailyLedger(date: Date, branchId: string | null) {
       toast.success("Posted to ledger");
       invalidate();
     },
-    onError: (e: any) => toast.error("Posting failed", { description: e?.message }),
+    onError: (e: any, item) => {
+      if (e instanceof AiIncomeNeedsReviewError) {
+        promptConfirmSalesAccount(item.id, e.result, toast, invalidate);
+        return;
+      }
+      toast.error("Posting failed", { description: e?.message });
+    },
   });
 
   const postAll = useMutation({
     mutationFn: async (items: DailyPostingItem[]) => {
       let posted = 0;
       const failures: string[] = [];
+      const toConfirm: string[] = [];
       for (const item of items) {
         try {
           await postItem(item, profile?.tenant_id, branchKey);
           posted++;
         } catch (e: any) {
-          failures.push(`${item.label}: ${e?.message || "failed"}`);
+          if (e instanceof AiIncomeNeedsReviewError) toConfirm.push(item.label);
+          else failures.push(`${item.label}: ${e?.message || "failed"}`);
         }
       }
-      return { posted, failures };
+      return { posted, failures, toConfirm };
     },
-    onSuccess: ({ posted, failures }) => {
+    onSuccess: ({ posted, failures, toConfirm }) => {
+      if (toConfirm.length > 0) {
+        toast.info(`${toConfirm.length} sales day(s) need you to confirm the revenue account`, {
+          description: `Post each one on its own to confirm: ${toConfirm.slice(0, 3).join(" · ")}`,
+          duration: 15000,
+        });
+      }
       if (failures.length === 0) {
-        toast.success(`${dateStr}: ${posted} entries posted to the ledger`);
+        if (posted > 0) toast.success(`${dateStr}: ${posted} entries posted to the ledger`);
       } else {
         toast.warning(`${posted} posted, ${failures.length} failed`, {
           description: failures.slice(0, 3).join(" · "),

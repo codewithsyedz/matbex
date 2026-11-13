@@ -28,12 +28,20 @@
  *      DR 4100 / CR 4020 Food Sales - Delivery   (net of voids and reposts)
  *    Total revenue does not change.
  *
+ * 4. Report only (never changed by --apply): expenses older than 30 days still waiting for
+ *    approval, so missing from the ledger and the P&L (on the production copy: 187 cashier
+ *    entries, 57,270 SAR, April-June 2026, Smoke Grill; May has no other expenses). How to book
+ *    them (COGS via inventory purchase or overheads; paid from cash or owed to the supplier) is
+ *    the accountant's decision. --csv=<file> writes them all for review.
+ *
  * Safe to re-run: a business that already has a draft (reference CUTOVER-AR or CUTOVER-DLV-REV)
  * is skipped for that draft, and step 2 only touches expenses that are still unpaid.
  */
 import postgres from "postgres";
 
 const APPLY = process.argv.includes("--apply");
+const CSV = process.argv.find((a) => a.startsWith("--csv="))?.slice(6) || null;
+const csvRows = [];
 const REF = "CUTOVER-AR";
 const REV_REF = "CUTOVER-DLV-REV";
 const url = process.env.DATABASE_URL;
@@ -163,6 +171,16 @@ async function tenantFixes(tx, t) {
                 ${owner?.user_id ?? null}, false, 'pending', ${tx.json(revLines)})`;
     }
   }
+  // --- 4. Old expenses never approved (report only) ---
+  out.unapproved = await tx`
+    select e.id, to_char(e.expense_date, 'YYYY-MM-DD') as expense_date, e.amount::float8 as amount,
+           coalesce(e.description, '') as description, e.status::text as status,
+           coalesce(e.receipt_url, '') <> '' as has_receipt, r.name as restaurant
+    from expenses e join restaurants r on r.id = e.restaurant_id
+    where r.tenant_id = ${t.id} and e.deleted_at is null and not coalesce(e.ledger_posted, false)
+      and e.approval_status = 'pending' and e.expense_date < current_date - 30
+    order by e.expense_date`;
+  for (const e of out.unapproved) csvRows.push({ business: t.name, ...e });
   return out;
 }
 
@@ -174,7 +192,7 @@ for (const t of tenants) {
     const r = await sql.begin((tx) => tenantFixes(tx, t));
     const d = r.draft;
     const rev = r.revenue && r.revenue.amount > 0 ? r.revenue : null;
-    if (!d.lines && !r.paid.length && !r.open.length && !r.unposted.length && !rev) continue;
+    if (!d.lines && !r.paid.length && !r.open.length && !r.unposted.length && !rev && !r.unapproved.length) continue;
     console.log(`\n## ${r.name}`);
     if (d.exists) console.log(`  receivables draft: already created (${REF}), skipped`);
     else if (d.lines) {
@@ -188,11 +206,29 @@ for (const t of tenants) {
     for (const e of r.refused) console.log(`  refused: ${e.expense_date} ${fmt(e.amount)} ${e.description ?? ""}: ${e.reason}`);
     if (rev) console.log(rev.exists ? `  revenue draft: already created (${REV_REF}), skipped`
       : `  revenue draft${APPLY ? " created (pending approval)" : ""}: move delivery revenue ${fmt(rev.amount)} DR 4100 Beverage Sales / CR 4020`);
+    if (r.unapproved.length) {
+      const byMonth = new Map();
+      for (const e of r.unapproved) {
+        const m = e.expense_date.slice(0, 7);
+        const v = byMonth.get(m) || { n: 0, amt: 0 };
+        byMonth.set(m, { n: v.n + 1, amt: v.amt + e.amount });
+      }
+      console.log(`  NOT IN THE LEDGER, never approved (accountant to decide; not changed by --apply): ${r.unapproved.length}, ` +
+        `${fmt(r.unapproved.reduce((a, e) => a + e.amount, 0))}: ` +
+        Array.from(byMonth, ([m, v]) => `${m} ${v.n} / ${fmt(v.amt)}`).join("; "));
+    }
     if (r.open.length) console.log(`  left open, no receipt: ${r.open.length}, ${fmt(r.open.reduce((a, e) => a + e.amount, 0))}`);
   } catch (err) {
     failed = true;
     console.error(`\n## ${t.name}: FAILED, nothing changed for this business: ${err.message}`);
   }
+}
+if (CSV && csvRows.length) {
+  const { writeFileSync } = await import("node:fs");
+  const cols = ["business", "restaurant", "expense_date", "amount", "status", "has_receipt", "description", "id"];
+  const esc = (v) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+  writeFileSync(CSV, [cols.join(","), ...csvRows.map((r) => cols.map((c) => esc(r[c])).join(","))].join("\n") + "\n");
+  console.log(`\nUnapproved expenses written to ${CSV} (${csvRows.length} rows)`);
 }
 await sql.end();
 process.exit(failed ? 1 : 0);

@@ -3,7 +3,7 @@ import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatZonedYMD } from "@/lib/timezone";
 import { toast } from "sonner";
-import { postSalesWithAi } from "@/lib/aiIncomeJournal";
+import { AiIncomeNeedsReviewError, postSalesWithAi } from "@/lib/aiIncomeJournal";
 
 export interface PendingSalesDay {
   id: string;
@@ -69,19 +69,28 @@ export function useAutoPostDailySales() {
     mutationFn: async (days: PendingSalesDay[]) => {
       let posted = 0;
       const failures: string[] = [];
+      const toConfirm: string[] = [];
       for (const day of days) {
         try {
           await postSalesWithAi(day.id);
           posted++;
         } catch (error) {
-          failures.push(`${day.salesDate}: ${error instanceof Error ? error.message : "AI posting failed"}`);
+          // A person confirms the revenue account on the day's Day-End screen; never here.
+          if (error instanceof AiIncomeNeedsReviewError) toConfirm.push(day.salesDate);
+          else failures.push(`${day.salesDate}: ${error instanceof Error ? error.message : "AI posting failed"}`);
         }
       }
-      return { posted, failures };
+      return { posted, failures, toConfirm };
     },
-    onSuccess: ({ posted, failures }) => {
+    onSuccess: ({ posted, failures, toConfirm }) => {
+      if (toConfirm.length > 0) {
+        toast.info(`${toConfirm.length} day(s) need you to confirm the revenue account`, {
+          description: `Open Sales → Day-End for: ${toConfirm.slice(0, 5).join(", ")}`,
+          duration: 15000,
+        });
+      }
       if (failures.length === 0) {
-        toast.success(`${posted} day(s) of net sales posted to the ledger`);
+        if (posted > 0) toast.success(`${posted} day(s) of net sales posted to the ledger`);
       } else {
         toast.warning(`${posted} posted, ${failures.length} failed`, {
           description: failures.slice(0, 3).join(" · "),
