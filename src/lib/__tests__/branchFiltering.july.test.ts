@@ -38,6 +38,11 @@ vi.mock("@/integrations/db/client", async () => {
     payroll_records: fixtures.julyPayrollRecords,
     staff_advances: fixtures.julyStaffAdvances,
   });
+  // sale_account_amounts: what customer sales put on the tab (set per test).
+  (mock.db as any).rpc = async (name: string) => ({
+    data: name === "sale_account_amounts" ? ((globalThis as any).__tabRows ?? []) : null,
+    error: null,
+  });
   return { db: mock.db };
 });
 
@@ -47,6 +52,19 @@ const { db } = await import("@/integrations/db/client");
 // ---------------------------------------------------------------- Sales -----
 
 describe("July sales are branch-filtered", () => {
+  it("an open day's tab sales are not counted as cash or card", async () => {
+    // t6: a 300 card-method sale at Al-Wadi on 07-05 that went entirely on a customer's tab.
+    (globalThis as any).__tabRows = [{ sale_id: "t6", on_account: 300 }];
+    try {
+      const r = await fetchReconciledSalesByDay({
+        restaurantId: RESTAURANT_ID, dateFrom: JULY_FROM, dateTo: JULY_TO, branchId: BRANCH_WADI,
+      });
+      expect(r.summaryDetailByDay.get("2026-07-05")).toMatchObject({ cash: 0, card: 0, other: 300 });
+    } finally {
+      (globalThis as any).__tabRows = [];
+    }
+  });
+
   const fetchFor = (branchId: string | null) =>
     fetchReconciledSalesByDay({
       restaurantId: RESTAURANT_ID,

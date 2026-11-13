@@ -44,6 +44,12 @@ export function categoryColorClass(color?: string | null) {
   return COLOR_CLASSES[color || ""] || "bg-muted text-muted-foreground border-border";
 }
 
+/** A readable label for a category key that has no category row. */
+export function humanizeCategoryKey(key: string) {
+  const text = (key || "").replace(/_+/g, " ").trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : key;
+}
+
 /** Turn a free-text name into a stable storage key. */
 export function slugifyCategoryKey(name: string) {
   return name
@@ -96,7 +102,8 @@ export function useMenuCategories(branchId?: string | null) {
 
   const labelOf = (key: string) => {
     const c = merged.get(key);
-    if (!c) return key;
+    // A key with no category row (e.g. "beef_motton") reads as "Beef motton", not the raw key.
+    if (!c) return humanizeCategoryKey(key);
     return (isArabic && c.name_ar) || c.name_en;
   };
 

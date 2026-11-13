@@ -262,7 +262,7 @@ export async function fetchReconciledSalesByDay({
       for (let page = 0; ; page++) {
         let q = db
           .from("sales_transactions")
-          .select("total, created_at, payment_method, is_delivery")
+          .select("id, total, created_at, payment_method, is_delivery")
           .eq("restaurant_id", restaurantId)
           .gte("created_at", startISO)
           .lte("created_at", endISO)
@@ -328,16 +328,33 @@ export async function fetchReconciledSalesByDay({
         other: 0,
       });
     }
+    // What customer sales put on the tab is not cash or card (same rule as End of Day:
+    // sale_account_amounts); it is shown under "other" until the day is closed.
+    const onAccount = new Map<string, number>();
+    if (branchId !== "untagged" && merged.rawTxByDay.size > 0) {
+      const { data: acc } = await db.rpc("sale_account_amounts", {
+        p_restaurant_id: restaurantId,
+        p_branch_id: branchId,
+        p_from: startISO,
+        p_to: endISO,
+      });
+      for (const a of (acc || []) as Array<{ sale_id: string; on_account: number }>) {
+        onAccount.set(a.sale_id, Number(a.on_account || 0));
+      }
+    }
     for (const r of (txRes.data || []) as any[]) {
       const day = format(new Date(r.created_at), "yyyy-MM-dd");
       if (merged.summaryByDay.has(day)) continue;
       const d = merged.summaryDetailByDay.get(day);
       if (!d) continue;
       const amount = Number(r.total || 0);
-      if (r.is_delivery) d.delivery += amount;
-      else if (r.payment_method === "cash") d.cash += amount;
-      else if (r.payment_method === "card") d.card += amount;
-      else d.other += amount;
+      const tab = Math.min(Math.max(onAccount.get(r.id) || 0, 0), Math.max(amount, 0));
+      d.other += tab;
+      const paid = amount - tab;
+      if (r.is_delivery) d.delivery += paid;
+      else if (r.payment_method === "cash") d.cash += paid;
+      else if (r.payment_method === "card") d.card += paid;
+      else d.other += paid;
     }
     merged.summaryDerivedFromBranchPos = true;
   }

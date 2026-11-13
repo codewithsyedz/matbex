@@ -206,9 +206,20 @@ function RegisterContent() {
     setErrors((prev) => ({ ...prev, [field]: "" }));
   };
 
-  const handlePlanContinue = () => {
+  const handlePlanContinue = async () => {
     if (!selectedPlanId) {
       toast.error(t("register.selectPlanError"));
+      return;
+    }
+    // The free trial is self-serve (sign up -> onboarding -> start-free-trial, Growth features,
+    // no card, no approval). Paid add-ons and the approval queue are for paid plans only.
+    let planName = selectedPlanName;
+    if (!planName) {
+      const { data } = await db.from("plans").select("name").eq("id", selectedPlanId).maybeSingle();
+      planName = data?.name ?? "";
+    }
+    if (planName.toLowerCase() === "trial") {
+      navigate("/auth?signup=1&plan=growth");
       return;
     }
     setCurrentStep("addons");

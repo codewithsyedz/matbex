@@ -22417,6 +22417,11 @@ export type Database = {
         Args: { _restaurant_id: string }
         Returns: undefined
       }
+      seed_default_menu_categories:
+        | {
+        Args: { p_restaurant_id: string }
+        Returns: undefined
+      }
       seed_hybrid_pos_coa:
         | {
         Args: { p_tenant_id: string }

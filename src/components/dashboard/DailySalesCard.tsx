@@ -131,9 +131,10 @@ export function DailySalesCard() {
       }
 
       // Calculate RAW payment breakdowns from selected day POS rows
-      const rawCash = selectedDaySales.filter(s => s.payment_method === "cash")
+      // A sale still unpaid sits on a customer's tab: shown as unpaid, not as cash or card.
+      const rawCash = selectedDaySales.filter(s => s.payment_method === "cash" && s.settlement_status !== "unpaid")
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      const rawCard = selectedDaySales.filter(s => s.payment_method === "card")
+      const rawCard = selectedDaySales.filter(s => s.payment_method === "card" && s.settlement_status !== "unpaid")
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
       const rawUnpaid = selectedDaySales.filter(s => s.settlement_status === "unpaid")
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);

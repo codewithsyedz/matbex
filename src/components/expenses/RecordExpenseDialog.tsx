@@ -383,10 +383,13 @@ export function RecordExpenseDialog({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
-  // Auto-select first expense account when accounts load (fallback)
+  // Auto-select an account when accounts load (fallback): the first operating expense
+  // (6000s), not the first by code, which is a COGS account (5000) meant for stock
+  // purchases.
   useEffect(() => {
     if (expenseAccounts.length > 0 && !accountId && !categoryId) {
-      setAccountId(expenseAccounts[0].id);
+      const operating = expenseAccounts.find((a) => a.account_type === "expense");
+      setAccountId((operating ?? expenseAccounts[0]).id);
     }
   }, [expenseAccounts, accountId, categoryId]);
 
@@ -1387,6 +1390,9 @@ export function RecordExpenseDialog({
                   );
                   if (!selected) return null;
                   const cat = categories.find((c) => c.id === categoryId);
+                  // The category is what says whether this is a cost of goods or an overhead;
+                  // without one there is nothing to check the account against.
+                  if (!cat) return null;
                   const catName = (cat?.name || "").toLowerCase();
                   const cogsKeywords = [
                     "food",

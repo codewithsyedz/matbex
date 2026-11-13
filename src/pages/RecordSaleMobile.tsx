@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMenuCategories } from "@/hooks/useMenuCategories";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
@@ -384,6 +385,9 @@ export default function RecordSaleMobile() {
     if (typeof navigator !== "undefined" && navigator.onLine === false) return;
     void prefetchImages(menuItems.map((m) => toCdnUrl(m.image_url)));
   }, [menuItems]);
+
+  // Category names (en/ar) for the chips; items store the category key.
+  const { labelOf: categoryLabel } = useMenuCategories(pricingBranchId || null);
 
   const categories = useMemo(() => {
     const set = new Set<string>();
@@ -958,7 +962,7 @@ export default function RecordSaleMobile() {
                   active={category === c}
                   onClick={() => setCategory(c)}
                 >
-                  {c}
+                  {c === combosLabel ? c : categoryLabel(c)}
                 </CategoryChip>
               ))}
             </div>

@@ -145,7 +145,7 @@ export function useDailyProfit(selectedDate?: Date) {
       const { data, error } = await withBranch(
         db
           .from("sales_transactions")
-          .select("total, payment_method, shift_id, created_at, branch_id")
+          .select("total, payment_method, shift_id, created_at, branch_id, settlement_status")
           .eq("restaurant_id", restaurant.id)
           .gte("created_at", start.toISOString())
           .lt("created_at", endExclusive.toISOString())
@@ -787,11 +787,12 @@ export function useDailyProfit(selectedDate?: Date) {
   const shiftContributions: ShiftContribution[] = (shiftsData || []).map((shift) => {
     const shiftSales = (salesData || []).filter((s) => s.shift_id === shift.id);
     const netSales = shiftSales.reduce((sum, s) => sum + Number(s.total), 0);
+    // Tab sales (still unpaid) are not cash or card taken in the shift.
     const cashSales = shiftSales
-      .filter((s) => s.payment_method === "cash")
+      .filter((s) => s.payment_method === "cash" && s.settlement_status !== "unpaid")
       .reduce((sum, s) => sum + Number(s.total), 0);
     const cardSales = shiftSales
-      .filter((s) => s.payment_method === "card")
+      .filter((s) => s.payment_method === "card" && s.settlement_status !== "unpaid")
       .reduce((sum, s) => sum + Number(s.total), 0);
     const otherSales = netSales - cashSales - cardSales;
 
