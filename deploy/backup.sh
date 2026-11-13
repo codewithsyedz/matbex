@@ -4,7 +4,8 @@
 #   bash ~/matbex/deploy/backup.sh            # cron: see docs/self-hosting/BACKUPS.md
 #
 # 1. pg_dump (custom format) of the database, checked with pg_restore -l;
-#    tar.gz of the `objects` volume (STORAGE_DRIVER=fs files).
+#    tar.gz of the stored files: the `objects` volume (STORAGE_DRIVER=fs), or a full copy of the
+#    files bucket (STORAGE_DRIVER=s3, read with the app's S3_* keys).
 # 2. Each is encrypted with a fresh random 256-bit key (AES-256-CBC, PBKDF2); that key is
 #    encrypted with the backup PUBLIC key (RSA-OAEP, ~/backup/backup-public.pem). The private
 #    key never lives on this server, so neither the server nor the R2 keys can read a backup.
@@ -30,13 +31,25 @@ R2_SECRET_ACCESS_KEY=$(envval R2_SECRET_ACCESS_KEY); BUCKET=$(envval R2_BACKUP_B
 for v in R2_ENDPOINT R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY BUCKET; do
   [ -n "${!v}" ] || { echo "missing $v in $APP/.env"; exit 2; }
 done
+STORAGE_DRIVER=$(envval STORAGE_DRIVER); STORAGE_DRIVER=${STORAGE_DRIVER:-fs}
+if [ "$STORAGE_DRIVER" = "s3" ]; then
+  S3_ENDPOINT=$(envval S3_ENDPOINT); S3_ACCESS_KEY_ID=$(envval S3_ACCESS_KEY_ID)
+  S3_SECRET_ACCESS_KEY=$(envval S3_SECRET_ACCESS_KEY); S3_BUCKET=$(envval S3_BUCKET)
+  for v in S3_ENDPOINT S3_ACCESS_KEY_ID S3_SECRET_ACCESS_KEY S3_BUCKET; do
+    [ -n "${!v}" ] || { echo "missing $v in $APP/.env (STORAGE_DRIVER=s3)"; exit 2; }
+  done
+fi
 [ -s "$PUBKEY" ] || { echo "missing $PUBKEY"; exit 2; }
 
 rclone() {
-  docker run --rm -i -v "$WORK:/work" \
+  # As the calling user: files it writes under $WORK must be removable by the cleanup trap.
+  docker run --rm -i --user "$(id -u):$(id -g)" -e HOME=/tmp -v "$WORK:/work" \
     -e RCLONE_CONFIG_R2_TYPE=s3 -e RCLONE_CONFIG_R2_PROVIDER=Cloudflare \
     -e RCLONE_CONFIG_R2_ACCESS_KEY_ID="$R2_ACCESS_KEY_ID" -e RCLONE_CONFIG_R2_SECRET_ACCESS_KEY="$R2_SECRET_ACCESS_KEY" \
     -e RCLONE_CONFIG_R2_ENDPOINT="$R2_ENDPOINT" -e RCLONE_CONFIG_R2_NO_CHECK_BUCKET=true \
+    -e RCLONE_CONFIG_FILES_TYPE=s3 -e RCLONE_CONFIG_FILES_PROVIDER=Cloudflare \
+    -e RCLONE_CONFIG_FILES_ACCESS_KEY_ID="${S3_ACCESS_KEY_ID:-}" -e RCLONE_CONFIG_FILES_SECRET_ACCESS_KEY="${S3_SECRET_ACCESS_KEY:-}" \
+    -e RCLONE_CONFIG_FILES_ENDPOINT="${S3_ENDPOINT:-}" -e RCLONE_CONFIG_FILES_NO_CHECK_BUCKET=true \
     "$RCLONE_IMAGE" "$@"
 }
 
@@ -83,7 +96,16 @@ docker compose exec -T db pg_restore -l < "$WORK/db.dump" > /dev/null   # readab
 seal "$WORK/db.dump" "$WORK/out-$STAMP-db.bak"; rm -f "$WORK/db.dump"
 
 echo "== $STAMP files"
-docker run --rm -v matbex_objects:/data:ro "$ALPINE_IMAGE" tar -C /data -czf - . > "$WORK/files.tar.gz"
+if [ "$STORAGE_DRIVER" = "s3" ]; then
+  # Same archive layout as the volume (<bucket_id>/<name>), so restores work either way.
+  mkdir -p "$WORK/objects"
+  rclone copy "files:$S3_BUCKET" /work/objects --transfers 8
+  rclone check "files:$S3_BUCKET" /work/objects --one-way
+  tar -C "$WORK/objects" -czf "$WORK/files.tar.gz" .
+  rm -rf "$WORK/objects"
+else
+  docker run --rm -v matbex_objects:/data:ro "$ALPINE_IMAGE" tar -C /data -czf - . > "$WORK/files.tar.gz"
+fi
 seal "$WORK/files.tar.gz" "$WORK/out-$STAMP-files.bak"; rm -f "$WORK/files.tar.gz"
 
 mkdir -p "$WORK/up"
