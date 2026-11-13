@@ -1256,7 +1256,7 @@ export function DailySalesRecorder() {
                 const isOverage = variance > 0;
                 const reasons: { value: string; label: string; action: 'adjustment' | 'resolve'; hint: string }[] = isOverage
                   ? [
-                      { value: 'unrecorded_sales', label: 'Cashier missed POS entry (unrecorded sale)', action: 'adjustment', hint: 'Real cash collected but not rung. Post DR Cash / CR Sales (or Cash Over/Short).' },
+                      { value: 'unrecorded_sales', label: 'Cashier missed POS entry (unrecorded sale)', action: 'adjustment', hint: 'Real cash collected but not rung. The counted cash is posted as sales (with VAT) at End of Day; the adjustment records why.' },
                       { value: 'tip_in_drawer', label: 'Tips kept in drawer', action: 'adjustment', hint: 'Move from cash to tips liability via an adjustment entry.' },
                       { value: 'overring_correction', label: 'POS overring already corrected / timing only', action: 'resolve', hint: 'Books are already right - document the explanation and resolve to close.' },
                       { value: 'counting_error', label: 'Found extra cash / counting error', action: 'adjustment', hint: 'Post a Cash Over (DR Cash / CR Cash Over/Short) so books match the drawer.' },

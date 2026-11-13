@@ -28,6 +28,13 @@
  *      DR 4100 / CR 4020 Food Sales - Delivery   (net of voids and reposts)
  *    Total revenue does not change.
  *
+ * 5. Day-end adjustments counted twice: until migration 20261113115807 a daily-sales
+ *    adjustment ("unrecorded sales") posted DR 1000 Cash / CR 6999 Cash Over/Short on top of
+ *    End of Day, which already posts the counted cash as sales. A DRAFT journal per branch
+ *    (reference CUTOVER-DEA-<branch>) reverses what those adjustments left in the ledger:
+ *      DR 6999 / CR 1000   (on the production copy 285,194.64 SAR, Smoke Grill)
+ *    Days whose End of Day is not posted yet have their sales and cash posted when it is.
+ *
  * 4. Report only (never changed by --apply): expenses older than 30 days still waiting for
  *    approval, so missing from the ledger and the P&L (on the production copy: 187 cashier
  *    entries, 57,270 SAR, April-June 2026, Smoke Grill; May has no other expenses). How to book
@@ -171,6 +178,40 @@ async function tenantFixes(tx, t) {
                 ${owner?.user_id ?? null}, false, 'pending', ${tx.json(revLines)})`;
     }
   }
+  // --- 5. Day-end adjustments posted on top of End of Day ---
+  out.dea = await tx`
+    select t.branch_id, coalesce(b.name, 'no branch') as branch,
+           sum(t.debit - t.credit) filter (where a.account_code = '1000')::float8 as cash,
+           sum(t.debit - t.credit) filter (where a.account_code = '6999')::float8 as overshort,
+           (select id from chart_of_accounts where tenant_id = ${t.id} and account_code = '1000' limit 1) as cash_id,
+           (select id from chart_of_accounts where tenant_id = ${t.id} and account_code = '6999' limit 1) as os_id,
+           exists (select 1 from journal_entry_batches j where j.tenant_id = ${t.id}
+                   and j.reference_number = 'CUTOVER-DEA-' || coalesce(left(t.branch_id::text, 8), 'none')) as exists
+    from account_transactions t
+    join chart_of_accounts a on a.id = t.account_id
+    join day_end_adjustments d on d.id = t.reference_id
+    left join branches b on b.id = t.branch_id
+    where t.tenant_id = ${t.id} and not coalesce(t.is_voided, false) and d.scope = 'daily_sales'
+      and t.reference_type in ('day_end_adjustment', 'day_end_adjustment_reversal')
+    group by t.branch_id, b.name`;
+  for (const g of out.dea) {
+    const amount = money(-(g.overshort || 0)); // net credit on 6999
+    g.amount = amount;
+    if (!APPLY || g.exists || amount === 0 || Math.abs(money(g.cash || 0) - amount) > 0.01) continue;
+    const d = "Day-end adjustments posted on top of End of Day (counted twice): reversed";
+    const lines = amount > 0
+      ? [{ account_id: g.os_id, debit: amount, credit: 0, description: d }, { account_id: g.cash_id, debit: 0, credit: amount, description: d }]
+      : [{ account_id: g.cash_id, debit: -amount, credit: 0, description: d }, { account_id: g.os_id, debit: 0, credit: -amount, description: d }];
+    const [owner] = await tx`
+      select user_id from user_tenant_roles where tenant_id = ${t.id} and role = 'owner' order by created_at limit 1`;
+    await tx`
+      insert into journal_entry_batches (tenant_id, branch_id, batch_date, description, reference_number, entry_type, journal_type,
+                                         created_by, is_posted, approval_status, pending_lines)
+      values (${t.id}, ${g.branch_id}, current_date, ${"Cutover: day-end adjustments counted twice, " + g.branch + " (draft for approval)"},
+              ${"CUTOVER-DEA-" + (g.branch_id ? String(g.branch_id).slice(0, 8) : "none")}, 'adjustment', 'manual',
+              ${owner?.user_id ?? null}, false, 'pending', ${tx.json(lines)})`;
+  }
+
   // --- 4. Old expenses never approved (report only) ---
   out.unapproved = await tx`
     select e.id, to_char(e.expense_date, 'YYYY-MM-DD') as expense_date, e.amount::float8 as amount,
@@ -192,7 +233,8 @@ for (const t of tenants) {
     const r = await sql.begin((tx) => tenantFixes(tx, t));
     const d = r.draft;
     const rev = r.revenue && r.revenue.amount > 0 ? r.revenue : null;
-    if (!d.lines && !r.paid.length && !r.open.length && !r.unposted.length && !rev && !r.unapproved.length) continue;
+    const dea = (r.dea || []).filter((g) => g.amount !== 0);
+    if (!d.lines && !r.paid.length && !r.open.length && !r.unposted.length && !rev && !r.unapproved.length && !dea.length) continue;
     console.log(`\n## ${r.name}`);
     if (d.exists) console.log(`  receivables draft: already created (${REF}), skipped`);
     else if (d.lines) {
@@ -206,6 +248,12 @@ for (const t of tenants) {
     for (const e of r.refused) console.log(`  refused: ${e.expense_date} ${fmt(e.amount)} ${e.description ?? ""}: ${e.reason}`);
     if (rev) console.log(rev.exists ? `  revenue draft: already created (${REV_REF}), skipped`
       : `  revenue draft${APPLY ? " created (pending approval)" : ""}: move delivery revenue ${fmt(rev.amount)} DR 4100 Beverage Sales / CR 4020`);
+    for (const g of dea) {
+      const mismatch = Math.abs(money(g.cash || 0) - g.amount) > 0.01;
+      console.log(g.exists ? `  day-end adjustments draft (${g.branch}): already created, skipped`
+        : mismatch ? `  day-end adjustments (${g.branch}): cash ${fmt(g.cash)} and 6999 ${fmt(-g.overshort)} differ, NOT drafted; check by hand`
+        : `  day-end adjustments draft${APPLY ? " created (pending approval)" : ""} (${g.branch}): DR 6999 / CR 1000 ${fmt(g.amount)} (counted twice)`);
+    }
     if (r.unapproved.length) {
       const byMonth = new Map();
       for (const e of r.unapproved) {

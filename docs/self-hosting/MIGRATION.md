@@ -148,6 +148,12 @@ Do a full dry run on a staging server with a copy of production first; time each
    30 receipted expenses (41,558.19 SAR) to mark paid, 4 without a receipt (3,330 SAR) left open.
    The same run also drafts `CUTOVER-DLV-REV`: delivery revenue End of Day posted to 4100 Beverage Sales,
    moved to 4020 (9,193.05 SAR on the production copy).
+   It drafts `CUTOVER-DEA-<branch>` too: daily-sales day-end adjustments ("unrecorded sales") posted
+   DR Cash / CR 6999 on top of End of Day, which already books the counted cash as sales, so that cash
+   was counted twice (285,194.64 SAR on the production copy, June-November 2026). The draft reverses it,
+   DR 6999 / CR 1000, per branch; migration 20261113115807 stops new ones. Depreciation catches up by
+   itself: the nightly job (fixed in 20261113120709) posts every missed month from each asset's
+   in-service month (May-October 2026 on the production copy: 4,478.79 SAR).
    **Accountant decision, not changed by `--apply`:** expenses older than 30 days still waiting for
    approval are not in the ledger or the P&L. On the production copy (2026-11-13): Smoke Grill, 187
    cashier entries, 57,270 SAR (April 39 / 19,859; May 133 / 35,111, May's only expenses; June 15 /
