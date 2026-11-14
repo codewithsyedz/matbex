@@ -62,12 +62,35 @@ serve(async req => {
       ...(u.length?[`${u.length} closed day(s) not posted · ${sar(sum(u,'total_sales'))} (Daily Profit → Auto-post)`]:[]),
       ...(n.length?[`${n.length} day(s) with sales but no End of Day · ${sar(sum(n,'pos_total'))} (Sales → Day-End)`]:[]),
     ];
-    if(!pending.length && !low.length && !salesMissing.length) return response({status:'nothing_pending'});
-    const signature=pendingSignature(expenses,inventory)+JSON.stringify(salesMissing);
+    // Month-end: card money not yet matched to a payout (1015), and whether last month is locked.
+    const now=new Date();
+    const lastMonthEnd=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth(),0)).toISOString().slice(0,10);
+    const lastMonthLabel=new Date(Date.UTC(now.getUTCFullYear(),now.getUTCMonth()-1,1)).toLocaleString('en-US',{month:'long',year:'numeric',timeZone:'UTC'});
+    const [{data: cardAcct}, {data: lock, error: lErr}] = await Promise.all([
+      client.from('chart_of_accounts').select('id').eq('tenant_id',TENANT_ID).eq('account_code','1015').maybeSingle(),
+      client.from('fiscal_period_locks').select('period_end').eq('restaurant_id',RESTAURANT_ID).eq('is_locked',true).order('period_end',{ascending:false}).limit(1),
+    ]);
+    if(lErr) throw lErr;
+    let cardOutstanding=0;
+    if(cardAcct?.id){
+      for(let offset=0; ;offset+=1000){
+        const {data,error}=await client.from('account_transactions').select('debit,credit').eq('tenant_id',TENANT_ID).eq('account_id',cardAcct.id).or('is_voided.is.null,is_voided.eq.false').range(offset,offset+999);
+        if(error) throw error;
+        cardOutstanding+=(data||[]).reduce((s: number,r: Record<string, unknown>)=>s+Number(r.debit||0)-Number(r.credit||0),0);
+        if(!data || data.length<1000) break;
+      }
+    }
+    const lastLocked=(lock?.[0]?.period_end as string|undefined) ?? null;
+    const monthEnd=[
+      ...(cardOutstanding>0.005?[`Card sales waiting for the payout to be recorded · ${sar(cardOutstanding)} (Accounting → Card Settlement Clearing)`]:[]),
+      ...(!lastLocked || lastLocked<lastMonthEnd?[`${lastMonthLabel} is not locked${lastLocked?` (last locked to ${lastLocked})`:' (no month locked yet)'} (Accounting → Period Close)`]:[]),
+    ];
+    if(!pending.length && !low.length && !salesMissing.length && !monthEnd.length) return response({status:'nothing_pending'});
+    const signature=pendingSignature(expenses,inventory)+JSON.stringify(salesMissing)+JSON.stringify(monthEnd);
     const digest = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(signature));
     const hash=Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
     const details=[...pending.slice(0,15).map(r=>`${r.description || 'Expense'} · ${pendingExpenseReasons(r).join(', ')}`),...low.slice(0,15).map(r=>`${r.name} · stock ${r.current_stock}, reorder level ${r.reorder_level}`)];
-    const result=await sendTemplateEmail('accountant-pending-alert','',{templateData:{restaurant:'Riyadh-HQ',salesMissing,expenses:pending.length,vat:pending.filter(r=>r.vat_split_status==='pending').length,inventory:low.length,details},idempotencyKey:`accountant-pending-${RESTAURANT_ID}-${hash}`});
+    const result=await sendTemplateEmail('accountant-pending-alert','',{templateData:{restaurant:'Riyadh-HQ',salesMissing,monthEnd,expenses:pending.length,vat:pending.filter(r=>r.vat_split_status==='pending').length,inventory:low.length,details},idempotencyKey:`accountant-pending-${RESTAURANT_ID}-${hash}`});
     return response(result.sent ? {status:'sent',expenses:pending.length,inventory:low.length} : {status:'suppressed'});
   } catch(error) {
     if(error instanceof Response) return response({error:'Unauthorized'},error.status);
