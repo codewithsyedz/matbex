@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertTriangle, ArrowRight, FlaskConical, Lock } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useDemoTrial } from "@/hooks/useDemoTrial";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { useState } from "react";
 
@@ -27,7 +27,7 @@ export function TrialBanner() {
   const handleActivate = async () => {
     setActivating(true);
     try {
-      const { error } = await supabase.functions.invoke("activate-demo-tenant", {
+      const { error } = await db.functions.invoke("activate-demo-tenant", {
         body: { tenant_id: tenant.id },
       });
       if (error) throw error;

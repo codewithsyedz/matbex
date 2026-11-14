@@ -13,7 +13,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { parseLedgerValidationError } from "../ledgerValidationError";
 
-const MIGRATIONS = path.resolve(process.cwd(), "supabase/migrations");
+const MIGRATIONS = path.resolve(process.cwd(), "db/migrations");
 
 function latestDefinition(fnName: string): string | null {
   const files = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();

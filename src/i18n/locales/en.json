@@ -652,14 +652,15 @@
       "termsNotice": "By continuing, you agree to Matbex Terms of Service & Privacy Policy",
       "names": {
         "trial": "Trial",
-        "free": "Starter Core",
+        "free": "Starter (legacy)",
         "essentials": "Essentials",
-        "pro": "Pro",
-        "enterprise": "Enterprise"
+        "pro": "Growth",
+        "enterprise": "Enterprise",
+        "starter": "Starter Core"
       },
       "features": {
         "trial1": "14 Days Free",
-        "trial2": "Full Pro Features",
+        "trial2": "Growth features, 1 branch",
         "trial3": "No Credit Card Required",
         "free1": "1 branch, up to 3 users",
         "free2": "POS + Cash Drawer + Shifts",
@@ -1695,7 +1696,7 @@
         "subtotalRequired": "Please enter a subtotal",
         "saleRecorded": "Sale recorded",
         "receipt": "Receipt: {{number}}",
-        "saleDeleted": "Sale deleted successfully",
+        "saleDeleted": "Sale voided",
         "shiftReassigned": "Shift reassigned successfully",
         "saleUpdated": "Sale updated successfully"
       },
@@ -1754,8 +1755,11 @@
         "pdfSettings": "PDF export settings"
       },
       "delete": {
-        "title": "Delete Sale Transaction",
-        "desc": "Are you sure you want to delete this sale ({{receipt}})? This action cannot be undone."
+        "title": "Void Sale Transaction",
+        "desc": "Void this sale ({{receipt}})? A negative entry is recorded, stock is returned and a cash refund is taken from the open shift. This cannot be undone.",
+        "reasonLabel": "Reason (required)",
+        "reasonPlaceholder": "e.g. customer cancelled, wrong items rung up",
+        "confirm": "Void sale"
       },
       "edit": {
         "title": "Edit Sale",
@@ -1907,6 +1911,7 @@
         "selectItems": "Choose items",
         "searchCustomer": "Search customer…",
         "noCustomers": "No customers found",
+        "customersAddedBy": "Customers who buy on account are added by an owner or manager on the Customers page.",
         "noPhone": "No phone",
         "balance": "Balance",
         "change": "Change",
@@ -1967,6 +1972,7 @@
         "selectCustomer": "Select customer",
         "searchCustomer": "Search by name or phone…",
         "noCustomers": "No customers found",
+        "customersAddedBy": "Customers who buy on account are added by an owner or manager on the Customers page.",
         "noPhone": "No phone",
         "balance": "Balance",
         "drawer": {
@@ -2711,6 +2717,8 @@
         "title": "Configure shift templates",
         "subtitle": "Set up your typical shift schedules (e.g., 11-11 for 24/7 coverage)",
         "shiftName": "Shift name",
+        "defaultDayShift": "Day shift",
+        "defaultNightShift": "Night shift",
         "start": "Start",
         "end": "End",
         "float": "Float ({{currency}})",
@@ -2722,6 +2730,8 @@
         "title": "Set up cash drawers",
         "subtitle": "Add your cash registers or terminals",
         "drawerName": "Drawer name",
+        "defaultDrawer": "Main drawer",
+        "drawerRequired": "Add at least one cash drawer: cashiers open their shifts on it.",
         "addDrawer": "Add another drawer",
         "complete": "Setup complete! Welcome to your dashboard.",
         "saveFailed": "Failed to save drawers"
@@ -3007,7 +3017,11 @@
       "band": "Ticket band",
       "weekday": "Day",
       "hour": "Hour",
-      "methods": { "cash": "Cash", "card": "Card", "other": "Other" },
+      "methods": {
+        "cash": "Cash",
+        "card": "Card",
+        "other": "Other"
+      },
       "kpis": {
         "totalSales": "Total sales",
         "cashSales": "Cash sales",
@@ -3454,7 +3468,8 @@
       },
       "salesPosted": "Sales posted to Chart of Accounts successfully",
       "aiSalesPosted": "Sales posted to {{account}} with {{confidence}}% AI confidence",
-      "ledgerFailed": "Failed to post to ledger"
+      "ledgerFailed": "Failed to post to ledger",
+      "accountSales": "On customer accounts (from the POS, not in cash or card): {{amount}}. Posted to Customer Accounts receivable; leave it out of the cash you count."
     }
   },
   "productNav": {

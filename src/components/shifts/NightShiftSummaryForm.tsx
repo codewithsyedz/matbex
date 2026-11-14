@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -60,7 +60,7 @@ export function NightShiftSummaryForm() {
     setLoading(true);
     try {
       // Find open night shift (shift_summary mode)
-      const { data: shifts, error: shiftError } = await supabase
+      const { data: shifts, error: shiftError } = await db
         .from("shifts")
         .select(`
           id, opened_at, template_id, drawer_id,
@@ -82,7 +82,7 @@ export function NightShiftSummaryForm() {
         setNightShift(summaryShift as any);
 
         // Check for existing summary
-        const { data: summary } = await supabase
+        const { data: summary } = await db
           .from("night_shift_summaries")
           .select("*")
           .eq("shift_id", summaryShift.id)
@@ -138,7 +138,7 @@ export function NightShiftSummaryForm() {
 
       if (existingSummary) {
         // Update existing
-        const { error } = await supabase
+        const { error } = await db
           .from("night_shift_summaries")
           .update({
             cash_collected: cash,
@@ -154,7 +154,7 @@ export function NightShiftSummaryForm() {
         toast.success("Night summary updated");
       } else {
         // Insert new
-        const { data: newSummary, error } = await supabase
+        const { data: newSummary, error } = await db
           .from("night_shift_summaries")
           .insert(summaryData)
           .select()
@@ -183,7 +183,7 @@ export function NightShiftSummaryForm() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.rpc("post_night_summary_to_ledger", {
+      const { error } = await db.rpc("post_night_summary_to_ledger", {
         p_summary_id: existingSummary.id,
       });
 

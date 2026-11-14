@@ -175,7 +175,7 @@ export function buildReconciliationHtml(input: ReconciliationExportInput): strin
     ${summaryRows.map(([k, v]) => `<tr><td>${html(k)}</td><td class="r">${html(v)}</td></tr>`).join("")}
   </tbody></table>
   ${sectionHtml}
-  <script>window.onload = function () { window.print(); };<\/script>
+  <script>window.onload = function () { window.print(); };</script>
 </body></html>`;
 }
 

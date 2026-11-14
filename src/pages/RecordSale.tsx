@@ -3,6 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { recordOfflineSale } from "@/lib/offline/posService";
+import { recordSale, type PriceChangedDetails, type RecordSaleResult, type SaleLineSize } from "@/lib/api/pos";
+import { ApiError } from "@/lib/api/http";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
 import { ensureOfflineBootstrapped } from "@/lib/offline/lazyBootstrap";
@@ -82,7 +84,7 @@ import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useImpersonationGuard } from "@/hooks/useImpersonationGuard";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -110,10 +112,7 @@ import {
   logInvoiceGeneration,
   pdfBase64ToBytes,
 } from "@/lib/zatca/persistence";
-import {
-  advanceZatcaChain,
-  writeZatcaChainToSale,
-} from "@/lib/zatca/chain";
+import { stampZatcaChain } from "@/lib/api/zatca";
 import {
   buildSimplifiedTaxInvoiceUbl,
   uploadZatcaXml,
@@ -192,7 +191,7 @@ export default function RecordSale() {
     if (!tableIdFromUrl || !restaurant?.id) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("pos_tables")
         .select("id,label")
         .eq("id", tableIdFromUrl)
@@ -525,7 +524,7 @@ export default function RecordSale() {
     queryKey: ["menu-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -547,7 +546,7 @@ export default function RecordSale() {
     queryKey: ["active-shifts", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -563,7 +562,7 @@ export default function RecordSale() {
     queryKey: ["expense-categories", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_categories")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -579,7 +578,7 @@ export default function RecordSale() {
     queryKey: ["combo-packages", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("combo_packages")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -596,7 +595,7 @@ export default function RecordSale() {
     queryKey: ["customers", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select("id, name, phone, credit_limit, current_balance, credit_status")
         .eq("restaurant_id", restaurant.id)
@@ -609,14 +608,14 @@ export default function RecordSale() {
   });
 
   // Fetch top selling items (last 30 days)
-  const { data: topSellingData = [] } = useQuery({
+  const { data: topSellingData = [] } = useQuery<{ menuItemId: string; totalSold: number }[]>({
     queryKey: ["top-selling-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_items")
         .select("menu_item_id, quantity")
         .eq("restaurant_id", restaurant.id)
@@ -628,7 +627,7 @@ export default function RecordSale() {
       const aggregated = (data || []).reduce((acc, item) => {
         acc[item.menu_item_id] = (acc[item.menu_item_id] || 0) + item.quantity;
         return acc;
-      }, {} as Record<string, number>);
+      }, {} as Record<string, number>) as Record<string, number>;
       
       // Sort by quantity and get top 10
       const ranked = Object.entries(aggregated)
@@ -804,7 +803,10 @@ export default function RecordSale() {
 
   const hasZatcaErrors = Object.keys(zatcaValidation).length > 0;
 
-  const queueSaleOffline = async () => {
+  // One idempotency key per checkout, shared by the online attempt and the offline queue: if
+  // the online request committed but its response was lost, the offline replay returns that
+  // sale instead of recording a second one.
+  const queueSaleOffline = async (idempotencyKey?: string) => {
     if (!restaurant?.id || !user?.id || cart.length === 0) {
       throw new Error("Invalid sale data");
     }
@@ -817,6 +819,8 @@ export default function RecordSale() {
         ? "Standard (B2B) invoices require connectivity for ZATCA clearance."
         : docCurrency && docCurrency !== "SAR"
           ? "Foreign-currency sales require connectivity for FX validation."
+          : (parseFloat(docDiscount) || 0) > 0 || (parseFloat(docSurcharge) || 0) > 0
+            ? "Document discounts and surcharges require connectivity."
           : isUnpaidSale && !selectedCustomer
             ? "Unpaid (credit) sales require a customer - pick one first to queue offline."
             : null;
@@ -827,16 +831,23 @@ export default function RecordSale() {
 
     const activeShift = shiftsEnabled ? activeShifts[0] : undefined;
     const result = await recordOfflineSale({
-      branchId: activeBranchId,
+      // The offline queue is scoped by restaurant (the sync engine drains by restaurant id);
+      // the real branch travels in the payload.
+      branchId: restaurant.id,
+      saleBranchId: activeBranchId,
+      idempotencyKey,
       cashierId: user.id,
       shiftId: activeShift?.id ?? null,
       paymentMethod,
       customerId: isUnpaidSale ? selectedCustomer?.id ?? null : null,
       isUnpaid: isUnpaidSale,
       vatRate,
+      pricesVatInclusive: pricesInclusive,
       items: cart.map((c) => ({
         menu_item_id: c.menuItemId,
+        combo_id: c.isCombo ? c.menuItemId : null,
         name: c.name,
+        size: c.size === "combo" ? undefined : c.size,
         quantity: c.quantity,
         unit_price: c.price,
       })),
@@ -1234,7 +1245,7 @@ export default function RecordSale() {
       }
 
       // ── Offline guardrail ────────────────────────────────────────────
-      // The desktop ZATCA path issues many sequential Supabase calls
+      // The desktop ZATCA path issues many sequential the API calls
       // (insert, ZATCA hash, PDF, ledger) that have no fetch timeout.
       // When offline, queue a simple cash/card sale to IndexedDB and
       // return immediately so the Pay button never hangs. ZATCA-only
@@ -1248,8 +1259,9 @@ export default function RecordSale() {
       // button look stuck. We rely on the browser offline event + the warmed
       // connectivity watcher and immediately queue the sale when either says
       // offline.
+      const saleKey = crypto.randomUUID();
       if (browserOffline || !isPosOnline()) {
-        return queueSaleOffline();
+        return queueSaleOffline(saleKey);
       }
 
       // Validate STANDARD invoice buyer details (B2B requires 15-digit VAT)
@@ -1297,145 +1309,70 @@ export default function RecordSale() {
         transactionTimestamp = new Date().toISOString();
       }
 
-      // Generate receipt number based on transaction date
-      const receiptDate = isUnpaidSale && isBackdated ? backdatedDate : new Date();
-      const receiptNumber = `RCP-${format(receiptDate, 'yyyyMMdd')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
-
-      // Create sales transaction with settlement status
-      let transaction;
-      let txError;
+      // One server call records the sale and everything that belongs to it in a single
+      // transaction (POST /api/v1/pos/sales): sale + lines, shift cash event, recipe stock
+      // deduction (database trigger, once), reorder requests, kitchen ticket and a live event.
+      // The server assigns a sequential receipt number and recomputes totals with the branch's
+      // VAT settings. Network failures still fall back to the offline queue.
+      let saved: RecordSaleResult;
       try {
-        const response = await withOnlineWriteTimeout(
-          supabase
-          .from("sales_transactions")
-          .insert({
-            restaurant_id: restaurant.id,
-            shift_id: activeShift?.id || null,
-            payment_method: paymentMethod,
-            subtotal: subtotal,
-            tax: transactionVat,
-            total: transactionTotal,
-            receipt_number: receiptNumber,
-            customer_id: selectedCustomer?.id || null,
-            settlement_status: isUnpaidSale ? "unpaid" : "paid",
-            created_at: transactionTimestamp,
-            zatca_invoice_subtype: invoiceSubtype,
-            zatca_buyer_name: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,
-            zatca_buyer_vat_number: invoiceSubtype === "STANDARD" ? buyerVat.trim() : null,
-            zatca_buyer_address: invoiceSubtype === "STANDARD" ? buyerAddress.trim() || null : null,
-            table_id: linkedTable?.id ?? null,
-          } as never)
-          .select()
-          .single(),
+        saved = await withOnlineWriteTimeout(
+          recordSale(
+            {
+              restaurantId: restaurant.id,
+              branchId: activeBranchId ?? null,
+              shiftId: activeShift?.id ?? null,
+              customerId: selectedCustomer?.id ?? null,
+              tableId: linkedTable?.id ?? null,
+              paymentMethod,
+              settlement: isUnpaidSale ? "unpaid" : "paid",
+              createdAt: isUnpaidSale && isBackdated ? transactionTimestamp : null,
+              // Same amounts the receipt and the ZATCA invoice use (zatcaTotals).
+              documentDiscount: zatcaTotals.discountSar,
+              documentSurcharge: zatcaTotals.surchargeSar,
+              lines: cart.map((item) =>
+                item.isCombo
+                  ? { comboId: item.menuItemId, quantity: item.quantity, unitPrice: item.price }
+                  : {
+                      menuItemId: item.menuItemId,
+                      size: item.size as SaleLineSize,
+                      quantity: item.quantity,
+                      unitPrice: item.price,
+                    },
+              ),
+              invoice: {
+                subtype: invoiceSubtype,
+                buyerName: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,
+                buyerVat: invoiceSubtype === "STANDARD" ? buyerVat.trim() || null : null,
+                buyerOtherId: invoiceSubtype === "STANDARD" ? buyerIdValue.trim() || null : null,
+                buyerAddress: invoiceSubtype === "STANDARD" ? buyerAddress.trim() || null : null,
+              },
+            },
+            { idempotencyKey: saleKey },
+          ),
           "Recording sale",
         );
-
-        transaction = response.data;
-        txError = response.error;
       } catch (error) {
-        if (isRecoverableNetworkError(error)) {
-          return queueSaleOffline();
+        if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
+          return queueSaleOffline(saleKey);
+        }
+        if (error instanceof ApiError && error.code === "price_changed") {
+          // The server prices every line. Show the cashier the current prices before charging.
+          const changed = (error.details as PriceChangedDetails | undefined)?.lines ?? [];
+          setCart((prev) =>
+            prev.map((c) => {
+              const hit = changed.find((l) => l.menuItemId === c.menuItemId && l.size === (c.size === "combo" ? "regular" : c.size));
+              return hit ? { ...c, price: hit.current } : c;
+            }),
+          );
+          void queryClient.invalidateQueries({ queryKey: ["menu-items", restaurant.id] });
+          void queryClient.invalidateQueries({ queryKey: ["branch-menu-prices"] });
+          throw new Error("Prices changed since the menu was loaded. The cart now shows the current prices; check the total and charge again.");
         }
         throw error;
       }
 
-      if (txError) {
-        if (isRecoverableNetworkError(txError)) {
-          return queueSaleOffline();
-        }
-        throw txError;
-      }
-
-      // Create sales items
-      const salesItems = cart.map((item) => ({
-        restaurant_id: restaurant.id,
-        transaction_id: transaction.id,
-        menu_item_id: item.menuItemId,
-        quantity: item.quantity,
-        unit_price: item.price,
-        total_price: item.price * item.quantity,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from("sales_items")
-        .insert(salesItems);
-
-      if (itemsError) throw itemsError;
-
-      // Create cash_event for shift tracking (all payment methods)
-      if (activeShift?.id) {
-        await supabase.from("cash_events").insert({
-          shift_id: activeShift.id,
-          restaurant_id: restaurant.id,
-          event_type: "sale",
-          amount: subtotal,
-          payment_method: paymentMethod,
-          created_by: user.id,
-          description: `POS Sale ${receiptNumber}`,
-        });
-      }
-
-      // Deduct inventory based on recipes
-      for (const cartItem of cart) {
-        const { data: recipes } = await supabase
-          .from("recipe_ingredients")
-          .select("*, inventory_items(*)")
-          .eq("menu_item_id", cartItem.menuItemId)
-          .eq("restaurant_id", restaurant.id);
-
-        if (recipes && recipes.length > 0) {
-          for (const recipe of recipes) {
-            const totalUsage = recipe.quantity_required * cartItem.quantity;
-            const inventoryItem = recipe.inventory_items;
-
-            if (inventoryItem) {
-              // Record usage
-              await supabase.from("inventory_usage").insert({
-                restaurant_id: restaurant.id,
-                inventory_item_id: recipe.inventory_item_id,
-                quantity_used: totalUsage,
-                unit_cost: inventoryItem.unit_cost,
-                total_cost: totalUsage * inventoryItem.unit_cost,
-                created_by: user.id,
-                shift_id: activeShift?.id || null,
-                notes: `Auto-deducted from sale: ${cartItem.name}`,
-              });
-
-              // Update stock
-              const newStock = Math.max(0, inventoryItem.current_stock - totalUsage);
-              await supabase
-                .from("inventory_items")
-                .update({ current_stock: newStock })
-                .eq("id", recipe.inventory_item_id);
-
-              // Check reorder level
-              if (
-                inventoryItem.reorder_level &&
-                newStock <= inventoryItem.reorder_level
-              ) {
-                const { data: existingRequest } = await supabase
-                  .from("reorder_requests")
-                  .select("id")
-                  .eq("inventory_item_id", recipe.inventory_item_id)
-                  .eq("status", "pending")
-                  .single();
-
-                if (!existingRequest) {
-                  await supabase.from("reorder_requests").insert({
-                    restaurant_id: restaurant.id,
-                    inventory_item_id: recipe.inventory_item_id,
-                    current_stock: newStock,
-                    reorder_level: inventoryItem.reorder_level,
-                    requested_quantity: inventoryItem.reorder_level * 2,
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-
-      return { transaction, receiptNumber, salesItems };
+      return { transaction: saved.transaction, receiptNumber: saved.receiptNumber, salesItems: saved.salesItems };
     },
     onSuccess: (data) => {
       if ("offlineReceiptNumber" in data) {
@@ -1563,16 +1500,18 @@ export default function RecordSale() {
       // snapshot drives the printed receipt, the queued reprint, and
       // the PDF - guaranteeing the QR / VAT / totals never disagree.
       const saleTimestamp = new Date().toISOString();
-      const snapshotPrinted = buildZatcaSnapshot(
-        zatcaSettings,
-        { subtotal: cartTotal, tax: 0, total: cartTotal, timestamp: saleTimestamp },
-        "printed",
-      );
-      const snapshotDigital = buildZatcaSnapshot(
-        zatcaSettings,
-        { subtotal: cartTotal, tax: 0, total: cartTotal, timestamp: saleTimestamp },
-        "digital",
-      );
+      // The QR must carry the invoice's real total and VAT: use what the server recorded
+      // (branch rate and pricing mode, document discount/surcharge), not the cart sum with
+      // VAT 0, which made every QR report zero VAT.
+      const savedTx = (data as { transaction?: { subtotal?: number; tax?: number; total?: number } }).transaction;
+      const qrTotals = {
+        subtotal: Number(savedTx?.subtotal ?? cartTotal),
+        tax: Number(savedTx?.tax ?? 0),
+        total: Number(savedTx?.total ?? cartTotal),
+        timestamp: saleTimestamp,
+      };
+      const snapshotPrinted = buildZatcaSnapshot(zatcaSettings, qrTotals, "printed");
+      const snapshotDigital = buildZatcaSnapshot(zatcaSettings, qrTotals, "digital");
 
       // Trigger printing if enabled
       if (posHardware.receipt_printer_enabled && posHardware.print_receipt_on_sale) {
@@ -1690,28 +1629,24 @@ export default function RecordSale() {
       const txnId = (data.transaction as { id?: string } | null)?.id ?? null;
       const restaurantIdForLog = restaurant?.id ?? null;
 
-      // Phase 2: advance the per-device hash chain (ICV/PIH) and persist
-      // UUID + invoice hash on the transaction. Runs in the background
-      // and is a no-op when no active device is configured (Phase 1 mode).
+      // Phase 2: the server allocates the device's next ICV/PIH and stamps UUID + invoice hash
+      // on the sale in one transaction (POST /api/v1/zatca/sales/:id/chain), so a failure can
+      // no longer leave a gap in the chain. Runs in the background and is a no-op when no
+      // active device is configured (Phase 1 mode).
       const activeDeviceId = (zatcaSettings as { active_device_id?: string | null } | null)?.active_device_id ?? null;
       if (txnId && activeDeviceId && snapshotForPdf) {
         void (async () => {
           try {
-            const chain = await advanceZatcaChain(activeDeviceId, {
-              receiptNumber: data.receiptNumber,
-              snapshot: snapshotForPdf,
-              items: cart.map((i) => ({ name: i.name, quantity: i.quantity, unitPrice: i.price, total: i.price * i.quantity })),
-              subtotal: cartTotal,
-              tax: 0,
-              total: cartTotal,
-              paymentMethod,
-            });
+            const chain = restaurantIdForLog
+              ? await stampZatcaChain(txnId, {
+                  restaurantId: restaurantIdForLog,
+                  deviceId: activeDeviceId,
+                  sellerName: snapshotForPdf.sellerName,
+                  vatNumber: snapshotForPdf.vatNumber,
+                  timestamp: snapshotForPdf.timestamp,
+                })
+              : null;
             if (chain) {
-              await writeZatcaChainToSale({
-                salesTransactionId: txnId,
-                deviceId: activeDeviceId,
-                chain,
-              });
               // UBL 2.1 XML - built from the same snapshot + chain values
               // and uploaded to the private `zatca-xml` bucket. Audit-only
               // for now (no clearance call); URL is stamped on the sale row.
@@ -1799,12 +1734,12 @@ export default function RecordSale() {
                     xml,
                   });
                   if (xmlUrl) {
-                    await writeXmlUrlToSale({ salesTransactionId: txnId, xmlUrl });
+                    await writeXmlUrlToSale({ restaurantId: restaurantIdForXml, salesTransactionId: txnId, xmlUrl });
                   }
                   // XAdES sign the unsigned UBL using the device key
                   // (server-side - private key never leaves the backend).
                   try {
-                    await supabase.functions.invoke("zatca-sign-invoice", {
+                    await db.functions.invoke("zatca-sign-invoice", {
                       body: {
                         device_id: activeDeviceId,
                         sales_transaction_id: txnId,
@@ -1817,7 +1752,7 @@ export default function RecordSale() {
                     // reporting. Runs in simulation mode unless the
                     // ZATCA_BASE_URL secret is configured.
                     try {
-                      await supabase.functions.invoke("zatca-submit-clearance", {
+                      await db.functions.invoke("zatca-submit-clearance", {
                         body: { sales_transaction_id: txnId },
                       });
                     } catch (subErr) {
@@ -1859,9 +1794,9 @@ export default function RecordSale() {
             unitPrice: item.price,
             total: item.price * item.quantity,
           })),
-          subtotal: cartTotal,
-          tax: 0,
-          total: cartTotal,
+          subtotal: qrTotals.subtotal,
+          tax: qrTotals.tax,
+          total: qrTotals.total,
           zatca: { ...snapshotForPdf, showQr: true },
           mode,
         });
@@ -1882,6 +1817,7 @@ export default function RecordSale() {
             }
             if (txnId) {
               await writeZatcaSnapshot({
+                restaurantId: restaurantIdForLog ?? restaurant!.id,
                 salesTransactionId: txnId,
                 snapshot: snapshotForPdf,
                 pdfUrl,
@@ -1948,6 +1884,7 @@ export default function RecordSale() {
         // onto the transaction so reprints remain reproducible, and log
         // a "skipped" generation row for completeness.
         void writeZatcaSnapshot({
+          restaurantId: restaurantIdForLog ?? restaurant!.id,
           salesTransactionId: txnId,
           snapshot: snapshotForPdf,
           pdfUrl: null,
@@ -2027,7 +1964,7 @@ export default function RecordSale() {
       trackFunnel("first_order", { unpaid: isUnpaidSale });
       // Flip linked table to "ordered" once a sale is successfully recorded
       if (linkedTable?.id) {
-        void supabase
+        void db
           .from("pos_tables")
           .update({ status: "ordered" } as never)
           .eq("id", linkedTable.id);
@@ -2096,7 +2033,7 @@ export default function RecordSale() {
       if (!restaurant?.id || !user?.id) throw new Error("Missing context");
       // Auto-assign default category if none selected
       const finalCategoryId = expenseCategoryId || getDefaultExpenseCategoryId();
-      const { error } = await supabase.from("expenses").insert({
+      const { error } = await db.from("expenses").insert({
         restaurant_id: restaurant.id,
         created_by: user.id,
         amount: parseFloat(expenseAmount),

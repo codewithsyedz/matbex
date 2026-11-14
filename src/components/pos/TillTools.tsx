@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Banknote, CloudOff, Lock, RefreshCcw, Undo2, User } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -57,7 +57,7 @@ export function TillTools({ restaurantId, staff, onLock }: TillToolsProps) {
     enabled: !!restaurantId,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id")
         .eq("restaurant_id", restaurantId)

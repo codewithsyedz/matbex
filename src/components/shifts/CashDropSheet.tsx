@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Delete, Check } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -53,7 +53,7 @@ export function CashDropSheet({ open, onOpenChange, shiftId, onSuccess }: CashDr
 
     setIsSubmitting(true);
     try {
-      const { error } = await supabase.from("cash_events").insert({
+      const { error } = await db.from("cash_events").insert({
         shift_id: shiftId,
         restaurant_id: restaurant.id,
         event_type: "drop",

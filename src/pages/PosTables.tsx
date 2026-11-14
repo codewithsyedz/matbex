@@ -271,8 +271,8 @@ export default function PosTables() {
                             size="sm"
                             variant="outline"
                             onClick={async () => {
-                              const { error } = await import("@/integrations/supabase/client").then(({ supabase }) =>
-                                supabase
+                              const { error } = await import("@/integrations/db/client").then(({ db }) =>
+                                db
                                   .from("pos_table_orders")
                                   .update({ status: "paid", paid_at: new Date().toISOString() })
                                   .eq("id", o.id)

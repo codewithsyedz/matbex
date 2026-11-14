@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { editSale } from "@/lib/api/pos";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, ArrowRight, Building2, History, Loader2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
@@ -14,7 +15,7 @@ import {
 } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 
@@ -45,7 +46,7 @@ interface Props {
  * shows before/after side by side, and lists the audit trail for the receipt.
  */
 export function VatReceiptDrilldown({ row, fmt, onReconcile }: Props) {
-  const { tenant, user } = useAuth();
+  const { restaurant } = useAuth();
   const { branches } = useBranch();
   const queryClient = useQueryClient();
   const [branchChoice, setBranchChoice] = useState<string>(row.branchId ?? UNASSIGNED);
@@ -55,22 +56,10 @@ export function VatReceiptDrilldown({ row, fmt, onReconcile }: Props) {
   }, [row.id, row.branchId]);
 
   const reassign = useMutation({
+    // PATCH /api/v1/pos/sales/:id { branchId }: the server checks the branch and logs the change.
     mutationFn: async (nextBranchId: string | null) => {
-      const { error } = await (supabase as any)
-        .from("sales_transactions")
-        .update({ branch_id: nextBranchId })
-        .eq("id", row.id);
-      if (error) throw error;
-
-      await (supabase as any).from("audit_logs").insert({
-        user_id: user?.id ?? null,
-        tenant_id: tenant?.id ?? null,
-        action: "sale_branch_reassign",
-        entity_type: "sales_transaction",
-        entity_id: row.id,
-        old_data: { branch_id: row.branchId ?? null },
-        new_data: { branch_id: nextBranchId },
-      });
+      if (!restaurant?.id) throw new Error("Missing restaurant context");
+      await editSale(row.id, { restaurantId: restaurant.id, branchId: nextBranchId });
     },
     onSuccess: () => {
       toast.success("Branch updated for this receipt");
@@ -88,7 +77,7 @@ export function VatReceiptDrilldown({ row, fmt, onReconcile }: Props) {
     queryKey: ["vat-audit-items", row.id],
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("sales_items")
         .select("id, item_name, quantity, unit_price, total_price")
         .eq("transaction_id", row.id);
@@ -101,7 +90,7 @@ export function VatReceiptDrilldown({ row, fmt, onReconcile }: Props) {
     queryKey: ["vat-audit-trail", row.id],
     staleTime: 30_000,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("audit_logs")
         .select("id, action, created_at, old_data, new_data")
         .eq("entity_id", row.id)

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { deleteSettlementInvoice, editSettlementInvoice } from "@/lib/api/credit";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -61,7 +62,7 @@ import { useBranch } from "@/contexts/BranchContext";
 import { BranchSwitcher } from "@/components/layout/BranchSwitcher";
 import { useBranchUnpaidBalances } from "@/hooks/useBranchUnpaidBalances";
 import { BranchOutstandingSummary } from "@/components/settlements/BranchOutstandingSummary";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useCurrency } from "@/hooks/useCurrency";
 import { format, startOfMonth, endOfMonth } from "date-fns";
@@ -128,7 +129,7 @@ export default function Settlements() {
     queryKey: ["all-settlement-invoices", restaurant?.id, dateRange],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("settlement_invoices")
         .select("*, customers(name, email, phone)")
         .eq("restaurant_id", restaurant.id)
@@ -146,7 +147,7 @@ export default function Settlements() {
     queryKey: ["customers-with-balance", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -175,34 +176,20 @@ export default function Settlements() {
 
   // Edit mutation
   const editMutation = useMutation({
+    // PATCH /api/v1/credit/settlement-invoices/:id: dates, notes and the overdue flag
+    // (pending/partial/settled follow the payments). The server writes the audit log.
     mutationFn: async (invoiceId: string) => {
-      const { error } = await supabase
-        .from("settlement_invoices")
-        .update({
-          billing_period_start: editForm.billing_period_start,
-          billing_period_end: editForm.billing_period_end,
-          due_date: editForm.due_date || null,
-          notes: editForm.notes || null,
-          status: editForm.status,
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", invoiceId);
-
-      if (error) throw error;
-
-      // Log audit
-      if (restaurant?.id && user?.id && selectedInvoice) {
-        await supabase.from("settlement_audit_logs").insert({
-          restaurant_id: restaurant.id,
-          settlement_invoice_id: invoiceId,
-          customer_id: selectedInvoice.customer_id,
-          action: "invoice_updated",
-          actor_id: user.id,
-          details: {
-            changes: editForm,
-          },
-        });
-      }
+      if (!restaurant?.id) throw new Error("Missing restaurant context");
+      await editSettlementInvoice(invoiceId, {
+        restaurantId: restaurant.id,
+        periodStart: editForm.billing_period_start,
+        periodEnd: editForm.billing_period_end,
+        dueDate: editForm.due_date || null,
+        notes: editForm.notes || null,
+        ...(selectedInvoice && (editForm.status === "overdue") !== (selectedInvoice.status === "overdue")
+          ? { overdue: editForm.status === "overdue" }
+          : {}),
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["all-settlement-invoices"] });
@@ -217,39 +204,10 @@ export default function Settlements() {
 
   // Delete mutation
   const deleteMutation = useMutation({
+    // DELETE /api/v1/credit/settlement-invoices/:id: only while nothing is paid on it.
     mutationFn: async (invoice: SettlementInvoice) => {
-      // First, unlink all transactions from this invoice
-      const { error: unlinkError } = await supabase
-        .from("sales_transactions")
-        .update({ settlement_invoice_id: null })
-        .eq("settlement_invoice_id", invoice.id);
-
-      if (unlinkError) throw unlinkError;
-
-      // Delete related payments
-      const { error: paymentsError } = await supabase
-        .from("settlement_payments")
-        .delete()
-        .eq("settlement_invoice_id", invoice.id);
-
-      if (paymentsError) throw paymentsError;
-
-      // Delete audit logs for this invoice
-      const { error: auditError } = await supabase
-        .from("settlement_audit_logs")
-        .delete()
-        .eq("settlement_invoice_id", invoice.id);
-
-      if (auditError) throw auditError;
-
-      // Delete the invoice itself
-      const { error: invoiceError } = await supabase
-        .from("settlement_invoices")
-        .delete()
-        .eq("id", invoice.id);
-
-      if (invoiceError) throw invoiceError;
-
+      if (!restaurant?.id) throw new Error("Missing restaurant context");
+      await deleteSettlementInvoice(invoice.id, restaurant.id);
       return invoice;
     },
     onSuccess: () => {
@@ -699,8 +657,8 @@ export default function Settlements() {
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="pending">Pending</SelectItem>
-                    <SelectItem value="partial">Partial</SelectItem>
-                    <SelectItem value="settled">Settled</SelectItem>
+                    <SelectItem value="partial" disabled>Partial (follows payments)</SelectItem>
+                    <SelectItem value="settled" disabled>Settled (follows payments)</SelectItem>
                     <SelectItem value="overdue">Overdue</SelectItem>
                   </SelectContent>
                 </Select>

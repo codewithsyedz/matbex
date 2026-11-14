@@ -1,0 +1,29 @@
+# Local development dependencies only (run the API and web app on your machine):
+#   docker compose -f docker-compose.dev.yml up -d      # Postgres, PostgREST, Redis
+#   npm run db:migrate && npm run dev:api   # API on :8000
+#   npm run dev                              # web on :8080
+services:
+  db:
+    image: postgres:16-alpine
+    environment: { POSTGRES_PASSWORD: postgres, POSTGRES_DB: matbex }
+    ports: ["5432:5432"]
+    volumes: [devpg:/var/lib/postgresql/data]
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    restart: unless-stopped   # retries until migrations have created the authenticator role
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD:-dev-authenticator}@db:5432/matbex
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_EXTRA_SEARCH_PATH: public, extensions
+      PGRST_DB_MAX_ROWS: "1000"
+      PGRST_JWT_SECRET: ${JWT_SECRET:?run 'npm --prefix server run keys' and put JWT_SECRET in .env}
+    ports: ["${POSTGREST_PORT:-3000}:3000"]
+    depends_on: [db]
+  redis:
+    image: redis:7.4.2-alpine
+    # Cache + rate-limit counters only: no persistence, evict least-recently-used keys.
+    command: ["redis-server", "--save", "", "--appendonly", "no", "--maxmemory", "128mb", "--maxmemory-policy", "allkeys-lru"]
+    ports: ["${REDIS_PORT:-6379}:6379"]
+volumes:
+  devpg:

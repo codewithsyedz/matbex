@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -61,7 +61,7 @@ export function ContactSection() {
     }
     setSubmitting(true);
     const params = new URLSearchParams(window.location.search);
-    const { data, error } = await supabase.functions.invoke("send-contact-enquiry", {
+    const { data, error } = await db.functions.invoke("send-contact-enquiry", {
       body: {
         name: parsed.data.name,
         email: parsed.data.email,

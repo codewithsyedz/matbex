@@ -36,7 +36,7 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { ViewInvoiceDialog } from "./ViewInvoiceDialog";
@@ -116,19 +116,19 @@ export function InvoiceManager() {
     
     try {
       const [invoicesRes, suppliersRes, itemsRes] = await Promise.all([
-        supabase
+        db
           .from("purchase_invoices")
           .select("*, suppliers(name)")
           .eq("restaurant_id", restaurant.id)
           .order("created_at", { ascending: false })
           .limit(50),
-        supabase
+        db
           .from("suppliers")
           .select("id, name")
           .eq("restaurant_id", restaurant.id)
           .eq("is_active", true)
           .order("name"),
-        supabase
+        db
           .from("inventory_items")
           .select("id, name, unit_cost")
           .eq("restaurant_id", restaurant.id)
@@ -216,7 +216,7 @@ export function InvoiceManager() {
         // Lines are replaced atomically server-side (delete + insert + total
         // recompute in one transaction) so re-saving can never double totals.
         const validItems = items.filter(item => item.description.trim());
-        const { error: itemsError } = await (supabase as any).rpc("replace_invoice_items", {
+        const { error: itemsError } = await (db as any).rpc("replace_invoice_items", {
           p_invoice_id: editingInvoice.id,
           p_items: validItems.map(item => ({
             description: item.description,
@@ -230,7 +230,7 @@ export function InvoiceManager() {
         if (itemsError) throw itemsError;
 
         // Written after the replace so tax-inclusive totals are preserved.
-        const { error: invoiceError } = await supabase
+        const { error: invoiceError } = await db
           .from("purchase_invoices")
           .update(invoiceData)
           .eq("id", editingInvoice.id);
@@ -240,7 +240,7 @@ export function InvoiceManager() {
         toast({ title: "Invoice updated" });
       } else {
         // Create new invoice
-        const { data: invoice, error: invoiceError } = await supabase
+        const { data: invoice, error: invoiceError } = await db
           .from("purchase_invoices")
           .insert({
             ...invoiceData,
@@ -254,7 +254,7 @@ export function InvoiceManager() {
         // Create invoice items through the atomic replace routine.
         const validItems = items.filter(item => item.description.trim());
         if (validItems.length > 0) {
-          const { error: itemsError } = await (supabase as any).rpc("replace_invoice_items", {
+          const { error: itemsError } = await (db as any).rpc("replace_invoice_items", {
             p_invoice_id: invoice.id,
             p_items: validItems.map(item => ({
               description: item.description,
@@ -268,7 +268,7 @@ export function InvoiceManager() {
 
           if (itemsError) throw itemsError;
 
-          const { error: totalsError } = await supabase
+          const { error: totalsError } = await db
             .from("purchase_invoices")
             .update({
               subtotal: totals.subtotal,
@@ -298,7 +298,7 @@ export function InvoiceManager() {
 
     try {
       // Lines are removed by the invoice's ON DELETE CASCADE.
-      const { error } = await supabase
+      const { error } = await db
         .from("purchase_invoices")
         .delete()
         .eq("id", invoice.id);
@@ -324,7 +324,7 @@ export function InvoiceManager() {
 
     // Fetch invoice items
     try {
-      const { data: invoiceItems, error } = await supabase
+      const { data: invoiceItems, error } = await db
         .from("invoice_items")
         .select("*")
         .eq("invoice_id", invoice.id);
@@ -355,14 +355,14 @@ export function InvoiceManager() {
     setGeneratingPdf(invoice.id);
     try {
       // Fetch invoice items
-      const { data: invoiceItems, error } = await supabase
+      const { data: invoiceItems, error } = await db
         .from("invoice_items")
         .select("*")
         .eq("invoice_id", invoice.id);
 
       if (error) throw error;
 
-      const response = await supabase.functions.invoke("generate-invoice-pdf", {
+      const response = await db.functions.invoke("generate-invoice-pdf", {
         body: {
           invoice: {
             ...invoice,
@@ -454,7 +454,7 @@ export function InvoiceManager() {
       }
 
       // Call RPC to post payment to ledger
-      const { data, error } = await supabase.rpc("post_invoice_payment_to_ledger", {
+      const { data, error } = await db.rpc("post_invoice_payment_to_ledger", {
         p_invoice_id: invoiceToMarkPaid.id,
         p_payment_method: paymentMethod,
       });

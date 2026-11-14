@@ -1,9 +1,10 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
-export type SettlementChannel = "hungerstation" | "jahez" | "mrsool" | "talabat";
+/** Same list as the app's delivery platforms (useDailySales DeliveryPlatform). */
+export type SettlementChannel = "hungerstation" | "jahez" | "toyou" | "mrsool" | "carriage" | "talabat" | "uber_eats" | "other";
 export type SettlementStatus = "pending" | "reconciled" | "disputed";
 
 export interface AggregatorSettlement {
@@ -43,7 +44,7 @@ export function useAggregatorSettlements() {
     enabled: !!tenantId,
     staleTime: 2 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("aggregator_settlements")
         .select("*")
         .is("deleted_at", null)
@@ -56,7 +57,7 @@ export function useAggregatorSettlements() {
   const create = useMutation({
     mutationFn: async (input: NewSettlement) => {
       if (!tenantId) throw new Error("No tenant");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("aggregator_settlements")
         .insert({
           tenant_id: tenantId,
@@ -67,7 +68,8 @@ export function useAggregatorSettlements() {
           net_payout: input.net_payout,
           reference: input.reference ?? null,
           notes: input.notes ?? null,
-          bank_account_code: input.bank_account_code ?? "1100",
+          // Cash/bank account the payout landed in (1000-1099); 1100 is the receivable it clears.
+          bank_account_code: input.bank_account_code ?? "1010",
         })
         .select()
         .single();
@@ -83,7 +85,7 @@ export function useAggregatorSettlements() {
 
   const reconcile = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("aggregator_settlements")
         .update({ status: "reconciled" })
         .eq("id", id);
@@ -99,7 +101,7 @@ export function useAggregatorSettlements() {
 
   const softDelete = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("aggregator_settlements")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", id);

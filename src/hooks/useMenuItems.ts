@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
@@ -50,7 +50,7 @@ export function useMenuItems() {
       if (!isOnline()) {
         items = await fromCache();
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("menu_items")
           .select("id, name, category, selling_price, quarter_price, half_price, full_price, is_active, image_url, updated_at")
           .eq("restaurant_id", restaurantId)
@@ -72,7 +72,7 @@ export function useMenuItems() {
       }
 
       if (!branchId) return items;
-      const { data: avail } = await supabase
+      const { data: avail } = await db
         .from("menu_item_branch_availability" as any)
         .select("menu_item_id, is_available")
         .eq("branch_id", branchId);

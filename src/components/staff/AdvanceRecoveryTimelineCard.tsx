@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -49,7 +49,7 @@ export function AdvanceRecoveryTimelineCard({
   const { data: repayments = [], isLoading: repaymentsLoading } = useQuery({
     queryKey: ["advance-recovery-repayments", advanceId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_advance_repayments")
         .select("id, amount, repayment_date, source, notes, payroll_id, created_at")
         .eq("advance_id", advanceId)
@@ -78,7 +78,7 @@ export function AdvanceRecoveryTimelineCard({
     queryKey: ["advance-recovery-payrolls", payrollIds],
     queryFn: async () => {
       if (payrollIds.length === 0) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("payroll_records")
         .select(
           "id, amount, period_start, period_end, payment_date, advance_recovered, ledger_posted"

@@ -146,7 +146,7 @@ export function WhatsAppResendCard() {
             <AlertTitle>Redirect allowlist mismatch</AlertTitle>
             <AlertDescription>
               Sending now will likely produce magic-links that don't auto-login on
-              fresh devices. Fix the Supabase Auth allowlist (see the check above)
+              fresh devices. Fix the auth redirect allowlist (SITE_URL / ALLOWED_ORIGINS) (see the check above)
               before re-sending.
             </AlertDescription>
           </Alert>

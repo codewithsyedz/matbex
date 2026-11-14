@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface SalesJournalRow {
   lineId: string;
@@ -59,7 +59,7 @@ export function useSalesJournal(params: {
     queryKey: ["sales-journal", tenant?.id, fromDate, toDate, branchId, search, page, pageSize],
     enabled: !!tenant?.id && !!fromDate && !!toDate,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_sales_journal", {
+      const { data, error } = await db.rpc("get_sales_journal", {
         p_tenant_id: tenant!.id,
         p_from_date: fromDate,
         p_to_date: toDate,

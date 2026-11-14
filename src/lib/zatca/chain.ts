@@ -13,7 +13,6 @@
 // device row update) is correct as-is and won't need to change.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
 import type { ZatcaReceiptSnapshot } from "@/lib/printUtils";
 
 function sortedStringify(value: unknown): string {
@@ -69,44 +68,5 @@ export interface AdvanceChainResult {
   uuid: string;
 }
 
-/**
- * Allocate the next ICV/PIH for a device, computing the invoice hash and
- * UUID up front. Returns null if no device is registered (caller decides
- * whether to block - STRICT - or proceed without chain - SOFT/Phase 1).
- */
-export async function advanceZatcaChain(
-  deviceId: string | null,
-  input: Omit<ChainInput, "uuid"> & { uuid?: string },
-): Promise<AdvanceChainResult | null> {
-  if (!deviceId) return null;
-  const uuid = input.uuid ?? crypto.randomUUID();
-  const invoiceHash = await computeInvoiceHash({ ...input, uuid });
-  const { data, error } = await supabase.rpc("next_zatca_chain" as never, {
-    _device_id: deviceId,
-    _invoice_hash: invoiceHash,
-  } as never);
-  if (error) throw error;
-  if (!data) throw new Error("next_zatca_chain returned no row");
-  const row = (Array.isArray(data) ? data[0] : data) as { icv: number; pih: string };
-  if (!row) throw new Error("next_zatca_chain returned empty row");
-  return { icv: Number(row.icv), pih: row.pih, invoiceHash, uuid };
-}
-
-export async function writeZatcaChainToSale(args: {
-  salesTransactionId: string;
-  deviceId: string;
-  chain: AdvanceChainResult;
-}): Promise<void> {
-  const { error } = await supabase
-    .from("sales_transactions")
-    .update(({
-      zatca_device_id: args.deviceId,
-      zatca_uuid: args.chain.uuid,
-      zatca_icv: args.chain.icv,
-      zatca_pih: args.chain.pih,
-      zatca_invoice_hash: args.chain.invoiceHash,
-      zatca_clearance_status: "PENDING",
-    }) as never)
-    .eq("id", args.salesTransactionId);
-  if (error) console.warn("[zatca] chain write failed:", error.message);
-}
+// ICV/PIH allocation and stamping the sale happen on the server in one transaction:
+// stampZatcaChain() in src/lib/api/zatca.ts (POST /api/v1/zatca/sales/:id/chain).

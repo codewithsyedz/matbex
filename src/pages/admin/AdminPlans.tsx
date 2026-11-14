@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Loader2, Crown, Zap, Building2, Save, DollarSign, Check, X } from "lucide-react";
 
@@ -80,7 +80,7 @@ export default function AdminPlans() {
 
   const fetchPlans = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("plans")
         .select("*")
         .order("price", { ascending: true });
@@ -179,7 +179,7 @@ export default function AdminPlans() {
       };
 
       if (editingPlan) {
-        const { error } = await supabase
+        const { error } = await db
           .from("plans")
           .update(payload)
           .eq("id", editingPlan.id);
@@ -187,7 +187,7 @@ export default function AdminPlans() {
         if (error) throw error;
         toast.success("Plan updated successfully");
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("plans")
           .insert(payload);
 
@@ -207,7 +207,7 @@ export default function AdminPlans() {
 
   const handleDelete = async (planId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("plans")
         .delete()
         .eq("id", planId);
@@ -224,7 +224,7 @@ export default function AdminPlans() {
 
   const togglePlanActive = async (plan: Plan) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("plans")
         .update({ is_active: !plan.is_active })
         .eq("id", plan.id);

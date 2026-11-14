@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -117,7 +117,7 @@ export default function AdminEnquiries() {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["admin-enquiry-analytics", range],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("contact_messages")
         .select(
           "id, name, email, status, created_at, handled_at, source_path, referrer, utm_source, utm_campaign, device, language",
@@ -134,7 +134,7 @@ export default function AdminEnquiries() {
   const { data: funnel } = useQuery({
     queryKey: ["admin-enquiry-funnel", range],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("enquiry_form_events")
         .select("event, session_id")
         .gte("created_at", since)

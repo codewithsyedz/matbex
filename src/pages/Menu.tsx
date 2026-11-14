@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -82,10 +82,14 @@ interface RecipeCost {
   total_cost: number;
 }
 
+/**
+ * Plan gate. The screen itself is a separate component so its hooks always run in the same
+ * order: returning the locked screen before them broke the rules of hooks and crashed the
+ * page ("Rendered more hooks than during the previous render") when the plan's features
+ * changed while it was open.
+ */
 export default function Menu() {
-  const { restaurant, tenant, isOwner, hasFeature, loading: authLoading } = useAuth();
-  const { t } = useTranslation();
-  const { activeBranchId, isAllBranches, activeBranch, hasMultipleBranches, branches } = useBranch();
+  const { hasFeature, loading: authLoading } = useAuth();
 
   // Show locked screen if menu feature is not enabled
   if (!authLoading && !hasFeature("menu")) {
@@ -99,6 +103,15 @@ export default function Menu() {
       </>
     );
   }
+
+  return <MenuScreen />;
+}
+
+function MenuScreen() {
+  const { restaurant, tenant, isOwner, hasFeature, loading: authLoading } = useAuth();
+  const { t } = useTranslation();
+  const { activeBranchId, isAllBranches, activeBranch, hasMultipleBranches, branches } = useBranch();
+
 
   const { format: formatCurrency } = useCurrency();
   const { usage, quotaLimits } = useQuota();
@@ -192,7 +205,7 @@ export default function Menu() {
     queryKey: ["menu-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -211,7 +224,7 @@ export default function Menu() {
     queryKey: ["menu-branch-availability", restaurant?.id, scopedBranchId],
     queryFn: async () => {
       if (!restaurant?.id || !scopedBranchId) return {} as Record<string, boolean>;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_item_branch_availability" as any)
         .select("menu_item_id, is_available")
         .eq("branch_id", scopedBranchId);
@@ -228,7 +241,7 @@ export default function Menu() {
   const setBranchAvailability = useMutation({
     mutationFn: async ({ menu_item_id, is_available }: { menu_item_id: string; is_available: boolean }) => {
       if (!restaurant?.id || !scopedBranchId) throw new Error("No branch selected");
-      const { error } = await supabase
+      const { error } = await db
         .from("menu_item_branch_availability" as any)
         .upsert(
           {
@@ -255,7 +268,7 @@ export default function Menu() {
     queryKey: ["recipe-costs", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("recipe_ingredients")
         .select("menu_item_id, quantity_required, inventory_items(unit_cost)")
         .eq("restaurant_id", restaurant.id);
@@ -286,7 +299,7 @@ export default function Menu() {
       const quarterPrice = parseFloat(item.quarter_price) || 0;
       const halfPrice = parseFloat(item.half_price) || 0;
       const fullPrice = parseFloat(item.full_price) || 0;
-      const { error } = await supabase.from("menu_items").insert({
+      const { error } = await db.from("menu_items").insert({
         restaurant_id: restaurant.id,
         name: item.name,
         category: item.category,
@@ -314,7 +327,7 @@ export default function Menu() {
       const masterCategory = master?.category ?? item.category;
       const branchScoped = scope === "branch" && !!effectivePreviewBranchId;
 
-      const { error } = await supabase
+      const { error } = await db
         .from("menu_items")
         .update({
           name: item.name,
@@ -344,7 +357,7 @@ export default function Menu() {
         // with what was just typed so the edit actually takes effect here.
         const override = previewPriceMap[item.id];
         if (override) {
-          const { error: priceErr } = await supabase
+          const { error: priceErr } = await db
             .from("menu_item_branch_prices" as any)
             .update({
               quarter_price: override.quarter_price != null ? item.quarter_price : null,
@@ -360,7 +373,7 @@ export default function Menu() {
 
         // Moving on the master menu clears any branch overrides for this item
         // only when the user explicitly chose "all branches".
-        await supabase
+        await db
           .from("menu_item_branch_categories" as any)
           .delete()
           .eq("restaurant_id", restaurant.id)
@@ -369,7 +382,7 @@ export default function Menu() {
         // Branch price overrides would keep the old price on the menu and at
         // the till, so a master-wide price change must clear the currently
         // active overrides for this item too.
-        const { error: clearPriceErr } = await supabase
+        const { error: clearPriceErr } = await db
           .from("menu_item_branch_prices" as any)
           .delete()
           .eq("restaurant_id", restaurant.id)
@@ -393,7 +406,7 @@ export default function Menu() {
   // Toggle active status mutation
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("menu_items")
         .update({ is_active })
         .eq("id", id);
@@ -409,7 +422,7 @@ export default function Menu() {
   // Toggle online availability mutation
   const toggleOnlineMutation = useMutation({
     mutationFn: async ({ id, available_online }: { id: string; available_online: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("menu_items")
         .update({ available_online } as any)
         .eq("id", id);
@@ -475,12 +488,12 @@ export default function Menu() {
               displayOrder: slot,
             });
           } else {
-            const { error } = await supabase
+            const { error } = await db
               .from("menu_items")
               .update({ category: target, display_order: slot } as any)
               .eq("id", item.id);
             if (error) throw error;
-            await supabase
+            await db
               .from("menu_item_branch_categories" as any)
               .delete()
               .eq("restaurant_id", restaurant.id)
@@ -491,7 +504,7 @@ export default function Menu() {
         }
 
         // Copy: duplicate the master record into the target category.
-        const { data: inserted, error } = await supabase
+        const { data: inserted, error } = await db
           .from("menu_items")
           .insert({
             restaurant_id: restaurant.id,
@@ -566,7 +579,7 @@ export default function Menu() {
   // Delete menu item mutation
   const deleteItemMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("menu_items").delete().eq("id", id);
+      const { error } = await db.from("menu_items").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

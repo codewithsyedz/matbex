@@ -1,7 +1,8 @@
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 export type OnlineOrderStatus =
   | "pending"
@@ -59,7 +60,7 @@ export function useOnlineOrders(restaurantId?: string | null) {
     queryKey: ["online-orders", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("online_orders")
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -70,24 +71,17 @@ export function useOnlineOrders(restaurantId?: string | null) {
     },
   });
 
-  useEffect(() => {
-    if (!restaurantId) return;
-    const channel = supabase
-      .channel(`online-orders-${restaurantId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "online_orders", filter: `restaurant_id=eq.${restaurantId}` },
-        () => qc.invalidateQueries({ queryKey: ["online-orders", restaurantId] })
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [restaurantId, qc]);
+  // New and updated online orders, over the event channel (topic "pos").
+  useTableChanges({
+    topic: "pos",
+    restaurantId,
+    tables: ["online_orders"],
+    onChange: () => qc.invalidateQueries({ queryKey: ["online-orders", restaurantId] }),
+  });
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: OnlineOrderStatus }) => {
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from("online_orders")
         .update({ status })
         .eq("id", id);
@@ -107,8 +101,8 @@ export function useOnlineOrderDetail(orderId?: string) {
     queryFn: async () => {
       // Use SECURITY DEFINER RPCs that return redacted, safe-by-default data.
       const [orderRes, itemsRes]: any = await Promise.all([
-        (supabase as any).rpc("public_get_online_order", { p_id: orderId }),
-        (supabase as any).rpc("public_get_online_order_items", { p_order_id: orderId }),
+        (db as any).rpc("public_get_online_order", { p_id: orderId }),
+        (db as any).rpc("public_get_online_order_items", { p_order_id: orderId }),
       ]);
       if (orderRes.error) throw orderRes.error;
       if (itemsRes.error) throw itemsRes.error;
@@ -127,7 +121,7 @@ export function useOnlineOrderSettings(restaurantId?: string | null) {
     queryKey: ["online-ordering-settings", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("online_ordering_settings")
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -140,7 +134,7 @@ export function useOnlineOrderSettings(restaurantId?: string | null) {
   const save = useMutation({
     mutationFn: async (patch: Record<string, any>) => {
       if (!restaurantId) throw new Error("No restaurant");
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from("online_ordering_settings")
         .upsert({ restaurant_id: restaurantId, ...patch }, { onConflict: "restaurant_id" });
       if (error) throw error;

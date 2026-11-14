@@ -14,7 +14,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { ZatcaStatusTracker } from "@/components/zatca/ZatcaStatusTracker";
 import { zatcaReminderDue } from "@/lib/zatcaApplicationReminder";
 
@@ -77,7 +77,7 @@ export default function ZatcaProviderApplication() {
     enabled: !!tenantId,
     queryFn: async () => {
       if (!tenantId) return [];
-      const { data, error } = await supabase.from("zatca_provider_applications").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false });
+      const { data, error } = await db.from("zatca_provider_applications").select("*").eq("tenant_id", tenantId).order("created_at", { ascending: false });
       if (error) throw error;
       return (data ?? []) as unknown as App[];
     },
@@ -89,7 +89,7 @@ export default function ZatcaProviderApplication() {
     queryFn: async () => {
       const applicationId = app.data?.id;
       if (!applicationId) return [];
-      const { data, error } = await supabase.from("zatca_provider_application_documents")
+      const { data, error } = await db.from("zatca_provider_application_documents")
         .select("id, doc_key, file_name, file_path, created_at").eq("application_id", applicationId).is("deleted_at", null).order("created_at");
       if (error) throw error;
       return (data ?? []) as DocRow[];
@@ -109,7 +109,7 @@ export default function ZatcaProviderApplication() {
   const ensureApp = async (): Promise<string> => {
     if (app.data?.id) return app.data.id;
     if (!tenantId) throw new Error(L("No company selected", "لم يتم تحديد المنشأة"));
-    const { data, error } = await supabase.from("zatca_provider_applications")
+    const { data, error } = await db.from("zatca_provider_applications")
       .insert({ tenant_id: tenantId, created_by: user?.id ?? null }).select("id").single();
     if (error) throw error;
     setSelectedId(data.id);
@@ -120,7 +120,7 @@ export default function ZatcaProviderApplication() {
   const newApplication = useMutation({
     mutationFn: async () => {
       if (!tenantId) throw new Error(L("No company selected", "لم يتم تحديد المنشأة"));
-      const { data, error } = await supabase.from("zatca_provider_applications")
+      const { data, error } = await db.from("zatca_provider_applications")
         .insert({ tenant_id: tenantId, created_by: user?.id ?? null }).select("id").single();
       if (error) throw error;
       return data.id;
@@ -143,7 +143,7 @@ export default function ZatcaProviderApplication() {
       const id = await ensureApp();
       const payload: Record<string, unknown> = { updated_at: new Date().toISOString(), ...extra };
       for (const [k, v] of Object.entries(form)) payload[k] = (v ?? "").trim().slice(0, k === "solution_description" || k === "notes" ? 4000 : 300) || null;
-      const { error } = await supabase.from("zatca_provider_applications").update(payload).eq("id", id);
+      const { error } = await db.from("zatca_provider_applications").update(payload).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => { toast.success(L("Application saved", "تم حفظ الطلب")); qc.invalidateQueries({ queryKey: ["zatca-provider-app"] }); },
@@ -156,11 +156,11 @@ export default function ZatcaProviderApplication() {
     setUploading(docKey);
     try {
       const id = await ensureApp();
-      const safe = file.name.replace(/[^\w.\-]+/g, "_").slice(-80);
+      const safe = file.name.replace(/[^\w.-]+/g, "_").slice(-80);
       const path = `${tenantId}/${docKey}/${Date.now()}-${safe}`;
-      const { error: upErr } = await supabase.storage.from("zatca-application-docs").upload(path, file, { upsert: false });
+      const { error: upErr } = await db.storage.from("zatca-application-docs").upload(path, file, { upsert: false });
       if (upErr) throw upErr;
-      const { error } = await supabase.from("zatca_provider_application_documents").insert({
+      const { error } = await db.from("zatca_provider_application_documents").insert({
         application_id: id, tenant_id: tenantId, doc_key: docKey, file_path: path, file_name: file.name.slice(0, 200), file_size: file.size, uploaded_by: user?.id ?? null,
       });
       if (error) throw error;
@@ -174,12 +174,12 @@ export default function ZatcaProviderApplication() {
   };
 
   const openDoc = async (path: string) => {
-    const { data, error } = await supabase.storage.from("zatca-application-docs").createSignedUrl(path, 300);
+    const { data, error } = await db.storage.from("zatca-application-docs").createSignedUrl(path, 300);
     if (error || !data) { toast.error(L("Could not open the file", "تعذر فتح الملف")); return; }
     window.open(data.signedUrl, "_blank", "noopener");
   };
   const removeDoc = async (id: string) => {
-    const { error } = await supabase.from("zatca_provider_application_documents").update({ deleted_at: new Date().toISOString() }).eq("id", id);
+    const { error } = await db.from("zatca_provider_application_documents").update({ deleted_at: new Date().toISOString() }).eq("id", id);
     if (error) toast.error(error.message); else qc.invalidateQueries({ queryKey: ["zatca-provider-docs"] });
   };
 

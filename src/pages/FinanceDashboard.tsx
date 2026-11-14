@@ -34,7 +34,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { useAuth } from "@/contexts/AuthContext";
 import { useMonthlyPL } from "@/hooks/useProfitLoss";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
 import { useBranch } from "@/contexts/BranchContext";
 import {
@@ -153,7 +153,7 @@ export default function FinanceDashboard() {
     queryKey: ["finance-dashboard-coa", tenant?.id],
     enabled: !!tenant?.id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, balance, is_active")
         .eq("tenant_id", tenant!.id)
@@ -175,7 +175,7 @@ export default function FinanceDashboard() {
       let page = 0;
       const all: Array<{ account_id: string; debit: number | null; credit: number | null }> = [];
       while (true) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("account_transactions")
           .select("account_id, debit, credit")
           .eq("tenant_id", tenant!.id)
@@ -226,7 +226,7 @@ export default function FinanceDashboard() {
     ],
     enabled: !!tenant?.id && !!rangeFrom && !!rangeTo,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("account_transactions")
         .select("id, transaction_date, debit, credit, description, reference_type, account_id")
         .eq("tenant_id", tenant!.id)
@@ -263,7 +263,7 @@ export default function FinanceDashboard() {
     ],
     enabled: !!restaurant?.id && !!rangeFrom && !!rangeTo,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("id, amount, description, expense_date, status, payment_method, category_id, branch_id")
         .eq("restaurant_id", restaurant!.id)

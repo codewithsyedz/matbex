@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface PosTable {
@@ -46,7 +46,7 @@ export function usePosTables() {
     queryKey: ["pos-tables", restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [] as PosTable[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_tables")
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -61,7 +61,7 @@ export function usePosTables() {
   const createTable = useMutation({
     mutationFn: async (input: { label: string; code: string; capacity: number; branch_id?: string | null }) => {
       if (!restaurant?.id || !restaurant?.tenant_id) throw new Error("No restaurant");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_tables")
         .insert({
           tenant_id: restaurant.tenant_id,
@@ -81,7 +81,7 @@ export function usePosTables() {
 
   const updateTable = useMutation({
     mutationFn: async ({ id, ...patch }: { id: string } & Partial<Omit<PosTable, "id" | "tenant_id" | "restaurant_id">>) => {
-      const { error } = await supabase.from("pos_tables").update(patch).eq("id", id);
+      const { error } = await db.from("pos_tables").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["pos-tables"] }),
@@ -89,7 +89,7 @@ export function usePosTables() {
 
   const deleteTable = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("pos_tables")
         .update({ deleted_at: new Date().toISOString(), is_active: false })
         .eq("id", id);
@@ -115,7 +115,7 @@ export function usePosTableOrders() {
     queryKey: ["pos-table-orders", restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [] as PosTableOrder[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_table_orders")
         .select("*")
         .eq("restaurant_id", restaurantId)

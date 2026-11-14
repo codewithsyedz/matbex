@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Image as ImageIcon, X, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 export { ReceiptUploaderField as ReceiptUploader } from "./ReceiptUploaderField";
 
 // Compact version for viewing receipts in tables
@@ -32,7 +32,7 @@ export function ReceiptThumbnail({ receiptUrl }: { receiptUrl: string | null }) 
           filePath = receiptUrl.split('expense-receipts/').pop() || receiptUrl;
         }
         
-        const { data, error } = await supabase.storage
+        const { data, error } = await db.storage
           .from('expense-receipts')
           .createSignedUrl(filePath, 3600);
         

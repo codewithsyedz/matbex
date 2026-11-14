@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { format, differenceInDays } from "date-fns";
@@ -10,6 +10,7 @@ import { cachedQueryFn, CACHE_TTL } from "@/lib/redisCache";
 import { fetchReconciledSalesByDay } from "@/lib/reconciledSales";
 import { qk } from "@/lib/query/queryKeys";
 import { dashboardQueryOptions, referenceQueryOptions } from "@/lib/query/queryPolicy";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 interface ShiftData {
   id: string;
@@ -88,7 +89,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
     enabled: !!restaurantId,
     ...dashboardQueryOptions(),
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("shifts")
         .select(`id, status, opening_float, expected_cash, counted_cash, variance, opened_at, closed_at, cashier_user_id, cashier_staff_id, drawer_id, template_id`)
         .eq("restaurant_id", restaurantId!)
@@ -106,7 +107,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
     enabled: !!restaurantId,
     ...referenceQueryOptions(),
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("drawers")
         .select("id, name")
         .eq("restaurant_id", restaurantId!);
@@ -125,7 +126,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
       qk.dashboard.entity("salesAgg", { restaurantId, branchId: activeBranchId, extra: [bounds.startDateUTC, bounds.endDateUTC] }),
       CACHE_TTL.SHORT,
       async () => {
-      const { data, error } = await (supabase as any).rpc("dashboard_sales_summary", {
+      const { data, error } = await (db as any).rpc("dashboard_sales_summary", {
         p_restaurant_id: restaurantId,
         p_start: bounds.startDateUTC,
         p_end: bounds.endDateUTC,
@@ -153,7 +154,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
       qk.dashboard.entity("expensesAgg", { restaurantId, branchId: activeBranchId, extra: [bounds.startDate, bounds.endDate] }),
       CACHE_TTL.SHORT,
       async () => {
-      const { data, error } = await (supabase as any).rpc("dashboard_expense_summary", {
+      const { data, error } = await (db as any).rpc("dashboard_expense_summary", {
         p_restaurant_id: restaurantId,
         p_start_date: bounds.startDate,
         p_end_date: bounds.endDate,
@@ -190,7 +191,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
     enabled: !!restaurantId,
     ...dashboardQueryOptions(),
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("total, tax")
         .eq("restaurant_id", restaurantId!)
@@ -231,7 +232,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
       qk.dashboard.entity("closedShifts", { restaurantId, branchId: activeBranchId, extra: [bounds.startDateUTC, bounds.endDateUTC] }),
       CACHE_TTL.SHORT,
       async () => {
-      let q = supabase
+      let q = db
         .from("shifts")
         .select("variance")
         .eq("restaurant_id", restaurantId!)
@@ -249,7 +250,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
     enabled: !!restaurantId,
     ...referenceQueryOptions(),
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("staff")
         .select("id", { count: "exact", head: true })
         .eq("restaurant_id", restaurantId!)
@@ -266,7 +267,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
     enabled: !!restaurantId,
     ...dashboardQueryOptions(),
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("daily_sales_summary")
         .select("sales_date, variance_amount, variance_status")
         .eq("restaurant_id", restaurantId!)
@@ -295,7 +296,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
     enabled: !!restaurantId && staffIds.length > 0,
     ...referenceQueryOptions(),
     queryFn: async () => {
-      const { data } = await supabase.from("staff").select("id, name").in("id", staffIds as string[]);
+      const { data } = await db.from("staff").select("id, name").in("id", staffIds as string[]);
       return data || [];
     },
   });
@@ -305,7 +306,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
     enabled: !!restaurantId && cashierIds.length > 0,
     ...referenceQueryOptions(),
     queryFn: async () => {
-      const { data } = await supabase.from("profiles").select("id, full_name").in("id", cashierIds as string[]);
+      const { data } = await db.from("profiles").select("id, full_name").in("id", cashierIds as string[]);
       return data || [];
     },
   });
@@ -319,7 +320,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
       qk.dashboard.entity("compSalesAgg", { restaurantId, branchId: activeBranchId, extra: [compBounds?.startDateUTC, compBounds?.endDateUTC] }),
       CACHE_TTL.MEDIUM,
       async () => {
-      const { data, error } = await (supabase as any).rpc("dashboard_sales_summary", {
+      const { data, error } = await (db as any).rpc("dashboard_sales_summary", {
         p_restaurant_id: restaurantId,
         p_start: compBounds!.startDateUTC,
         p_end: compBounds!.endDateUTC,
@@ -341,7 +342,7 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
       qk.dashboard.entity("compExpensesAgg", { restaurantId, branchId: activeBranchId, extra: [compBounds?.startDate, compBounds?.endDate] }),
       CACHE_TTL.MEDIUM,
       async () => {
-      const { data, error } = await (supabase as any).rpc("dashboard_expense_summary", {
+      const { data, error } = await (db as any).rpc("dashboard_expense_summary", {
         p_restaurant_id: restaurantId,
         p_start_date: compBounds!.startDate,
         p_end_date: compBounds!.endDate,
@@ -353,35 +354,23 @@ export function useDashboardData(options?: UseDashboardDataOptions) {
   });
 
   // Realtime invalidation
-  useEffect(() => {
-    if (!restaurantId) return;
-    const invalidate = (entities: string[]) =>
-      entities.forEach((entity) =>
-        queryClient.invalidateQueries({ queryKey: qk.dashboard.entityAll(entity, restaurantId) }),
-      );
-
-    const ch1 = supabase
-      .channel("dashboard-shifts")
-      .on("postgres_changes", { event: "*", schema: "public", table: "shifts", filter: `restaurant_id=eq.${restaurantId}` },
-        () => invalidate(["shifts", "closedShifts"]))
-      .subscribe();
-    const ch2 = supabase
-      .channel("dashboard-cash-events")
-      .on("postgres_changes", { event: "*", schema: "public", table: "cash_events", filter: `restaurant_id=eq.${restaurantId}` },
-        () => invalidate(["closedShifts", "shifts"]))
-      .subscribe();
-    const ch3 = supabase
-      .channel("dashboard-sales")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales_transactions", filter: `restaurant_id=eq.${restaurantId}` },
-        () => invalidate(["salesAgg", "compSalesAgg", "reconciledSales", "compReconciledSales", "vatSplit"]))
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(ch1);
-      supabase.removeChannel(ch2);
-      supabase.removeChannel(ch3);
-    };
-  }, [restaurantId, queryClient]);
+  // Live updates over the event channel (topic "sales").
+  const invalidateDashboard = (entities: string[]) =>
+    entities.forEach((entity) =>
+      queryClient.invalidateQueries({ queryKey: qk.dashboard.entityAll(entity, restaurantId) }),
+    );
+  useTableChanges({
+    topic: "sales",
+    restaurantId,
+    tables: ["shifts", "cash_events"],
+    onChange: () => invalidateDashboard(["shifts", "closedShifts"]),
+  });
+  useTableChanges({
+    topic: "sales",
+    restaurantId,
+    tables: ["sales_transactions"],
+    onChange: () => invalidateDashboard(["salesAgg", "compSalesAgg", "reconciledSales", "compReconciledSales", "vatSplit"]),
+  });
 
   // Derived data
   const drawerMap = useMemo(

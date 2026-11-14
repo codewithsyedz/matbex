@@ -155,9 +155,9 @@ describe("pickDayPaymentBreakdown", () => {
   });
 });
 
-// ---- fetchReconciledSalesByDay (integration over the supabase mock) ---------
+// ---- fetchReconciledSalesByDay (integration over the db mock) ---------
 
-vi.mock("@/integrations/supabase/client", () => {
+vi.mock("@/integrations/db/client", () => {
   type Row = Record<string, any>;
   const tables: Record<string, Row[]> = {
     sales_transactions: [],
@@ -168,6 +168,13 @@ vi.mock("@/integrations/supabase/client", () => {
     let rows = tables[table] ?? [];
     const api: any = {
       select: () => api,
+      order: () => api,
+      is: () => api,
+      // Paging, as PostgREST: inclusive row window.
+      range: (from: number, to: number) => {
+        rows = rows.slice(from, to + 1);
+        return api;
+      },
       eq: (_c: string, _v: any) => api,
       gte: (_c: string, _v: any) => api,
       lt: (_c: string, _v: any) => api,
@@ -177,7 +184,7 @@ vi.mock("@/integrations/supabase/client", () => {
     return api;
   };
   return {
-    supabase: {
+    db: {
       from: (t: string) => builder(t),
     },
     __setTable: (t: string, rows: Row[]) => {
@@ -188,7 +195,7 @@ vi.mock("@/integrations/supabase/client", () => {
 
 describe("fetchReconciledSalesByDay", () => {
   beforeEach(async () => {
-    const mod: any = await import("@/integrations/supabase/client");
+    const mod: any = await import("@/integrations/db/client");
     mod.__setTable("sales_transactions", [
       { total: 1000, created_at: "2026-06-17T10:00:00Z" },
     ]);

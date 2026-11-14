@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /**
@@ -18,7 +18,7 @@ export function useBranchItemCategories(branchId?: string | null) {
     enabled: !!restaurant?.id && !!branchId,
     staleTime: 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_item_branch_categories" as any)
         .select("menu_item_id, category, display_order")
         .eq("restaurant_id", restaurant!.id)
@@ -60,7 +60,7 @@ export async function setBranchItemCategory(params: {
   const { restaurantId, branchId, menuItemId, category, masterCategory, displayOrder } = params;
 
   if (category === masterCategory) {
-    const { error } = await supabase
+    const { error } = await db
       .from("menu_item_branch_categories" as any)
       .delete()
       .eq("branch_id", branchId)
@@ -69,7 +69,7 @@ export async function setBranchItemCategory(params: {
     return;
   }
 
-  const { error } = await supabase
+  const { error } = await db
     .from("menu_item_branch_categories" as any)
     .upsert(
       {

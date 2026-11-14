@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Download, Clock, CheckCircle, XCircle, AlertTriangle, FileDown } from "lucide-react";
 import { format } from "date-fns";
@@ -49,7 +49,7 @@ export function TenantExportRequests({ tenantId }: TenantExportRequestsProps) {
 
   const fetchRequests = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("export_requests")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -60,7 +60,7 @@ export function TenantExportRequests({ tenantId }: TenantExportRequestsProps) {
 
       if (data && data.length > 0) {
         const userIds = [...new Set(data.map((r) => r.requested_by))];
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds);

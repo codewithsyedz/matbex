@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { useAddonCatalog, useMyTenantAddons } from "@/hooks/useAddons";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -44,14 +44,14 @@ export function AddonCatalog() {
       try {
         let data: any, error: any;
         if (stripeSessionId) {
-          ({ data, error } = await supabase.functions.invoke(
+          ({ data, error } = await db.functions.invoke(
             "verify-addon-purchase",
             { body: { session_id: stripeSessionId } },
           ));
         } else {
           // Look up the pending tenant_addon row by reference to get the
           // Checkout.com hosted-payment id stored in stripe_checkout_session_id.
-          const { data: row } = await supabase
+          const { data: row } = await db
             .from("tenant_addons")
             .select("stripe_checkout_session_id")
             .eq("provider", "checkout_com")
@@ -60,7 +60,7 @@ export function AddonCatalog() {
             .limit(1)
             .maybeSingle();
           if (row?.stripe_checkout_session_id) {
-            ({ data, error } = await supabase.functions.invoke(
+            ({ data, error } = await db.functions.invoke(
               "verify-addon-purchase-cko",
               { body: { session_id: row.stripe_checkout_session_id } },
             ));
@@ -100,7 +100,7 @@ export function AddonCatalog() {
         provider === "checkout_com"
           ? "create-addon-checkout-cko"
           : "create-addon-checkout";
-      const { data, error } = await supabase.functions.invoke(fn, {
+      const { data, error } = await db.functions.invoke(fn, {
         body: { addon_id: addonId },
       });
       if (error) throw error;
@@ -188,7 +188,7 @@ export function AddonCatalog() {
                       <span className="capitalize">{f.replace(/_/g, " ")}</span>
                     </li>
                   ))}
-                  {Object.entries(a.quota_boosts).map(([k, v]) => (
+                  {Object.entries(a.quota_boosts as Record<string, number>).map(([k, v]) => (
                     <li
                       key={k}
                       className="flex items-center gap-2 text-sm text-muted-foreground"

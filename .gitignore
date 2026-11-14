@@ -28,3 +28,19 @@ fastlane/.env
 fastlane/play-store-key.json
 fastlane/report.xml
 fastlane/README.md
+
+# Environment & local data
+.env
+.env.*
+!.env.example
+server/.env
+server/dist
+.data
+.transfer
+
+# production move (server/scripts/migrate-from-supabase.mjs)
+migration-report-*.json
+.migration-state.json
+
+# personal Claude Code settings
+.claude/settings.local.json

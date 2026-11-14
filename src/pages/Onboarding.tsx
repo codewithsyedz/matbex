@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -69,17 +69,16 @@ export default function Onboarding() {
   const [currency, setCurrency] = useState("SAR");
   const [timezone, setTimezone] = useState("Asia/Riyadh");
   
-  // Step 2: Shift templates
-  const [shiftTemplates, setShiftTemplates] = useState([
-    { name: "", startTime: "11:00", endTime: "23:00", defaultFloat: 500 },
-    { name: "", startTime: "23:00", endTime: "11:00", defaultFloat: 500 },
+  // Step 2: Shift templates. Pre-filled: an owner who just presses Continue still gets
+  // templates and a drawer (with blank names nothing was saved and cashiers could not open
+  // a shift); the names stay editable.
+  const [shiftTemplates, setShiftTemplates] = useState(() => [
+    { name: t("app.onboarding.step2.defaultDayShift"), startTime: "11:00", endTime: "23:00", defaultFloat: 500 },
+    { name: t("app.onboarding.step2.defaultNightShift"), startTime: "23:00", endTime: "11:00", defaultFloat: 500 },
   ]);
-  
+
   // Step 3: Drawers
-  const [drawers, setDrawers] = useState([
-    { name: "" },
-    { name: "" },
-  ]);
+  const [drawers, setDrawers] = useState(() => [{ name: t("app.onboarding.step3.defaultDrawer") }]);
 
   const [createdRestaurantId, setCreatedRestaurantId] = useState<string | null>(null);
   const [createdTenantId, setCreatedTenantId] = useState<string | null>(null);
@@ -125,7 +124,7 @@ export default function Onboarding() {
         const p = localStorage.getItem("matbex_trial_plan");
         if (p === "starter" || p === "growth" || p === "enterprise") plan = p;
       } catch { /* ignore */ }
-      const { data: trial, error: trialError } = await supabase.functions.invoke("start-free-trial", {
+      const { data: trial, error: trialError } = await db.functions.invoke("start-free-trial", {
         body: {
           restaurantName: restaurantName.trim(),
           currency,
@@ -170,7 +169,7 @@ export default function Onboarding() {
         }));
 
       if (templatesData.length > 0) {
-        const { error } = await supabase
+        const { error } = await db
           .from("shift_templates")
           .insert(templatesData);
 
@@ -198,11 +197,13 @@ export default function Onboarding() {
           name: d.name.trim(),
         }));
 
-      if (drawersData.length > 0) {
-        const { error } = await supabase.from("drawers").insert(drawersData);
-
-        if (error) throw error;
+      // Cashiers open shifts on a drawer: setup is not complete without one.
+      if (drawersData.length === 0) {
+        toast.error(t("app.onboarding.step3.drawerRequired"));
+        return;
       }
+      const { error } = await db.from("drawers").insert(drawersData);
+      if (error) throw error;
 
       setSetupDone(true);
       await refreshProfile();

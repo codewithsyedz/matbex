@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -85,7 +85,7 @@ export function PaymentGatewaySettings() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data: profile } = await supabase
+      const { data: profile } = await db
         .from("profiles")
         .select("tenant_id")
         .eq("id", user.id)
@@ -95,7 +95,7 @@ export function PaymentGatewaySettings() {
         return;
       }
       setTenantId(profile.tenant_id);
-      const { data: configs } = await supabase
+      const { data: configs } = await db
         .from("payment_gateway_configs")
         .select("*")
         .eq("tenant_id", profile.tenant_id)
@@ -144,7 +144,7 @@ export function PaymentGatewaySettings() {
       refund_enabled: row.refund_enabled ?? true,
       offline_tolerance_minutes: row.offline_tolerance_minutes ?? 5,
     };
-    const { error } = await supabase
+    const { error } = await db
       .from("payment_gateway_configs")
       .upsert(payload, { onConflict: "tenant_id,branch_id,gateway" });
     setSaving(null);

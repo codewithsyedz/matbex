@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface MenuCategory {
@@ -44,6 +44,12 @@ export function categoryColorClass(color?: string | null) {
   return COLOR_CLASSES[color || ""] || "bg-muted text-muted-foreground border-border";
 }
 
+/** A readable label for a category key that has no category row. */
+export function humanizeCategoryKey(key: string) {
+  const text = (key || "").replace(/_+/g, " ").trim();
+  return text ? text.charAt(0).toUpperCase() + text.slice(1) : key;
+}
+
 /** Turn a free-text name into a stable storage key. */
 export function slugifyCategoryKey(name: string) {
   return name
@@ -71,7 +77,7 @@ export function useMenuCategories(branchId?: string | null) {
     enabled: !!restaurant?.id,
     staleTime: 2 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_categories")
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -96,7 +102,8 @@ export function useMenuCategories(branchId?: string | null) {
 
   const labelOf = (key: string) => {
     const c = merged.get(key);
-    if (!c) return key;
+    // A key with no category row (e.g. "beef_motton") reads as "Beef motton", not the raw key.
+    if (!c) return humanizeCategoryKey(key);
     return (isArabic && c.name_ar) || c.name_en;
   };
 

@@ -18,10 +18,10 @@
  * scoped by tenant_id.
  */
 import { describe, it, expect } from "vitest";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@matbex/client";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as
+const API_URL = import.meta.env.VITE_API_URL as string | undefined;
+const API_ANON_KEY = import.meta.env.VITE_API_KEY as
   | string
   | undefined;
 
@@ -32,7 +32,7 @@ const TENANT_B_ID = process.env.RLS_TEST_TENANT_B_ID;
 
 /**
  * Every tenant-scoped public table. Kept in sync with the generated
- * Supabase types by `rlsCoverageAudit.test.ts` — that meta-test fails
+ * the API types by `rlsCoverageAudit.test.ts` — that meta-test fails
  * CI when a new tenant-scoped table is added without being listed here
  * (or explicitly exempted).
  */
@@ -130,11 +130,73 @@ const TENANT_PRIVATE_TABLES = [
   "zatca_credit_notes",
   "zatca_devices",
   "zatca_settings",
+  // Added 2026-11-11 (tables created since the list was last updated; db/check-rls.mjs
+  // verifies RLS for every tenant-scoped table in CI).
+  "zatca_provider_applications",
+  "account_branch_visibility",
+  "ai_expense_journal_audit",
+  "ai_income_journal_audit",
+  "capital_movements",
+  "capital_statement_lines",
+  "card_settlement_deposits",
+  "daily_overhead_audit",
+  "daily_overhead_closures",
+  "daily_overhead_settings",
+  "daily_reconciliation_reports",
+  "dlq_alert_dedupe",
+  "edge_function_metrics",
+  "expense_amendment_audit",
+  "expense_posting_audit",
+  "expense_vat_split_audit",
+  "failed_sync_attempts",
+  "failed_sync_items",
+  "fixed_asset_classes",
+  "fixed_asset_depreciation",
+  "fixed_asset_depreciation_runs",
+  "fixed_asset_disposals",
+  "fixed_asset_settings",
+  "fixed_assets",
+  "import_row_fingerprints",
+  "installment_audit_events",
+  "installment_payments",
+  "installment_plans",
+  "installment_vat_mismatch_alerts",
+  "kiosk_offline_pins",
+  "kiosk_offline_unlock_events",
+  "kiosk_unlock_requests",
+  "menu_categories",
+  "menu_item_branch_categories",
+  "owner_capital_accounts",
+  "partner_settlement_acks",
+  "pos_staff_pins",
+  "posting_rule_rejections",
+  "project_acquisition_allocations",
+  "project_acquisition_funders",
+  "project_acquisitions",
+  "project_budget_lines",
+  "project_classification_audit",
+  "project_commitments",
+  "project_partners",
+  "project_posting_runs",
+  "project_transaction_splits",
+  "project_transactions",
+  "projects",
+  "receipt_templates",
+  "sale_posting_failures",
+  "staff_advance_branch_audit",
+  "staff_advance_repayments",
+  "supplier_ap_account_audit",
+  "table_reservations",
+  "vat_posting_integrity_incidents",
+  "vat_posting_integrity_settings",
+  "vat_remittances",
+  "zatca_application_status_events",
+  "zatca_provider_application_documents",
 ] as const;
 
 const shouldRun = Boolean(
-  SUPABASE_URL &&
-    SUPABASE_ANON &&
+  API_URL &&
+    API_ANON_KEY &&
     TENANT_A_EMAIL &&
     TENANT_A_PASSWORD &&
     TENANT_B_ID,
@@ -142,7 +204,7 @@ const shouldRun = Boolean(
 
 describe.runIf(shouldRun)("RLS cross-tenant isolation contract", () => {
   it("blocks tenant A from reading any row in tenant B", async () => {
-    const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!);
+    const sb = createClient(API_URL!, API_ANON_KEY!);
     const { error: authErr } = await sb.auth.signInWithPassword({
       email: TENANT_A_EMAIL!,
       password: TENANT_A_PASSWORD!,

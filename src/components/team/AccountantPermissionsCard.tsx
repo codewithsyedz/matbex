@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { CircleDollarSign, Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -24,7 +24,7 @@ export function AccountantPermissionsCard() {
     const prev = enabled;
     setEnabled(next);
     setSaving(true);
-    const { error } = await supabase
+    const { error } = await db
       .from("tenants")
       // Cast needed until generated types include the new column
       .update({ accountant_can_post_journals: next } as never)

@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/table";
 import { BranchBadge } from "@/components/branch/BranchBadge";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -69,7 +69,7 @@ export function DailyClosingReportExport() {
     queryKey: ["daily-closing-report", restaurant?.id, branchKey, fromIso, toIso],
     enabled: !!restaurant?.id && !!fromIso && !!toIso,
     queryFn: async () => {
-      let txQ = supabase
+      let txQ = db
         .from("sales_transactions")
         .select("branch_id, created_at, total, subtotal, tax, payment_method, is_delivery")
         .eq("restaurant_id", restaurant!.id)
@@ -77,7 +77,7 @@ export function DailyClosingReportExport() {
         .lte("created_at", toIso!);
       if (branchKey) txQ = txQ.eq("branch_id", branchKey);
 
-      let sumQ = supabase
+      let sumQ = db
         .from("daily_sales_summary")
         .select(
           "branch_id, sales_date, total_sales, cash_sales, card_sales, delivery_sales, other_sales, pos_reported_total, system_calculated_total, variance_amount, variance_status, status",
@@ -87,7 +87,7 @@ export function DailyClosingReportExport() {
         .lte("sales_date", toYmd!);
       if (branchKey) sumQ = sumQ.eq("branch_id", branchKey);
 
-      let adjQ = supabase
+      let adjQ = db
         .from("day_end_adjustments")
         .select("branch_id, business_date, amount, reversed_at, reversal_of_id")
         .eq("restaurant_id", restaurant!.id)

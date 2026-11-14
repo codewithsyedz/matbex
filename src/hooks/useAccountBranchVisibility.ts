@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -25,7 +25,7 @@ export function useAllAccountBranchVisibility() {
     queryKey: ["account-branch-visibility", tenantId],
     queryFn: async () => {
       if (!tenantId) return [] as AccountBranchVisibilityRow[];
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("account_branch_visibility")
         .select("account_id, branch_id, tenant_id")
         .eq("tenant_id", tenantId);
@@ -75,7 +75,7 @@ export function useAccountBranchVisibility(accountId: string | null) {
     queryKey: ["account-branch-visibility", "single", accountId],
     queryFn: async () => {
       if (!accountId) return [] as AccountBranchVisibilityRow[];
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("account_branch_visibility")
         .select("account_id, branch_id, tenant_id")
         .eq("account_id", accountId);
@@ -89,7 +89,7 @@ export function useAccountBranchVisibility(accountId: string | null) {
     mutationFn: async (branchIds: string[]) => {
       if (!accountId || !tenantId) throw new Error("Missing account or tenant");
       // Delete existing rows for this account, then insert the new set.
-      const { error: delErr } = await (supabase as any)
+      const { error: delErr } = await (db as any)
         .from("account_branch_visibility")
         .delete()
         .eq("account_id", accountId);
@@ -100,7 +100,7 @@ export function useAccountBranchVisibility(accountId: string | null) {
         branch_id: bid,
         tenant_id: tenantId,
       }));
-      const { error: insErr } = await (supabase as any)
+      const { error: insErr } = await (db as any)
         .from("account_branch_visibility")
         .insert(payload);
       if (insErr) throw insErr;

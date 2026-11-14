@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 type Entity = "expense_category" | "supplier";
 
@@ -58,7 +58,7 @@ export function CopyToBranchDialog({
     queryKey: ["branches-for-copy", restaurantId],
     enabled: !!restaurantId && open,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branches")
         .select("id, name, code, is_primary")
         .eq("restaurant_id", restaurantId)
@@ -82,7 +82,7 @@ export function CopyToBranchDialog({
     enabled: !!restaurantId && open && !!source?.name,
     queryFn: async () => {
       const table = entity === "expense_category" ? "expense_categories" : "suppliers";
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from(table)
         .select("branch_id")
         .eq("restaurant_id", restaurantId)
@@ -113,7 +113,7 @@ export function CopyToBranchDialog({
           color: source.color ?? null,
           account_id: source.account_id ?? null,
         }));
-        const { error } = await supabase.from("expense_categories").insert(rows);
+        const { error } = await db.from("expense_categories").insert(rows);
         if (error) throw error;
       } else {
         const rows = ids.map((branch_id) => ({
@@ -127,7 +127,7 @@ export function CopyToBranchDialog({
           notes: source.notes ?? null,
           is_active: source.is_active ?? true,
         }));
-        const { error } = await supabase.from("suppliers").insert(rows);
+        const { error } = await db.from("suppliers").insert(rows);
         if (error) throw error;
       }
 

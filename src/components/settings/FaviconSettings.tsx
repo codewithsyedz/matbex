@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Slider } from "@/components/ui/slider";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Loader2, Upload, Save, Trash2, Image as ImageIcon } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { withAssetVersion, freshAssetVersion } from "@/lib/assetVersion";
@@ -123,11 +123,11 @@ export function FaviconSettings({ faviconUrl, onSaved }: FaviconSettingsProps) {
       const blob = await exportBlob(64);
       if (!blob) throw new Error("Failed to render favicon");
       const path = `${restaurant.id}/favicon-${Date.now()}.png`;
-      const { error } = await supabase.storage
+      const { error } = await db.storage
         .from("restaurant-logos")
         .upload(path, blob, { cacheControl: "3600", upsert: true, contentType: "image/png" });
       if (error) throw error;
-      const { data } = supabase.storage.from("restaurant-logos").getPublicUrl(path);
+      const { data } = db.storage.from("restaurant-logos").getPublicUrl(path);
       onSaved(data.publicUrl);
       applyToDocument(data.publicUrl, { bustCache: true });
       toast.success("Favicon saved");

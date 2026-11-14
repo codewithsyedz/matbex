@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type ApplicationDocType =
   | "commercial_registration"
@@ -32,7 +32,7 @@ export interface VerificationApplication {
 }
 
 async function invoke<T = unknown>(action: string, body: unknown): Promise<T> {
-  const { data, error } = await supabase.functions.invoke(`application-verification?action=${action}`, {
+  const { data, error } = await db.functions.invoke(`application-verification?action=${action}`, {
     body,
   });
   if (error) throw error;
@@ -46,10 +46,10 @@ async function uploadDoc(applicationId: string, email: string, docType: Applicat
   form.append("email", email);
   form.append("docType", docType);
   form.append("file", file);
-  const url = `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/application-verification?action=upload`;
+  const url = `${import.meta.env.VITE_API_URL}/functions/v1/application-verification?action=upload`;
   const res = await fetch(url, {
     method: "POST",
-    headers: { apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "" },
+    headers: { apikey: import.meta.env.VITE_API_KEY ?? "" },
     body: form,
   });
   if (!res.ok) {

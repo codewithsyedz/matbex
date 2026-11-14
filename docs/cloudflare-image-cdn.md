@@ -1,7 +1,7 @@
 # Image CDN setup (cdn.matbex.com)
 
 Menu item images are stored in backend storage and are served from a host like
-`https://<project>.supabase.co/storage/v1/object/public/menu-images/...`.
+`https://api.matbex.com/storage/v1/object/public/menu-images/...`.
 To present them under our own domain (`https://cdn.matbex.com`) we rewrite the
 origin in the app and put a Cloudflare Worker in front that proxies the request
 to the backend storage endpoint.
@@ -9,7 +9,7 @@ to the backend storage endpoint.
 ## App side (already done)
 
 - `src/lib/imageCdn.ts` exposes `toCdnUrl(url)` which rewrites any
-  `https://<project>.supabase.co/storage/v1/object/public/...` URL to
+  `https://api.matbex.com/storage/v1/object/public/...` URL to
   `https://cdn.matbex.com/storage/v1/object/public/...`, preserving the path and
   query string. Non-matching URLs pass through unchanged (idempotent).
 - The CDN origin is configurable via `VITE_STORAGE_CDN_HOST` (default
@@ -32,7 +32,7 @@ to the backend storage endpoint.
    export default {
      async fetch(request) {
        const url = new URL(request.url);
-       // Origin = your backend storage host, e.g. https://<project>.supabase.co
+       // Origin = your backend storage host, e.g. https://api.matbex.com (the Matbex API serves /storage/v1)
        const origin = SUPABASE_STORAGE_ORIGIN; // set in Worker settings (no trailing slash)
        const target = origin + url.pathname + url.search;
        const upstream = await fetch(target, {
@@ -49,7 +49,7 @@ to the backend storage endpoint.
 
 3. In the Worker **Settings → Variables**, add:
 
-   - `SUPABASE_STORAGE_ORIGIN` = `https://<project>.supabase.co`
+   - `SUPABASE_STORAGE_ORIGIN` = `https://api.matbex.com` (variable name kept from the old setup)
 
    Use the host from any existing menu image URL (the part before
    `/storage/v1/object/public/menu-images/...`).

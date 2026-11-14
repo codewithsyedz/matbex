@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { DEFAULT_PRICES_VAT_INCLUSIVE, VAT_RATE } from "@/lib/vatInclusive";
 
 /**
@@ -14,7 +14,7 @@ export function useBranchVatRate(branchId?: string | null) {
     queryKey: ["branch-vat-settings", branchId],
     queryFn: async () => {
       if (!branchId) return null;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branches" as any)
         .select("vat_rate, prices_vat_inclusive")
         .eq("id", branchId)

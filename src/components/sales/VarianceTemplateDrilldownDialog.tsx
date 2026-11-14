@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Search, TrendingDown, TrendingUp, Calendar, FileText } from "lucide-react";
@@ -75,7 +75,7 @@ export function VarianceTemplateDrilldownDialog({
     ],
     queryFn: async (): Promise<EventRow[]> => {
       if (!tenant?.id || !templateKey) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("variance_template_usage_events")
         .select(
           "id, used_at, variance_amount, abs_variance, business_date, daily_sales_id, notes_snapshot"

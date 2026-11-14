@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useToast } from "@/hooks/use-toast";
 
 // Types
@@ -126,7 +126,7 @@ export const useLandingContent = () => {
   const { data: hero, isLoading: heroLoading } = useQuery({
     queryKey: ["landing-hero"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_hero")
         .select("*")
         .limit(1)
@@ -140,7 +140,7 @@ export const useLandingContent = () => {
   const { data: features = [], isLoading: featuresLoading } = useQuery({
     queryKey: ["landing-features"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_features")
         .select("*")
         .order("sort_order");
@@ -153,7 +153,7 @@ export const useLandingContent = () => {
   const { data: testimonials = [], isLoading: testimonialsLoading } = useQuery({
     queryKey: ["landing-testimonials"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_testimonials")
         .select("*")
         .order("sort_order");
@@ -166,7 +166,7 @@ export const useLandingContent = () => {
   const { data: pricingPlans = [], isLoading: pricingLoading } = useQuery({
     queryKey: ["landing-pricing"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_pricing_plans")
         .select("*")
         .order("sort_order");
@@ -183,7 +183,7 @@ export const useLandingContent = () => {
   const { data: faq = [], isLoading: faqLoading } = useQuery({
     queryKey: ["landing-faq"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_faq")
         .select("*")
         .order("sort_order");
@@ -196,7 +196,7 @@ export const useLandingContent = () => {
   const { data: sections = [], isLoading: sectionsLoading } = useQuery({
     queryKey: ["landing-sections"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_sections")
         .select("*")
         .order("sort_order");
@@ -209,7 +209,7 @@ export const useLandingContent = () => {
   const { data: mission, isLoading: missionLoading } = useQuery({
     queryKey: ["landing-mission"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_mission")
         .select("*")
         .limit(1)
@@ -223,7 +223,7 @@ export const useLandingContent = () => {
   const updateHero = useMutation({
     mutationFn: async (updates: Partial<LandingHero>) => {
       if (!hero?.id) throw new Error("Hero not found");
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_hero")
         .update(updates)
         .eq("id", hero.id);
@@ -241,7 +241,7 @@ export const useLandingContent = () => {
   // Update feature
   const updateFeature = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<LandingFeature> & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_features")
         .update(updates)
         .eq("id", id);
@@ -259,7 +259,7 @@ export const useLandingContent = () => {
   // Create feature
   const createFeature = useMutation({
     mutationFn: async (feature: Omit<LandingFeature, "id" | "created_at" | "updated_at">) => {
-      const { error } = await supabase.from("landing_features").insert(feature);
+      const { error } = await db.from("landing_features").insert(feature);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -274,7 +274,7 @@ export const useLandingContent = () => {
   // Delete feature
   const deleteFeature = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("landing_features").delete().eq("id", id);
+      const { error } = await db.from("landing_features").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -289,7 +289,7 @@ export const useLandingContent = () => {
   // Update testimonial
   const updateTestimonial = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<LandingTestimonial> & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_testimonials")
         .update(updates)
         .eq("id", id);
@@ -307,7 +307,7 @@ export const useLandingContent = () => {
   // Create testimonial
   const createTestimonial = useMutation({
     mutationFn: async (testimonial: Omit<LandingTestimonial, "id" | "created_at" | "updated_at">) => {
-      const { error } = await supabase.from("landing_testimonials").insert(testimonial);
+      const { error } = await db.from("landing_testimonials").insert(testimonial);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -322,7 +322,7 @@ export const useLandingContent = () => {
   // Delete testimonial
   const deleteTestimonial = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("landing_testimonials").delete().eq("id", id);
+      const { error } = await db.from("landing_testimonials").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -337,7 +337,7 @@ export const useLandingContent = () => {
   // Update pricing plan
   const updatePricingPlan = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<LandingPricingPlan> & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_pricing_plans")
         .update(updates)
         .eq("id", id);
@@ -355,7 +355,7 @@ export const useLandingContent = () => {
   // Update FAQ
   const updateFAQ = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<LandingFAQ> & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_faq")
         .update(updates)
         .eq("id", id);
@@ -373,7 +373,7 @@ export const useLandingContent = () => {
   // Create FAQ
   const createFAQ = useMutation({
     mutationFn: async (faqItem: Omit<LandingFAQ, "id" | "created_at" | "updated_at">) => {
-      const { error } = await supabase.from("landing_faq").insert(faqItem);
+      const { error } = await db.from("landing_faq").insert(faqItem);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -388,7 +388,7 @@ export const useLandingContent = () => {
   // Delete FAQ
   const deleteFAQ = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("landing_faq").delete().eq("id", id);
+      const { error } = await db.from("landing_faq").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -403,7 +403,7 @@ export const useLandingContent = () => {
   // Update section visibility
   const updateSection = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<LandingSection> & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_sections")
         .update(updates)
         .eq("id", id);
@@ -422,7 +422,7 @@ export const useLandingContent = () => {
   const updateMission = useMutation({
     mutationFn: async (updates: Partial<LandingMission>) => {
       if (!mission?.id) throw new Error("Mission not found");
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_mission")
         .update(updates)
         .eq("id", mission.id);

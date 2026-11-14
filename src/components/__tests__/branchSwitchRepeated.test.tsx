@@ -10,16 +10,19 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
  * where Radix re-applies `pointer-events: none` faster than our cleanup.
  */
 
-vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({
+vi.mock("@/contexts/AuthContext", async () => {
+  const React = await import("react");
+  const auth = {
     user: { id: "user-1" },
     tenant: { id: "tenant-1" },
     restaurant: { id: "restaurant-1" },
     hasRole: () => true,
-  }),
-}));
+  };
+  // BranchProvider reads AuthContext directly (useContext), not only useAuth().
+  return { useAuth: () => auth, AuthContext: React.createContext<any>(auth) };
+});
 
-vi.mock("@/integrations/supabase/client", () => {
+vi.mock("@/integrations/db/client", () => {
   const branches = [
     { id: "branch-a", restaurant_id: "restaurant-1", name: "Alpha", code: "A", is_primary: true, is_active: true },
     { id: "branch-b", restaurant_id: "restaurant-1", name: "Bravo", code: "B", is_primary: false, is_active: true },
@@ -34,7 +37,7 @@ vi.mock("@/integrations/supabase/client", () => {
     return chain;
   };
   return {
-    supabase: {
+    db: {
       from: (table: string) => {
         if (table === "staff") return makeChain({ data: null, error: null });
         return makeChain({ data: branches, error: null });

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /**
@@ -25,7 +25,7 @@ export function AdminPinCard() {
   const { data: isSet, isLoading } = useQuery({
     queryKey: ["tenant-admin-pin-is-set"],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("tenant_admin_pin_is_set");
+      const { data, error } = await db.rpc("tenant_admin_pin_is_set");
       if (error) throw error;
       return Boolean(data);
     },
@@ -50,7 +50,7 @@ export function AdminPinCard() {
     }
     setSubmitting(true);
     try {
-      const { error } = await supabase.rpc("set_tenant_admin_pin", { p_pin: pin });
+      const { error } = await db.rpc("set_tenant_admin_pin", { p_pin: pin });
       if (error) throw error;
       toast.success(isSet ? "Admin PIN updated" : "Admin PIN set");
       setPin("");

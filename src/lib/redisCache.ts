@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 // Default TTL (45s) - short enough to keep dashboards fresh, long enough to
 // absorb spikes of repeat navigation on mobile.
@@ -30,17 +30,17 @@ async function callProxy<T>(body: Record<string, unknown>): Promise<T | null> {
     // Skip when there's no live session - the edge function would 401 and
     // the SDK would surface a "FunctionsHttpError" runtime error. We also
     // refresh proactively when the cached token is expired or about to
-    // expire (within 30s) since supabase-js will otherwise send the stale
+    // expire (within 30s) since db-js will otherwise send the stale
     // token and the edge function will reject it.
-    let { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await db.auth.getSession();
     if (!session?.access_token) return null;
     const expiresAt = (session.expires_at ?? 0) * 1000;
     if (expiresAt && expiresAt - Date.now() < 30_000) {
-      const { data: refreshed } = await supabase.auth.refreshSession();
+      const { data: refreshed } = await db.auth.refreshSession();
       if (!refreshed?.session?.access_token) return null;
       session = refreshed.session;
     }
-    const { data, error } = await supabase.functions.invoke("cache-proxy", {
+    const { data, error } = await db.functions.invoke("cache-proxy", {
       body,
     });
     if (error) return null;

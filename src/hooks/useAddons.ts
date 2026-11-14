@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type AddonBillingType = "recurring" | "one_time";
@@ -54,7 +54,7 @@ export function useAddonCatalog(opts: { includeInactive?: boolean } = {}) {
   return useQuery({
     queryKey: ["addons-catalog", opts.includeInactive ?? false],
     queryFn: async () => {
-      let q = supabase.from("addons" as any).select("*").order("sort_order").order("price");
+      let q = db.from("addons" as any).select("*").order("sort_order").order("price");
       if (!opts.includeInactive) q = q.eq("is_active", true);
       const { data, error } = await q;
       if (error) throw error;
@@ -68,7 +68,7 @@ export function useTenantAddons(tenantId?: string | null) {
     queryKey: ["tenant-addons", tenantId],
     queryFn: async (): Promise<TenantAddon[]> => {
       if (!tenantId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_addons" as any)
         .select("*, addon:addons(*)")
         .eq("tenant_id", tenantId)

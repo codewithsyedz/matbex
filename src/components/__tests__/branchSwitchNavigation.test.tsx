@@ -18,15 +18,18 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 
 // ---- Mocks ---------------------------------------------------------------
 
-vi.mock("@/contexts/AuthContext", () => ({
-  useAuth: () => ({
+vi.mock("@/contexts/AuthContext", async () => {
+  const React = await import("react");
+  const auth = {
     tenant: { id: "tenant-1" },
     restaurant: { id: "restaurant-1" },
     hasRole: () => true,
-  }),
-}));
+  };
+  // BranchProvider reads AuthContext directly (useContext), not only useAuth().
+  return { useAuth: () => auth, AuthContext: React.createContext<any>(auth) };
+});
 
-vi.mock("@/integrations/supabase/client", () => {
+vi.mock("@/integrations/db/client", () => {
   const branches = [
     {
       id: "branch-existing",
@@ -54,7 +57,7 @@ vi.mock("@/integrations/supabase/client", () => {
       Promise.resolve({ data: branches, error: null }).then(resolve),
   };
   return {
-    supabase: { from: () => chain },
+    db: { from: () => chain },
   };
 });
 

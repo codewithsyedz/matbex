@@ -1,14 +1,14 @@
 import { useEffect, useState, useCallback } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Loader2, AlertCircle, RotateCcw, LogIn } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertTitle, AlertDescription } from "@/components/ui/alert";
 
 /**
- * Public route. Handles incoming Supabase magic-link redirects.
+ * Public route. Handles incoming the API magic-link redirects.
  *
- * Supabase client auto-detects the access/refresh tokens in the URL hash
+ * the API client auto-detects the access/refresh tokens in the URL hash
  * (detectSessionInUrl=true by default) and emits SIGNED_IN. We just wait
  * for a session, then navigate to the `next` query param (default: /cockpit).
  */
@@ -32,13 +32,13 @@ export default function AuthCallback() {
     };
 
     // Listen first so we don't miss the SIGNED_IN event.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
+    const { data: { subscription } } = db.auth.onAuthStateChange((_, session) => {
       if (session) go();
     });
     cleanupSub = () => subscription.unsubscribe();
 
     // If session already exists (e.g. revisit), redirect immediately.
-    supabase.auth.getSession().then(({ data }) => {
+    db.auth.getSession().then(({ data }) => {
       if (data.session) go();
     });
 

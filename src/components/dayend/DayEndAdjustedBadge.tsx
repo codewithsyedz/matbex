@@ -7,7 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -51,7 +51,7 @@ export function DayEndAdjustedBadge({
     enabled: !!tenant?.id && (!!businessDate || !!scopeRefId),
     staleTime: 60_000,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("day_end_adjustments")
         .select("id, amount, notes, reason, created_at, reversed_at, reversal_of_id")
         .eq("tenant_id", tenant!.id)

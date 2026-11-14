@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useQuota } from "@/hooks/useQuota";
@@ -68,7 +68,7 @@ export function MenuItemsManager() {
     queryKey: ["menu-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -84,7 +84,7 @@ export function MenuItemsManager() {
     queryKey: ["inventory-items-for-recipe", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_items")
         .select("id, name, unit, unit_cost")
         .eq("restaurant_id", restaurant.id)
@@ -100,7 +100,7 @@ export function MenuItemsManager() {
     queryKey: ["recipe-ingredients", selectedItemForRecipe],
     queryFn: async () => {
       if (!selectedItemForRecipe) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("recipe_ingredients")
         .select("*, inventory_items(name, unit, unit_cost)")
         .eq("menu_item_id", selectedItemForRecipe);
@@ -127,7 +127,7 @@ export function MenuItemsManager() {
         throw new Error(`Menu item limit reached (${quotaCheck.current}/${quotaCheck.limit}). Please upgrade your plan.`);
       }
       
-      const { error } = await supabase.from("menu_items").insert({
+      const { error } = await db.from("menu_items").insert({
         restaurant_id: restaurant.id,
         name: item.name,
         category: item.category,
@@ -158,7 +158,7 @@ export function MenuItemsManager() {
   // Update menu item mutation
   const updateItemMutation = useMutation({
     mutationFn: async (item: MenuItem) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("menu_items")
         .update({
           name: item.name,
@@ -185,7 +185,7 @@ export function MenuItemsManager() {
   // Delete menu item mutation
   const deleteItemMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("menu_items").delete().eq("id", id);
+      const { error } = await db.from("menu_items").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -199,7 +199,7 @@ export function MenuItemsManager() {
   const addIngredientMutation = useMutation({
     mutationFn: async () => {
       if (!selectedItemForRecipe || !restaurant?.id) throw new Error("Missing data");
-      const { error } = await supabase.from("recipe_ingredients").insert({
+      const { error } = await db.from("recipe_ingredients").insert({
         menu_item_id: selectedItemForRecipe,
         inventory_item_id: newIngredient.inventory_item_id,
         quantity_required: parseFloat(newIngredient.quantity_required) || 1,
@@ -218,7 +218,7 @@ export function MenuItemsManager() {
   // Delete recipe ingredient mutation
   const deleteIngredientMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("recipe_ingredients").delete().eq("id", id);
+      const { error } = await db.from("recipe_ingredients").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -436,7 +436,7 @@ export function MenuItemsManager() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 const next = !(item.available_online !== false);
-                                const { error } = await supabase
+                                const { error } = await db
                                   .from("menu_items")
                                   .update({ available_online: next } as any)
                                   .eq("id", item.id);

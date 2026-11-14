@@ -1,6 +1,6 @@
 /**
  * Pure reconciliation logic for BNPL / installment payments.
- * Kept free of Supabase so it can be unit-tested directly.
+ * Kept free of the API so it can be unit-tested directly.
  */
 
 export type MatchStatus =

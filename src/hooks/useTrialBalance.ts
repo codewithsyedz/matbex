@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { AccountType } from "@/hooks/useChartOfAccounts";
 
@@ -67,7 +67,7 @@ export function useTrialBalance({ from, to, includeZero = false, branchId }: Use
     queryKey: ["trial-balance-coa", tenantId],
     enabled: !!tenantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type, is_active")
         .eq("tenant_id", tenantId!)
@@ -88,7 +88,7 @@ export function useTrialBalance({ from, to, includeZero = false, branchId }: Use
       let page = 0;
       const all: Array<{ account_id: string; debit: number | null; credit: number | null; branch_id: string | null }> = [];
       while (true) {
-        let q = supabase
+        let q = db
           .from("account_transactions")
           .select("account_id, debit, credit, branch_id")
           .eq("tenant_id", tenantId!)
@@ -121,7 +121,7 @@ export function useTrialBalance({ from, to, includeZero = false, branchId }: Use
       let page = 0;
       const all: Array<{ account_id: string; debit: number | null; credit: number | null }> = [];
       while (true) {
-        let q = supabase
+        let q = db
           .from("account_transactions")
           .select("account_id, debit, credit")
           .eq("tenant_id", tenantId!)

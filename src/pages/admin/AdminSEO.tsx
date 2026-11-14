@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSuperAdmin } from "@/contexts/SuperAdminContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -43,7 +43,7 @@ async function callSemrush<T = SemrushRows>(
   path: string,
   params: Record<string, string | number>,
 ): Promise<T> {
-  const { data, error } = await supabase.functions.invoke<ProxyResponse<SemrushRaw>>("semrush-proxy", {
+  const { data, error } = await db.functions.invoke<ProxyResponse<SemrushRaw>>("semrush-proxy", {
     body: { path, params },
   });
   if (error) throw new Error(error.message);
@@ -61,16 +61,11 @@ const DATABASES = [
   { code: "us", label: "United States" },
 ];
 
+/** Access gate; the dashboard is a separate component so its hooks always run in order. */
 export default function AdminSEO() {
   const { hasRole } = useAuth();
   const { isSuperAdmin } = useSuperAdmin();
-  const [domain, setDomain] = useState("matbex.com");
-  const [database, setDatabase] = useState("sa");
-  const canViewSeo = useMemo(
-    () => isSuperAdmin || hasRole("owner") || hasRole("manager"),
-    [isSuperAdmin, hasRole],
-  );
-
+  const canViewSeo = isSuperAdmin || hasRole("owner") || hasRole("manager");
   if (!canViewSeo) {
     return (
       <div className="min-h-screen bg-background">
@@ -87,6 +82,16 @@ export default function AdminSEO() {
       </div>
     );
   }
+
+  return <AdminSEOScreen />;
+}
+
+function AdminSEOScreen() {
+  const { hasRole } = useAuth();
+  const { isSuperAdmin } = useSuperAdmin();
+  const [domain, setDomain] = useState("matbex.com");
+  const [database, setDatabase] = useState("sa");
+
 
   const overview = useQuery({
     queryKey: ["seo", "ranks", domain, database],

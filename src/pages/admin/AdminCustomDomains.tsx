@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -69,7 +69,7 @@ export default function AdminCustomDomains() {
 
   const fetchRows = async () => {
     setLoading(true);
-    const { data, error } = await supabase.rpc("admin_list_custom_domains");
+    const { data, error } = await db.rpc("admin_list_custom_domains");
     if (error) {
       console.error(error);
       toast.error("Failed to load custom domains");
@@ -102,7 +102,7 @@ export default function AdminCustomDomains() {
       try {
         const results = await Promise.allSettled(
           transitional.map((r) =>
-            supabase.functions.invoke("poll-domain-ssl", {
+            db.functions.invoke("poll-domain-ssl", {
               body: { domain_id: r.id },
             }),
           ),
@@ -139,7 +139,7 @@ export default function AdminCustomDomains() {
   const handleReverify = async (row: DomainRow) => {
     setVerifyingId(row.id);
     try {
-      const { data, error } = await supabase.functions.invoke("verify-custom-domain", {
+      const { data, error } = await db.functions.invoke("verify-custom-domain", {
         body: { domain_id: row.id },
       });
       if (error) throw error;

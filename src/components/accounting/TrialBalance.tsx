@@ -16,7 +16,7 @@ import { useCurrency } from "@/hooks/useCurrency";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFiscalSettings, getFiscalMonthRange } from "@/hooks/useFiscalSettings";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import { Scale, Download, AlertTriangle, CheckCircle2 } from "lucide-react";
@@ -64,7 +64,7 @@ export function TrialBalance() {
       const all: any[] = [];
       // paginate to avoid PostgREST 1000-row cap
       while (true) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("account_transactions")
           .select("account_id, transaction_date, debit, credit, is_voided")
           .eq("tenant_id", profile.tenant_id)

@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle2, AlertTriangle, Scale } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useTranslation } from "react-i18next";
 import { ar as arLocale } from "date-fns/locale";
@@ -53,7 +53,7 @@ export function SalesReconciliationCard({
           branchId,
         }),
         (() => {
-            let q = supabase
+            let q = db
               .from("expenses")
               .select("amount")
               .eq("restaurant_id", restaurantId!)

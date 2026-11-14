@@ -1,10 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
-
-const db = supabase as any;
-
 export type CapitalTimelineKind = "account_opened" | "movement" | "reversal";
 
 export interface CapitalTimelineEvent {

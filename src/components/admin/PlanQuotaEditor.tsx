@@ -5,7 +5,7 @@ import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Save, Loader2, Users, UtensilsCrossed, Image, Mail } from "lucide-react";
 
@@ -82,7 +82,7 @@ export function PlanQuotaEditor({ plan, onSaved }: PlanQuotaEditorProps) {
         }
       });
 
-      const { error } = await supabase
+      const { error } = await db
         .from("plans")
         .update({ quota_limits: JSON.parse(JSON.stringify(cleanedQuotas)) })
         .eq("id", plan.id);

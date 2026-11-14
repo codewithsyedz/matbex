@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -89,7 +89,7 @@ export function usePOSHardware() {
     queryFn: async () => {
       if (!restaurant?.id) return null;
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_hardware_settings")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -106,7 +106,7 @@ export function usePOSHardware() {
       if (!restaurant?.id) throw new Error("No restaurant selected");
 
       // Check if settings exist
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("pos_hardware_settings")
         .select("id")
         .eq("restaurant_id", restaurant.id)
@@ -114,7 +114,7 @@ export function usePOSHardware() {
 
       if (existing) {
         // Update existing
-        const { error } = await supabase
+        const { error } = await db
           .from("pos_hardware_settings")
           .update(updates as never)
           .eq("restaurant_id", restaurant.id);
@@ -122,7 +122,7 @@ export function usePOSHardware() {
         if (error) throw error;
       } else {
         // Insert new
-        const { error } = await supabase
+        const { error } = await db
           .from("pos_hardware_settings")
           .insert({
             restaurant_id: restaurant.id,

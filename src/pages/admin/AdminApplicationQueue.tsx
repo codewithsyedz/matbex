@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useSuperAdmin } from "@/contexts/SuperAdminContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -123,7 +123,7 @@ export default function AdminApplicationQueue() {
   const fetchApplications = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_applications")
         .select(`
           *,
@@ -153,7 +153,7 @@ export default function AdminApplicationQueue() {
 
     try {
       // Call edge function to handle approval (creates user, tenant, sends email)
-      const { data, error } = await supabase.functions.invoke("approve-application", {
+      const { data, error } = await db.functions.invoke("approve-application", {
         body: {
           application_id: selectedApp.id,
           review_notes: reviewNotes || null,
@@ -183,9 +183,9 @@ export default function AdminApplicationQueue() {
     setActionLoading(true);
 
     try {
-      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      const { data: { user: currentUser } } = await db.auth.getUser();
 
-      await supabase
+      await db
         .from("tenant_applications")
         .update({
           status: "rejected",
@@ -216,7 +216,7 @@ export default function AdminApplicationQueue() {
 
     try {
       // Update status to pending_approval (waiting for more info)
-      await supabase
+      await db
         .from("tenant_applications")
         .update({
           status: "pending_approval",
@@ -248,7 +248,7 @@ export default function AdminApplicationQueue() {
     // application-docs bucket is private — fetch a fresh signed URL on open.
     if (app.cr_document_url) {
       try {
-        const { data } = await supabase.functions.invoke(
+        const { data } = await db.functions.invoke(
           "application-verification?action=admin-list",
           { body: { applicationId: app.id } },
         );

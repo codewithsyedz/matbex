@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -20,7 +20,7 @@ export function ReorderRequestsList() {
     queryKey: ["reorder-requests", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("reorder_requests")
         .select(`
           *,
@@ -43,7 +43,7 @@ export function ReorderRequestsList() {
         resolved_by: user?.id,
       };
 
-      const { error } = await supabase
+      const { error } = await db
         .from("reorder_requests")
         .update(updates)
         .eq("id", id);
@@ -54,7 +54,7 @@ export function ReorderRequestsList() {
       if (status === "fulfilled" && newStock !== undefined) {
         const request = requests.find(r => r.id === id);
         if (request) {
-          await supabase
+          await db
             .from("inventory_items")
             .update({ 
               current_stock: Number(request.current_stock) + Number(request.requested_quantity)
@@ -86,7 +86,7 @@ export function ReorderRequestsList() {
 
     setSendingEmail(request.id);
     try {
-      const response = await supabase.functions.invoke("send-reorder-email", {
+      const response = await db.functions.invoke("send-reorder-email", {
         body: {
           supplier_id: supplier.id,
           supplier_name: supplier.name,

@@ -63,7 +63,6 @@ const VerifyZatcaReport = lazy(() => import("@/pages/VerifyZatcaReport"));
 
 // KSA SEO landing pages (single template, 6 slugs)
 const SeoLanding = lazy(() => import("@/pages/seo/SeoLanding"));
-const OAuthConsent = lazy(() => import("@/pages/OAuthConsent"));
 const ArabicHomepage = lazy(() => import("@/pages/ArabicHomepage"));
 const ZatcaPhase2Guide = lazy(() => import("@/pages/blog/ZatcaPhase2Guide"));
 const RestaurantCogsGuide = lazy(() => import("@/pages/blog/RestaurantCogsGuide"));
@@ -429,7 +428,6 @@ export function AnimatedRoutes() {
         />
         <Route path="/auth" element={<LazyRoute Component={Auth} />} />
         <Route path="/auth/callback" element={<LazyRoute Component={AuthCallback} />} />
-        <Route path="/.lovable/oauth/consent" element={<LazyRoute Component={OAuthConsent} />} />
         <Route path="/reset-password" element={<LazyRoute Component={ResetPassword} />} />
         <Route path="/zoho/callback" element={<LazyRoute Component={ZohoCallback} />} />
         <Route path="/quickbooks/callback" element={<LazyRoute Component={QuickBooksCallback} />} />

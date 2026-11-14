@@ -1,5 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -34,7 +34,7 @@ export function ReportSchedulesList() {
     queryKey: ["report-schedules", user?.id],
     queryFn: async () => {
       if (!user?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("report_schedules")
         .select("*")
         .eq("user_id", user.id)
@@ -47,7 +47,7 @@ export function ReportSchedulesList() {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("report_schedules")
         .update({ is_active })
         .eq("id", id);
@@ -63,7 +63,7 @@ export function ReportSchedulesList() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("report_schedules")
         .delete()
         .eq("id", id);

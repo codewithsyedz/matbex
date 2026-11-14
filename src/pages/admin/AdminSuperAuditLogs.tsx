@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useSuperAdminAudit } from "@/hooks/useSuperAdminAudit";
 import { 
   Shield, 
@@ -31,7 +31,7 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-import type { Json } from "@/integrations/supabase/types";
+import type { Json } from "@/integrations/db/types";
 
 const getOutcome = (context: Json): "success" | "failure" | "unknown" => {
   if (context && typeof context === "object" && !Array.isArray(context)) {
@@ -119,7 +119,7 @@ export default function AdminSuperAuditLogs() {
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      let query = supabase
+      let query = db
         .from("superadmin_audit_events")
         .select("*")
         .order("timestamp", { ascending: false })

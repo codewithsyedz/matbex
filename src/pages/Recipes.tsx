@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -56,7 +56,7 @@ export default function Recipes() {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["recipe-status", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items_recipe_status" as any)
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -72,7 +72,7 @@ export default function Recipes() {
   const { data: beverageIds = [] } = useQuery({
     queryKey: ["menu-items-beverage-ids", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("id")
         .eq("restaurant_id", restaurantId)
@@ -216,7 +216,7 @@ function RecipeEditorDialog({
   const { data: inventory = [] } = useQuery({
     queryKey: ["inventory-items-for-recipe", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_items")
         .select("id, name, unit, stock_unit")
         .eq("restaurant_id", restaurantId)
@@ -230,7 +230,7 @@ function RecipeEditorDialog({
   useQuery({
     queryKey: ["recipe-ingredients", item.menu_item_id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("recipe_ingredients")
         .select("id, inventory_item_id, quantity_required, unit")
         .eq("menu_item_id", item.menu_item_id)
@@ -281,7 +281,7 @@ function RecipeEditorDialog({
       // Deletes
       const toDelete = rows.filter((r) => r._deleted && r.id).map((r) => r.id!) as string[];
       if (toDelete.length) {
-        const { error } = await supabase.from("recipe_ingredients").delete().in("id", toDelete);
+        const { error } = await db.from("recipe_ingredients").delete().in("id", toDelete);
         if (error) throw error;
       }
 
@@ -296,13 +296,13 @@ function RecipeEditorDialog({
           unit: r.unit,
         }));
       if (inserts.length) {
-        const { error } = await supabase.from("recipe_ingredients").insert(inserts);
+        const { error } = await db.from("recipe_ingredients").insert(inserts);
         if (error) throw error;
       }
 
       const updates = rows.filter((r) => !r._new && !r._deleted && r._dirty && r.id);
       for (const r of updates) {
-        const { error } = await supabase
+        const { error } = await db
           .from("recipe_ingredients")
           .update({
             inventory_item_id: r.inventory_item_id,

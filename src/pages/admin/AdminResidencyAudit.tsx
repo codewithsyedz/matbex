@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { format } from "date-fns";
 import { ArrowRight, Download, Globe, Lock, LockOpen, RefreshCw, Shield } from "lucide-react";
 import { toast } from "sonner";
@@ -45,7 +45,7 @@ export default function AdminResidencyAudit() {
 
   const fetchLogs = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("audit_logs")
       .select("id, created_at, tenant_id, user_id, old_data, new_data, ip_address")
       .eq("action", "tenant.data_region.changed")
@@ -64,10 +64,10 @@ export default function AdminResidencyAudit() {
 
     const [tenantsRes, profilesRes] = await Promise.all([
       tenantIds.length
-        ? supabase.from("tenants").select("id, name").in("id", tenantIds)
+        ? db.from("tenants").select("id, name").in("id", tenantIds)
         : Promise.resolve({ data: [] as { id: string; name: string }[] }),
       userIds.length
-        ? supabase.from("profiles").select("id, full_name").in("id", userIds)
+        ? db.from("profiles").select("id, full_name").in("id", userIds)
         : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
     ]);
 

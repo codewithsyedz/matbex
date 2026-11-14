@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -57,7 +57,7 @@ export function useLoyaltySettings() {
     enabled: !!restaurantId,
     staleTime: 2 * 60 * 1000,
     queryFn: async (): Promise<LoyaltySettings> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("loyalty_settings" as any)
         .select("*")
         .eq("restaurant_id", restaurantId!)
@@ -65,7 +65,7 @@ export function useLoyaltySettings() {
       if (error) throw error;
       if (data) return data as unknown as LoyaltySettings;
       // seed defaults
-      const { data: created, error: insErr } = await supabase
+      const { data: created, error: insErr } = await db
         .from("loyalty_settings" as any)
         .insert({ restaurant_id: restaurantId!, ...DEFAULTS } as any)
         .select()
@@ -78,7 +78,7 @@ export function useLoyaltySettings() {
   const update = useMutation({
     mutationFn: async (patch: Partial<LoyaltySettings>) => {
       if (!restaurantId) throw new Error("No restaurant");
-      const { error } = await supabase
+      const { error } = await db
         .from("loyalty_settings" as any)
         .update(patch as any)
         .eq("restaurant_id", restaurantId);
@@ -104,7 +104,7 @@ export function useCustomerLoyalty(customerId?: string) {
     enabled: !!customerId,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("loyalty_transactions" as any)
         .select("*")
         .eq("customer_id", customerId!)
@@ -125,7 +125,7 @@ export function useCustomerLoyalty(customerId?: string) {
       note?: string;
     }) => {
       if (!restaurantId) throw new Error("No restaurant");
-      const { error } = await supabase.from("loyalty_transactions" as any).insert({
+      const { error } = await db.from("loyalty_transactions" as any).insert({
         restaurant_id: restaurantId,
         customer_id: input.customer_id,
         kind: input.kind,

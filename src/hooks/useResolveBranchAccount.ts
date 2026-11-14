@@ -1,5 +1,5 @@
 import { useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useBranch } from "@/contexts/BranchContext";
 
 /**
@@ -23,7 +23,7 @@ export function useResolveBranchAccount() {
       const target = overrideBranchId ?? branchId;
       if (!target || target === "all") return parentAccountId;
       try {
-        const { data, error } = await supabase.rpc("resolve_branch_account", {
+        const { data, error } = await db.rpc("resolve_branch_account", {
           _parent_account_id: parentAccountId,
           _branch_id: target,
         });

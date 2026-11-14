@@ -1,0 +1,154 @@
+# Matbex production stack.
+#   cp .env.example .env   # fill in
+#   docker compose up -d --build
+#   docker compose run --rm migrate          # first deploy / after new migrations
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-matbex}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-matbex}"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    build: { context: ., dockerfile: server/Dockerfile }
+    command: ["node", "db/migrate.mjs"]
+    env_file: .env
+    depends_on: { db: { condition: service_healthy } }
+    profiles: ["tools"]
+
+  postgrest:
+    image: postgrest/postgrest:v12.2.3
+    restart: unless-stopped
+    environment:
+      PGRST_DB_URI: postgres://authenticator:${AUTHENTICATOR_PASSWORD}@db:5432/${POSTGRES_DB:-matbex}
+      PGRST_DB_SCHEMAS: public
+      PGRST_DB_ANON_ROLE: anon
+      PGRST_DB_EXTRA_SEARCH_PATH: public, extensions
+      PGRST_DB_MAX_ROWS: "1000"
+      PGRST_JWT_SECRET: ${JWT_SECRET}
+      PGRST_SERVER_PORT: "3000"
+    depends_on: { db: { condition: service_healthy } }
+    # not published: only the API talks to it
+
+  redis:
+    image: redis:7.4.2-alpine
+    restart: unless-stopped
+    # Cache + rate-limit counters only: no persistence, evict least-recently-used keys.
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD:?set REDIS_PASSWORD in .env}", "--save", "", "--appendonly", "no", "--maxmemory", "${REDIS_MAXMEMORY:-256mb}", "--maxmemory-policy", "allkeys-lru"]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a \"$$REDIS_PASSWORD\" --no-auth-warning ping | grep -q PONG"]
+      interval: 5s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+    # not published: only the API talks to it
+
+  # Optional S3-compatible store on the same host. MinIO no longer publishes free images on
+  # Docker Hub or Quay, so it is opt-in (`--profile minio`, with an image you can pull).
+  # Default: STORAGE_DRIVER=fs (files in the `objects` volume below) or Cloudflare R2 / any S3.
+  minio:
+    image: ${MINIO_IMAGE:-minio/minio:RELEASE.2025-04-22T22-12-26Z}
+    profiles: ["minio"]
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY_ID}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_ACCESS_KEY}
+    volumes:
+      - objects:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      retries: 20
+
+  minio-init:
+    image: ${MINIO_MC_IMAGE:-minio/mc:RELEASE.2025-04-16T18-13-26Z}
+    profiles: ["minio"]
+    depends_on: { minio: { condition: service_healthy } }
+    entrypoint: >
+      sh -c "mc alias set m http://minio:9000 ${S3_ACCESS_KEY_ID} ${S3_SECRET_ACCESS_KEY} &&
+             mc mb --ignore-existing m/${S3_BUCKET:-matbex}"
+    restart: "no"
+
+  api:
+    build: { context: ., dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      POSTGREST_URL: http://postgrest:3000
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      # /metrics on the internal network only (not published, not routed by Caddy)
+      METRICS_HOST: 0.0.0.0
+      # Scheduled jobs and queues run in the worker service below.
+      ROLE: api
+      PORT: "8000"
+      NODE_ENV: production
+      # Used when STORAGE_DRIVER=fs.
+      STORAGE_FS_ROOT: /data/objects
+    volumes:
+      - objects:/data/objects
+    depends_on:
+      db: { condition: service_healthy }
+      postgrest: { condition: service_started }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 10s
+      retries: 6
+
+  worker:
+    # Same image as the API: scheduled jobs, net.http deliveries, background tasks (BullMQ).
+    # Safe to run more than one replica: BullMQ runs each scheduled tick once.
+    build: { context: ., dockerfile: server/Dockerfile }
+    restart: unless-stopped
+    env_file: .env
+    command: ["node", "--import", "./server/dist/otel.mjs", "server/dist/worker.mjs"]
+    environment:
+      POSTGREST_URL: http://postgrest:3000
+      REDIS_URL: redis://:${REDIS_PASSWORD}@redis:6379/0
+      METRICS_HOST: 0.0.0.0
+      ROLE: worker
+      NODE_ENV: production
+      STORAGE_FS_ROOT: /data/objects
+    volumes:
+      - objects:/data/objects
+    depends_on:
+      db: { condition: service_healthy }
+      redis: { condition: service_healthy }
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:9464/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      retries: 6
+
+  web:
+    build:
+      context: .
+      dockerfile: deploy/web.Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+        VITE_API_KEY: ${VITE_API_KEY}
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+    depends_on: [api, web]
+
+volumes:
+  pgdata:
+  objects:
+  caddy_data:

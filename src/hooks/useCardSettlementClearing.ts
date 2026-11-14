@@ -1,11 +1,9 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /** Untyped client: this table is newer than the generated types. */
-const db = supabase as any;
-
 export interface CardSettlementDeposit {
   id: string;
   tenant_id: string;

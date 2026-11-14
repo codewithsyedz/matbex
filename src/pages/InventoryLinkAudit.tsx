@@ -4,7 +4,7 @@ import { format, subDays } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, FileDown, RefreshCw } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -60,7 +60,7 @@ export default function InventoryLinkAudit() {
     queryKey: ["inventory-link-audit", tenantId, activeBranchId, dateFrom, dateTo],
     enabled: !!tenantId,
     queryFn: async (): Promise<AuditRow[]> => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("expenses")
         .select(
           "id, expense_date, description, amount, category_id, inventory_item_id, is_inventory_item, branch_id, expense_categories(name), branches(name)"

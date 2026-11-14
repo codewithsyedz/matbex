@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -33,7 +33,7 @@ export default function Driver() {
 
   const load = useCallback(async () => {
     if (!token) return;
-    const { data, error: err } = await supabase.rpc("driver_get_state" as any, { _token: token });
+    const { data, error: err } = await db.rpc("driver_get_state" as any, { _token: token });
     if (err) {
       setError(err.message);
     } else if ((data as any)?.error) {
@@ -59,7 +59,7 @@ export default function Driver() {
     const ping = () => {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          supabase.rpc("driver_ping_location" as any, {
+          db.rpc("driver_ping_location" as any, {
             _token: token,
             _lat: pos.coords.latitude,
             _lng: pos.coords.longitude,
@@ -76,7 +76,7 @@ export default function Driver() {
 
   const update = async (id: string, status: "picked_up" | "delivered") => {
     setBusy(id);
-    const { data, error: err } = await supabase.rpc("driver_update_assignment" as any, {
+    const { data, error: err } = await db.rpc("driver_update_assignment" as any, {
       _token: token!, _assignment_id: id, _status: status,
     });
     setBusy(null);

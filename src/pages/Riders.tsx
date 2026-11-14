@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,7 @@ export default function Riders() {
     enabled: !!restaurant?.id,
     staleTime: 30_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("riders" as any)
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -47,7 +47,7 @@ export default function Riders() {
     enabled: !!restaurant?.id,
     staleTime: 20_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("delivery_assignments" as any)
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -64,7 +64,7 @@ export default function Riders() {
     staleTime: 15_000,
     refetchInterval: 30_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("v_unassigned_delivery_orders" as any)
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -76,7 +76,7 @@ export default function Riders() {
 
   const autoDispatch = useMutation({
     mutationFn: async (orderId: string) => {
-      const { data, error } = await supabase.rpc("auto_assign_rider" as any, { _order_id: orderId });
+      const { data, error } = await db.rpc("auto_assign_rider" as any, { _order_id: orderId });
       if (error) throw error;
       return data as string | null;
     },
@@ -96,7 +96,7 @@ export default function Riders() {
     let assigned = 0;
     for (const o of orders) {
       try {
-        const { data } = await supabase.rpc("auto_assign_rider" as any, { _order_id: o.id });
+        const { data } = await db.rpc("auto_assign_rider" as any, { _order_id: o.id });
         if (data) assigned++;
       } catch {/* ignore individual failures */}
     }
@@ -109,7 +109,7 @@ export default function Riders() {
   const addRider = useMutation({
     mutationFn: async () => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { error } = await supabase.from("riders" as any).insert({
+      const { error } = await db.from("riders" as any).insert({
         restaurant_id: restaurant.id,
         name: form.name,
         phone: form.phone || null,
@@ -129,7 +129,7 @@ export default function Riders() {
 
   const setStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: string }) => {
-      const { error } = await supabase.from("riders" as any).update({ status }).eq("id", id);
+      const { error } = await db.from("riders" as any).update({ status }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["riders", restaurant?.id] }),
@@ -140,7 +140,7 @@ export default function Riders() {
       const patch: any = { status };
       if (status === "picked_up") patch.picked_up_at = new Date().toISOString();
       if (status === "delivered") patch.delivered_at = new Date().toISOString();
-      const { error } = await supabase.from("delivery_assignments" as any).update(patch).eq("id", id);
+      const { error } = await db.from("delivery_assignments" as any).update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

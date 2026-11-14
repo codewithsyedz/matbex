@@ -8,7 +8,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Props {
@@ -29,7 +29,7 @@ export function SupplierScopeSelector({ value, onChange, className }: Props) {
     queryKey: ["suppliers-active", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Array<{ id: string; name: string }>;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("suppliers")
         .select("id, name, is_active")
         .eq("restaurant_id", restaurant.id)

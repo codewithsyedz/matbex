@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type ExpenseLedgerIssue =
@@ -74,7 +74,7 @@ export function useExpenseLedgerReconciliation(filters: ExpenseLedgerReconFilter
     enabled: !!tenantId,
     staleTime: 1000 * 60,
     queryFn: async (): Promise<ExpenseLedgerReconRow[]> => {
-      let expQ: any = (supabase as any)
+      let expQ: any = (db as any)
         .from("expenses")
         .select(
           "id, expense_date, description, amount, vat_amount, branch_id, supplier_id, status, approval_status, ledger_posted",
@@ -89,8 +89,8 @@ export function useExpenseLedgerReconciliation(filters: ExpenseLedgerReconFilter
 
       const [expRes, branchRes, supplierRes]: any[] = await Promise.all([
         expQ,
-        (supabase as any).from("branches").select("id, name").eq("tenant_id", tenantId!),
-        (supabase as any).from("suppliers").select("id, name").eq("restaurant_id", tenantId!),
+        (db as any).from("branches").select("id, name").eq("tenant_id", tenantId!),
+        (db as any).from("suppliers").select("id, name").eq("restaurant_id", tenantId!),
       ]);
       const expenses = expRes.data as any[] | null;
       const expErr = expRes.error;
@@ -111,7 +111,7 @@ export function useExpenseLedgerReconciliation(filters: ExpenseLedgerReconFilter
       const rawLegs: any[] = [];
       for (const part of chunk(ids, 150)) {
         if (part.length === 0) continue;
-        const { data, error } = await (supabase as any)
+        const { data, error } = await (db as any)
           .from("account_transactions")
           .select("reference_id, debit, credit, is_voided, batch_id")
           .eq("tenant_id", tenantId!)
@@ -129,7 +129,7 @@ export function useExpenseLedgerReconciliation(filters: ExpenseLedgerReconFilter
       const settlementBatches = new Set<string>();
       for (const part of chunk(batchIds, 150)) {
         if (part.length === 0) continue;
-        const { data } = await (supabase as any)
+        const { data } = await (db as any)
           .from("journal_entry_batches")
           .select("id, entry_type, reference_number")
           .in("id", part);

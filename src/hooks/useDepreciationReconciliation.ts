@@ -1,12 +1,10 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /** Untyped client: fixed asset tables are newer than the generated types. */
-const db = supabase as any;
-
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 export interface ReconciliationAccountLine {

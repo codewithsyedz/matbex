@@ -16,7 +16,7 @@ import fs from "node:fs";
 import path from "node:path";
 
 const SRC = fs.readFileSync(
-  path.resolve(process.cwd(), "supabase/functions/terminal-api/index.ts"),
+  path.resolve(process.cwd(), "server/functions/terminal-api/index.ts"),
   "utf8",
 );
 
@@ -131,7 +131,7 @@ describe("Terminal API wire contract", () => {
   });
 
   it("keeps /pair as the only unauthenticated route", () => {
-    const routerIdx = SRC.indexOf("Deno.serve(");
+    const routerIdx = SRC.search(/^serve\(/m);
     const router = SRC.slice(routerIdx);
     const pairIdx = router.indexOf('path === "/pair"');
     const authIdx = router.indexOf("const auth = await authenticate(req)");

@@ -1,5 +1,5 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useRef, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTerminalId } from "@/lib/offline/terminal";
 import { Capacitor } from "@capacitor/core";
@@ -79,20 +79,20 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     if (!user || !restaurant?.id) return;
     // No live session → don't call the edge function (it would 401 with
     // "Invalid auth" and surface as a blank-screen runtime error).
-    let { data: { session } } = await supabase.auth.getSession();
+    let { data: { session } } = await db.auth.getSession();
     if (!session?.access_token) return;
     // Refresh proactively if the token is expired or expiring within 30s -
     // the SDK will otherwise send the stale token and validate-license
-    // returns 401 "Invalid auth", which Lovable's runtime sink reports as
+    // returns 401 "Invalid auth", which the runtime error sink reports as
     // a blank-screen runtime error.
     const expiresAt = (session.expires_at ?? 0) * 1000;
     if (expiresAt && expiresAt - Date.now() < 30_000) {
-      const { data: refreshed } = await supabase.auth.refreshSession();
+      const { data: refreshed } = await db.auth.refreshSession();
       if (!refreshed?.session?.access_token) return;
       session = refreshed.session;
     }
     // Final server-side probe; bail silently if it still fails.
-    const { data: probe, error: probeErr } = await supabase.auth.getUser();
+    const { data: probe, error: probeErr } = await db.auth.getUser();
     if (probeErr || !probe?.user) return;
     const { appendLicenseDebugEntry } = await import("@/lib/offline/licenseDebugLog");
     const { getDeviceFingerprint } = await import("@/lib/offline/deviceFingerprint");
@@ -118,7 +118,7 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
     }
     try {
       const invokeOnce = async (accessToken: string) =>
-        supabase.functions.invoke("validate-license", {
+        db.functions.invoke("validate-license", {
           headers: { Authorization: `Bearer ${accessToken}` },
           body: {
             terminal_id: terminalId,
@@ -134,7 +134,7 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       if (error) {
         // A 401 here means the token went stale between the probe and the
         // call. Refresh once and retry before treating it as a failure.
-        const { data: refreshed } = await supabase.auth.refreshSession();
+        const { data: refreshed } = await db.auth.refreshSession();
         const retryToken = refreshed?.session?.access_token;
         if (!retryToken) return;
         ({ data, error } = await invokeOnce(retryToken));
@@ -217,7 +217,7 @@ export function LicenseProvider({ children }: { children: ReactNode }) {
       online: typeof navigator !== "undefined" ? navigator.onLine : true,
     };
     try {
-      const { data, error } = await supabase.functions.invoke("revoke-device-license", {
+      const { data, error } = await db.functions.invoke("revoke-device-license", {
         body: { device_id: deviceId },
       });
       const durationMs = Math.round(performance.now() - started);

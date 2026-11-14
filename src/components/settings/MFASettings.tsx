@@ -22,7 +22,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Shield, ShieldCheck, ShieldOff, Smartphone, Copy, Check, Key } from "lucide-react";
@@ -50,7 +50,7 @@ export function MFASettings() {
 
   const fetchFactors = async () => {
     try {
-      const { data, error } = await supabase.auth.mfa.listFactors();
+      const { data, error } = await db.auth.mfa.listFactors();
       if (error) throw error;
       setFactors(data.totp || []);
     } catch (error) {
@@ -67,7 +67,7 @@ export function MFASettings() {
   const handleEnroll = async () => {
     setEnrolling(true);
     try {
-      const { data, error } = await supabase.auth.mfa.enroll({
+      const { data, error } = await db.auth.mfa.enroll({
         factorType: "totp",
         friendlyName: "Authenticator App",
       });
@@ -89,13 +89,13 @@ export function MFASettings() {
 
     setVerifying(true);
     try {
-      const { data: challengeData, error: challengeError } = await supabase.auth.mfa.challenge({
+      const { data: challengeData, error: challengeError } = await db.auth.mfa.challenge({
         factorId,
       });
 
       if (challengeError) throw challengeError;
 
-      const { error: verifyError } = await supabase.auth.mfa.verify({
+      const { error: verifyError } = await db.auth.mfa.verify({
         factorId,
         challengeId: challengeData.id,
         code: verifyCode,
@@ -120,7 +120,7 @@ export function MFASettings() {
 
   const handleUnenroll = async (factorId: string) => {
     try {
-      const { error } = await supabase.auth.mfa.unenroll({ factorId });
+      const { error } = await db.auth.mfa.unenroll({ factorId });
       if (error) throw error;
       toast.success("Two-factor authentication disabled");
       fetchFactors();

@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useDemoTrial } from "@/hooks/useDemoTrial";
 
 export type FunnelEventType =
@@ -27,7 +27,7 @@ export function useFunnelTracker() {
       if (localStorage.getItem(localKey)) return;
       localStorage.setItem(localKey, new Date().toISOString());
       try {
-        await (supabase as any)
+        await (db as any)
           .from("demo_funnel_events")
           .insert({
             tenant_id: tenant.id,

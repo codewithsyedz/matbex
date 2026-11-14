@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,7 +59,7 @@ export default function AdminPasswordReset() {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("admin-reset-password", {
+      const { data, error } = await db.functions.invoke("admin-reset-password", {
         body: { email: email.trim().toLowerCase(), new_password: newPassword },
       });
 

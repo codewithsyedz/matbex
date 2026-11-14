@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
-import { ArrowUpRight, ClipboardCheck, Package, Percent, Plus, RefreshCw, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ClipboardCheck, Package, Percent, Plus, RefreshCw, Wallet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -20,7 +21,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { RecordExpenseDialog } from "@/components/expenses/RecordExpenseDialog";
 import { QuickAddInventoryItemDialog } from "@/components/expenses/QuickAddInventoryItemDialog";
 import { RouteSeo } from "@/components/seo/RouteSeo";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export default function AccountantDashboard() {
   const { i18n } = useTranslation(); const ar = i18n.language.startsWith("ar");
@@ -38,7 +39,7 @@ export default function AccountantDashboard() {
   useEffect(() => {
     if (!query.dataUpdatedAt || restaurant?.id !== "fe1a4d9e-1595-43ba-a47a-37575a9a55b9") return;
     let cancelled = false;
-    supabase.functions.invoke("accountant-pending-alerts", { body: {} }).then(({data,error}) => {
+    db.functions.invoke("accountant-pending-alerts", { body: {} }).then(({data,error}) => {
       if (!cancelled) setEmailStatus(error ? "error" : data?.status || null);
     });
     return () => { cancelled = true; };
@@ -51,6 +52,32 @@ export default function AccountantDashboard() {
   const filteredPending = pending.filter(e => reviewFilter === "all" || expenseAttention(e) === reviewFilter);
   const lowStock = (data?.inventory || []).filter(i => i.reorder_level !== null && Number(i.current_stock) <= Number(i.reorder_level));
   const scope = new URLSearchParams({ from, to, branch: branch || "all" }).toString();
+  // Sales missing from the ledger (all dates): closed days not posted, and days with POS sales
+  // but no End of Day. Until fixed, revenue, VAT and cash in the books are short.
+  const missingSales = useQuery({
+    queryKey: ["accountant-missing-sales", restaurant?.id, branch],
+    enabled: !!restaurant?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      let q = db.from("daily_sales_summary").select("total_sales")
+        .eq("restaurant_id", restaurant!.id).in("status", ["closed", "approved"])
+        .or("ledger_posted.is.null,ledger_posted.eq.false");
+      if (branch) q = q.eq("branch_id", branch);
+      const [unposted, noEod] = await Promise.all([
+        q,
+        db.rpc("days_without_end_of_day" as never, { p_restaurant_id: restaurant!.id, p_branch_id: branch } as never),
+      ]);
+      if (unposted.error) throw unposted.error;
+      if (noEod.error) throw noEod.error;
+      const u = (unposted.data || []) as Array<{ total_sales: number }>;
+      const n = ((noEod.data || []) as unknown) as Array<{ pos_total: number }>;
+      return {
+        unpostedDays: u.length, unpostedTotal: u.reduce((s, r) => s + Number(r.total_sales || 0), 0),
+        noEodDays: n.length, noEodTotal: n.reduce((s, r) => s + Number(r.pos_total || 0), 0),
+      };
+    },
+  });
+  const ms = missingSales.data;
   const reasons = { mapping: L("Account missing", "حساب مفقود"), posting: L("Awaiting posting", "بانتظار الترحيل"), approval: L("Awaiting approval", "بانتظار الموافقة"), vat: L("VAT review", "مراجعة الضريبة") };
   const tiles = [
     { label: L("Input VAT · posted", "ضريبة المدخلات · مرحّلة"), value: money(data?.postedInputVat || 0), detail: L("Expense VAT recorded", "ضريبة المصروفات المسجلة") + " · " + money(totals.vat), icon: Percent, path: "/reports/vat-audit" },
@@ -73,6 +100,14 @@ export default function AccountantDashboard() {
       <div className="space-y-1"><Label htmlFor="accountant-to">{L("To", "إلى")}</Label><Input id="accountant-to" type="date" value={to} min={from} onChange={e => setTo(e.target.value || null)} /></div>
     </div>
     {query.isError ? <div role="alert" className="border border-destructive p-4 text-destructive">{L("Could not load accounting data", "تعذر تحميل بيانات الحسابات")}<Button variant="outline" className="ms-3" onClick={() => query.refetch()}>{L("Retry", "إعادة المحاولة")}</Button></div> : <>
+    {ms && (ms.unpostedDays > 0 || ms.noEodDays > 0) && <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4 space-y-2">
+      <p className="font-medium flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" />{L("Sales missing from the ledger", "مبيعات غير مرحّلة إلى الدفتر")}</p>
+      <p className="text-sm text-muted-foreground">{L("Until these are fixed, revenue, VAT and cash in the books are short. All dates, selected branch.", "حتى تُعالج، تكون الإيرادات والضريبة والنقد في الدفاتر ناقصة. جميع التواريخ، الفرع المحدد.")}</p>
+      <ul className="text-sm space-y-1">
+        {ms.unpostedDays > 0 && <li className="flex flex-wrap items-center gap-2">{L(`${ms.unpostedDays} closed day(s) not posted`, `${ms.unpostedDays} يوم مغلق غير مرحّل`)} · <span className="font-medium tabular-nums">{money(ms.unpostedTotal)}</span> <Link className="text-primary underline" to="/daily-profit">{L("Post them", "ترحيلها")}</Link></li>}
+        {ms.noEodDays > 0 && <li className="flex flex-wrap items-center gap-2">{L(`${ms.noEodDays} day(s) with sales but no End of Day`, `${ms.noEodDays} يوم فيه مبيعات بلا إقفال يومي`)} · <span className="font-medium tabular-nums">{money(ms.noEodTotal)}</span> <Link className="text-primary underline" to="/sales">{L("Close them in Sales → Day-End", "أقفلها من المبيعات ← نهاية اليوم")}</Link></li>}
+      </ul>
+    </div>}
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">{tiles.map(tile => <a key={tile.path} href={tile.path.startsWith("#") ? tile.path : `${tile.path}?${scope}`} className="rounded-md border bg-card p-4 flex flex-col gap-3 hover:border-primary focus-visible:outline focus-visible:outline-primary min-w-0">
       <span className="flex items-center justify-between text-sm text-muted-foreground"><span className="flex gap-2 items-center"><tile.icon className="h-4 w-4 text-primary" />{tile.label}</span><ArrowUpRight className="h-4 w-4 shrink-0" /></span>
       {query.isLoading ? <Skeleton className="h-8 w-32" /> : <span className="text-2xl font-semibold tabular-nums break-words">{tile.value}</span>}<span className="text-xs text-muted-foreground">{tile.detail}</span>

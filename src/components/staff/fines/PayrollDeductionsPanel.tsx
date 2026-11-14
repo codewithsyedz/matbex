@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { AlertTriangle } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -37,7 +37,7 @@ export function PayrollDeductionsPanel({
   const { data: fines = [] } = useQuery({
     queryKey: ["payroll-approved-fines", staffId, periodStart, periodEnd, fineAllocationMode],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("employee_fines")
         .select(
           "id, fine_number, amount, status, installment_number, installment_count, payroll_month, created_at, violation_type:violation_type_id(name_en)",

@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Check, Copy, Palette, Pencil, Search, X } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -53,7 +53,7 @@ export default function BranchSettings() {
     queryKey: ["branches", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branches" as any)
         .select("id,name,code,city,country,is_primary,is_active")
         .eq("restaurant_id", restaurantId!)
@@ -108,7 +108,7 @@ export default function BranchSettings() {
     }
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("branches" as any)
         .update({ name, code: code || null })
         .eq("id", b.id);

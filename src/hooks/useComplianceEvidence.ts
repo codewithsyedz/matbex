@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -19,9 +19,9 @@ export interface ComplianceEvidence {
 }
 
 export async function uploadComplianceFile(restaurantId: string, file: File, prefix = "violations") {
-  const safeName = file.name.replace(/[^\w.\-]+/g, "_");
+  const safeName = file.name.replace(/[^\w.-]+/g, "_");
   const path = `${restaurantId}/${prefix}/${crypto.randomUUID()}-${safeName}`;
-  const { error } = await supabase.storage
+  const { error } = await db.storage
     .from(COMPLIANCE_EVIDENCE_BUCKET)
     .upload(path, file, { contentType: file.type || undefined });
   if (error) throw error;
@@ -29,7 +29,7 @@ export async function uploadComplianceFile(restaurantId: string, file: File, pre
 }
 
 export async function openComplianceFile(path: string) {
-  const { data, error } = await supabase.storage
+  const { data, error } = await db.storage
     .from(COMPLIANCE_EVIDENCE_BUCKET)
     .createSignedUrl(path, 300);
   if (error || !data) {
@@ -46,7 +46,7 @@ export function useComplianceEvidence(violationId?: string | null) {
   const query = useQuery({
     queryKey: ["compliance-evidence", violationId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_violation_evidence")
         .select("*")
         .eq("violation_id", violationId!)
@@ -71,7 +71,7 @@ export function useComplianceEvidence(violationId?: string | null) {
       if (!id) throw new Error("Missing violation reference");
       for (const file of files) {
         const path = await uploadComplianceFile(restaurant!.id, file);
-        const { error } = await supabase.from("compliance_violation_evidence").insert({
+        const { error } = await db.from("compliance_violation_evidence").insert({
           restaurant_id: restaurant!.id,
           violation_id: id,
           phase,
@@ -90,12 +90,12 @@ export function useComplianceEvidence(violationId?: string | null) {
 
   const remove = useMutation({
     mutationFn: async (row: ComplianceEvidence) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("compliance_violation_evidence")
         .delete()
         .eq("id", row.id);
       if (error) throw error;
-      await supabase.storage.from(COMPLIANCE_EVIDENCE_BUCKET).remove([row.storage_path]);
+      await db.storage.from(COMPLIANCE_EVIDENCE_BUCKET).remove([row.storage_path]);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["compliance-evidence"] });

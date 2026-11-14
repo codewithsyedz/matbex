@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useToast } from "@/hooks/use-toast";
 
 export interface ToolsSettings {
@@ -40,7 +40,7 @@ export const useToolsStackContent = () => {
   const { data: settings, isLoading: settingsLoading } = useQuery({
     queryKey: ["landing-tools-settings"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_tools_settings")
         .select("*")
         .limit(1)
@@ -54,7 +54,7 @@ export const useToolsStackContent = () => {
   const { data: categories = [], isLoading: categoriesLoading } = useQuery({
     queryKey: ["landing-tools-categories"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_tools_categories")
         .select("*")
         .order("sort_order");
@@ -67,7 +67,7 @@ export const useToolsStackContent = () => {
   const { data: items = [], isLoading: itemsLoading } = useQuery({
     queryKey: ["landing-tools-items"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_tools_items")
         .select("*")
         .order("sort_order");
@@ -80,7 +80,7 @@ export const useToolsStackContent = () => {
   const updateSettings = useMutation({
     mutationFn: async (updates: Partial<ToolsSettings>) => {
       if (!settings?.id) throw new Error("Settings not found");
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_tools_settings")
         .update(updates)
         .eq("id", settings.id);
@@ -98,7 +98,7 @@ export const useToolsStackContent = () => {
   // Update category
   const updateCategory = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<ToolsCategory> & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_tools_categories")
         .update(updates)
         .eq("id", id);
@@ -116,7 +116,7 @@ export const useToolsStackContent = () => {
   // Create category
   const createCategory = useMutation({
     mutationFn: async (category: Omit<ToolsCategory, "id">) => {
-      const { error } = await supabase.from("landing_tools_categories").insert(category);
+      const { error } = await db.from("landing_tools_categories").insert(category);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -131,7 +131,7 @@ export const useToolsStackContent = () => {
   // Delete category
   const deleteCategory = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("landing_tools_categories").delete().eq("id", id);
+      const { error } = await db.from("landing_tools_categories").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -146,7 +146,7 @@ export const useToolsStackContent = () => {
   // Update item
   const updateItem = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<ToolsItem> & { id: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_tools_items")
         .update(updates)
         .eq("id", id);
@@ -164,7 +164,7 @@ export const useToolsStackContent = () => {
   // Create item
   const createItem = useMutation({
     mutationFn: async (item: Omit<ToolsItem, "id">) => {
-      const { error } = await supabase.from("landing_tools_items").insert(item);
+      const { error } = await db.from("landing_tools_items").insert(item);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -179,7 +179,7 @@ export const useToolsStackContent = () => {
   // Delete item
   const deleteItem = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("landing_tools_items").delete().eq("id", id);
+      const { error } = await db.from("landing_tools_items").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -113,7 +113,7 @@ export default function VerifyZatcaReport() {
         setLoading(false);
         return;
       }
-      const { data, error } = await supabase.rpc(
+      const { data, error } = await db.rpc(
         "get_zatca_certification_snapshot",
         { _token: token },
       );

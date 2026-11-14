@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { sourceLabel } from "@/lib/leadAttribution";
 
 type Row = {
@@ -26,7 +26,7 @@ export default function AdminLeadSources() {
   const q = useQuery({
     queryKey: ["admin-lead-sources", from, to],
     queryFn: async () => {
-      const { data, error } = await supabase.from("lead_attributions")
+      const { data, error } = await db.from("lead_attributions")
         .select("id, lead_type, lead_ref, email, created_at, utm_source, utm_medium, utm_campaign, utm_content, gclid, fbclid, referrer, landing_path, ad_consent, country")
         .gte("created_at", `${from}T00:00:00`).lte("created_at", `${to}T23:59:59`)
         .order("created_at", { ascending: false }).limit(1000);
@@ -41,13 +41,13 @@ export default function AdminLeadSources() {
     queryFn: async () => {
       const ids = (q.data ?? []).filter((r) => r.lead_type === "demo" && r.lead_ref).map((r) => r.lead_ref as string);
       if (!ids.length) return [];
-      const { data, error } = await supabase.from("contact_messages")
+      const { data, error } = await db.from("contact_messages")
         .select("id,name,company,phone,preferred_date,preferred_slot,status").in("id", ids);
       if (error) throw error;
       return data ?? [];
     },
   });
-  const bookingById = new Map((bookings.data ?? []).map((b) => [b.id, b]));
+  const bookingById = new Map<string, any>((bookings.data ?? []).map((b: any) => [b.id, b]));
 
   const grouped = useMemo(() => {
     const m = new Map<string, { source: string; campaign: string; trial: number; demo: number; enquiry: number; total: number }>();

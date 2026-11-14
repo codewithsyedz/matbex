@@ -12,7 +12,7 @@ interface State {
   error: Error | null;
 }
 
-const RELOAD_FLAG = "lovable:chunk-reload-at";
+const RELOAD_FLAG = "matbex:chunk-reload-at";
 const RELOAD_COOLDOWN_MS = 30_000; // never auto-reload more than once per 30s
 
 function recentlyAutoReloaded(): boolean {

@@ -5,7 +5,7 @@ import { Helmet } from "react-helmet-async";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { ShoppingBag, MapPin, Phone, Clock } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSubdomainTenant } from "@/hooks/useSubdomainTenant";
@@ -33,7 +33,7 @@ export default function TenantLanding() {
     staleTime: 60_000,
     queryFn: async () => {
       if (!tenantId) return null;
-      const sb = supabase as any;
+      const sb = db as any;
       const [tenantRes, restaurantRes, pageRes, brandingRes] = await Promise.all([
         sb.from("tenants").select("id,name,slug").eq("id", tenantId).maybeSingle(),
         sb.from("restaurants_public").select("id,name,currency,timezone").eq("tenant_id", tenantId).eq("is_primary", true).maybeSingle(),
@@ -57,7 +57,7 @@ export default function TenantLanding() {
     staleTime: 60_000,
     queryFn: async () => {
       if (!restaurantId) return [];
-      const sb = supabase as any;
+      const sb = db as any;
       const { data: items } = await sb
         .from("menu_items")
         .select("id,name,image_url,price")

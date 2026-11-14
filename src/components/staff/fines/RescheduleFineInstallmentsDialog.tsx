@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -65,7 +65,7 @@ export function RescheduleFineInstallmentsDialog({ fine, onOpenChange }: Props) 
     queryKey: ["fine-installment-group", groupId],
     enabled: !!groupId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("employee_fines")
         .select(
           "id, amount, recovered_amount, status, payroll_month, installment_number, installment_total_amount, applied_payroll_id, deleted_at",
@@ -156,7 +156,7 @@ export function RescheduleFineInstallmentsDialog({ fine, onOpenChange }: Props) 
   const submit = async () => {
     if (!fine || invalid) return;
     setSaving(true);
-    const { error } = await supabase.rpc("reschedule_fine_installments", {
+    const { error } = await db.rpc("reschedule_fine_installments", {
       p_fine_id: fine.id,
       p_monthly_limit: monthlyLimit || null,
       p_start_month: startISO,

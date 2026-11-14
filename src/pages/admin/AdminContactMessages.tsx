@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -50,7 +50,7 @@ export default function AdminContactMessages() {
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["admin-contact-messages"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("contact_messages")
         .select("*")
         .order("created_at", { ascending: false })
@@ -62,7 +62,7 @@ export default function AdminContactMessages() {
 
   const update = useMutation({
     mutationFn: async (vars: { id: string; patch: Partial<ContactMessage> }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("contact_messages")
         .update({
           ...vars.patch,
@@ -80,7 +80,7 @@ export default function AdminContactMessages() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("contact_messages").delete().eq("id", id);
+      const { error } = await db.from("contact_messages").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

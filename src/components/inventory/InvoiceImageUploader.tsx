@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { cn } from "@/lib/utils";
 import { Camera, Loader2, Upload, X, Image as ImageIcon } from "lucide-react";
 import { toast } from "sonner";
@@ -63,7 +63,7 @@ export function InvoiceImageUploader({
           filePath = imageUrl.split("invoice-images/").pop() || imageUrl;
         }
 
-        const { data, error } = await supabase.storage
+        const { data, error } = await db.storage
           .from("invoice-images")
           .createSignedUrl(filePath, 3600);
 
@@ -105,7 +105,7 @@ export function InvoiceImageUploader({
         const fileExt = (file.name.split(".").pop() || "jpg").toLowerCase();
         const fileName = `${restaurantId}/${timestamp}.${fileExt}`;
 
-        const { data, error } = await supabase.storage
+        const { data, error } = await db.storage
           .from("invoice-images")
           .upload(fileName, file, { cacheControl: "3600", upsert: false });
         if (error) throw error;
@@ -113,7 +113,7 @@ export function InvoiceImageUploader({
         const storedPath = data.path;
 
         // Generate a signed URL for immediate preview
-        const { data: signedData, error: signError } = await supabase.storage
+        const { data: signedData, error: signError } = await db.storage
           .from("invoice-images")
           .createSignedUrl(storedPath, 3600);
 
@@ -140,7 +140,7 @@ export function InvoiceImageUploader({
         filePath = imageUrl.split("invoice-images/").pop() || imageUrl;
       }
       if (filePath) {
-        await supabase.storage.from("invoice-images").remove([filePath]);
+        await db.storage.from("invoice-images").remove([filePath]);
       }
     }
     setPreviewUrl(null);

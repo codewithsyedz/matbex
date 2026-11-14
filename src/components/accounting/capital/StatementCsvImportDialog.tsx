@@ -94,9 +94,10 @@ export function normalizeDate(raw: string, fmt: DateFormat): string | null {
   const v = (raw ?? "").trim();
   if (!v) return null;
   if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.slice(0, 10);
-  const m = v.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{2,4})/);
+  const m = v.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})/);
   if (m) {
-    let [, a, b, y] = m;
+    const [, a, b] = m;
+    let y = m[3];
     if (y.length === 2) y = `20${y}`;
     let day = a;
     let month = b;
@@ -127,7 +128,7 @@ export function normalizeAmount(raw: string): number | null {
     v = v.slice(1, -1);
   }
   if (/(^|\s)(dr|debit)$/i.test(v)) negative = true;
-  v = v.replace(/[^0-9.,\-]/g, "");
+  v = v.replace(/[^0-9.,-]/g, "");
   // Treat the last separator as the decimal point when both are present.
   if (v.includes(",") && v.includes(".")) {
     v = v.lastIndexOf(",") > v.lastIndexOf(".") ? v.replace(/\./g, "").replace(",", ".") : v.replace(/,/g, "");

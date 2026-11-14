@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { format } from "date-fns";
 import { History, Landmark, Receipt } from "lucide-react";
 import {
@@ -36,7 +36,7 @@ function useInstallmentAudit(planId?: string | null, enabled = true) {
     queryKey: ["installment-audit", planId],
     enabled: !!planId && enabled,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("installment_audit_events")
         .select(
           "id, entity_type, action, summary, actor_id, created_at, asset_id, old_data, new_data",
@@ -51,7 +51,7 @@ function useInstallmentAudit(planId?: string | null, enabled = true) {
       );
       let names: Record<string, string> = {};
       if (actorIds.length) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", actorIds);

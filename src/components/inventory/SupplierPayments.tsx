@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface SupplierPayment {
@@ -103,7 +103,7 @@ export function SupplierPayments() {
     
     try {
       const [paymentsRes, suppliersRes, invoicesRes] = await Promise.all([
-        supabase
+        db
           .from("supplier_payments")
           .select(`
             *,
@@ -112,13 +112,13 @@ export function SupplierPayments() {
           `)
           .eq("restaurant_id", restaurant.id)
           .order("payment_date", { ascending: false }),
-        supabase
+        db
           .from("suppliers")
           .select("id, name")
           .eq("restaurant_id", restaurant.id)
           .eq("is_active", true)
           .order("name"),
-        supabase
+        db
           .from("purchase_invoices")
           .select("id, invoice_number, supplier_id, total_amount, status")
           .eq("restaurant_id", restaurant.id)
@@ -159,7 +159,7 @@ export function SupplierPayments() {
         created_by: user.id,
       };
 
-      const { error } = await supabase.from("supplier_payments").insert(paymentData);
+      const { error } = await db.from("supplier_payments").insert(paymentData);
 
       if (error) throw error;
       toast({ title: "Payment recorded" });
@@ -178,7 +178,7 @@ export function SupplierPayments() {
     if (!confirm("Delete this payment record?")) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("supplier_payments")
         .delete()
         .eq("id", payment.id);

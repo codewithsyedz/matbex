@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type PostingStatus = "unposted" | "balanced" | "unbalanced";
 
@@ -73,7 +73,7 @@ export function useExpensePostingStatus(expenseId: string | null | undefined, en
     queryKey: ["expense-posting-status", expenseId],
     enabled: !!expenseId && enabled,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("account_transactions")
         .select(
           `id, account_id, transaction_date, debit, credit, description, branch_id, batch_id, is_voided, reference_type,

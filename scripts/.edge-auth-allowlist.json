@@ -1,11 +1,7 @@
 {
-  "_doc": "Edge functions deployed with verify_jwt = false that are intentionally public. Each entry MUST have a 'reason'. Adding a new function here is a security-sensitive change — get a reviewer.",
-  "auth-email-hook": {
-    "reason": "Supabase auth webhook - secret-validated by Supabase signature.",
-    "added_at": "2026-06-03"
-  },
+  "_doc": "Server functions listed as public in server/functions/functions.config.json that are intentionally callable without a user JWT. Each entry MUST have a 'reason'. Adding a new function here is a security-sensitive change \u2014 get a reviewer.",
   "auto-shift-manager": {
-    "reason": "Internal pg_cron invocation; not user-callable in practice.",
+    "reason": "Internal scheduler invocation; not user-callable in practice.",
     "added_at": "2026-06-03"
   },
   "cache-proxy": {
@@ -33,7 +29,7 @@
     "added_at": "2026-06-03"
   },
   "process-export-requests": {
-    "reason": "pg_cron worker; not user-callable.",
+    "reason": "scheduler worker; not user-callable.",
     "added_at": "2026-06-03"
   },
   "resolve-tenant-code": {
@@ -49,11 +45,11 @@
     "added_at": "2026-06-03"
   },
   "send-daily-profit-summary": {
-    "reason": "pg_cron worker; not user-callable.",
+    "reason": "scheduler worker; not user-callable.",
     "added_at": "2026-06-03"
   },
   "send-expiry-alerts": {
-    "reason": "pg_cron worker; not user-callable.",
+    "reason": "scheduler worker; not user-callable.",
     "added_at": "2026-06-03"
   },
   "send-invite": {
@@ -61,19 +57,19 @@
     "added_at": "2026-06-03"
   },
   "send-salary-reminder": {
-    "reason": "pg_cron worker; not user-callable.",
+    "reason": "scheduler worker; not user-callable.",
     "added_at": "2026-06-03"
   },
   "send-scheduled-reports": {
-    "reason": "pg_cron worker; not user-callable.",
+    "reason": "scheduler worker; not user-callable.",
     "added_at": "2026-06-03"
   },
   "send-webhook-notifications": {
-    "reason": "pg_cron worker; not user-callable.",
+    "reason": "scheduler worker; not user-callable.",
     "added_at": "2026-06-03"
   },
   "send-weekly-digest": {
-    "reason": "pg_cron worker; not user-callable.",
+    "reason": "scheduler worker; not user-callable.",
     "added_at": "2026-06-03"
   },
   "stripe-webhook": {
@@ -105,7 +101,7 @@
     "added_at": "2026-06-03"
   },
   "payments-reconciler": {
-    "reason": "pg_cron worker; not user-callable.",
+    "reason": "scheduler worker; not user-callable.",
     "added_at": "2026-06-03"
   },
   "zoho-oauth-exchange": {
@@ -127,5 +123,9 @@
   "application-verification": {
     "reason": "Pre-auth onboarding application status checks.",
     "added_at": "2026-06-03"
+  },
+  "send-contact-enquiry": {
+    "reason": "Public website contact/demo form - anonymous by design; rate-limit at the proxy.",
+    "added_at": "2026-11-09"
   }
 }

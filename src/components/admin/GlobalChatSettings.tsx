@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -34,7 +34,7 @@ export function GlobalChatSettings() {
   const { data: defaults, isLoading } = useQuery({
     queryKey: ["global-chat-defaults"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("global_chat_defaults")
         .select("*")
         .single();
@@ -54,7 +54,7 @@ export function GlobalChatSettings() {
     mutationFn: async (updates: Partial<GlobalChatDefaults>) => {
       if (!defaults?.id) throw new Error("No defaults found");
       
-      const { error } = await supabase
+      const { error } = await db
         .from("global_chat_defaults")
         .update(updates)
         .eq("id", defaults.id);

@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Search, TrendingUp, TrendingDown, DollarSign, Server } from "lucide-react";
 import { subDays } from "date-fns";
 
@@ -41,11 +41,11 @@ export default function AdminTenantCosts() {
       try {
         const since = subDays(new Date(), 30).toISOString();
         const [tenantsRes, plansRes, profilesRes, restaurantsRes, salesRes] = await Promise.all([
-          supabase.from("tenants").select("id, name, status, plan_id"),
-          supabase.from("plans").select("id, name, price"),
-          supabase.from("profiles").select("tenant_id"),
-          supabase.from("restaurants").select("tenant_id"),
-          supabase.from("sales_transactions").select("tenant_id, created_at").gte("created_at", since),
+          db.from("tenants").select("id, name, status, plan_id"),
+          db.from("plans").select("id, name, price"),
+          db.from("profiles").select("tenant_id"),
+          db.from("restaurants").select("tenant_id"),
+          db.from("sales_transactions").select("tenant_id, created_at").gte("created_at", since),
         ]);
 
         const plans = new Map((plansRes.data || []).map((p: any) => [p.id, p]));
@@ -124,7 +124,7 @@ export default function AdminTenantCosts() {
       <div>
         <h1 className="text-2xl font-semibold">Tenant Cost & Margin</h1>
         <p className="text-sm text-muted-foreground">
-          Estimated Lovable Cloud infrastructure cost vs. plan revenue per tenant.
+          Estimated infrastructure cost vs. plan revenue per tenant.
           Model is heuristic — refine as real telemetry comes in.
         </p>
       </div>

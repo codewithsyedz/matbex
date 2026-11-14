@@ -59,8 +59,8 @@ export default function PayrollJournal() {
     queryKey: ["payroll-journal", restaurant?.id, from, to],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { supabase } = await import("@/integrations/supabase/client");
-      let q = supabase
+      const { db } = await import("@/integrations/db/client");
+      let q = db
         .from("payroll_records")
         .select(
           "id, staff_id, amount, advance_recovered, fines_deducted, deductions, bonus, payment_date, period_start, period_end, branch_id, ledger_posted, ledger_transaction_id, notes, staff:staff_id(id, name, role, assigned_branch_id)"
@@ -100,8 +100,8 @@ export default function PayrollJournal() {
 
   const postOne = useMutation({
     mutationFn: async (id: string) => {
-      const { supabase } = await import("@/integrations/supabase/client");
-      const { error } = await supabase.rpc("post_payroll_to_ledger", { p_payroll_id: id });
+      const { db } = await import("@/integrations/db/client");
+      const { error } = await db.rpc("post_payroll_to_ledger", { p_payroll_id: id });
       if (error) throw error;
     },
     onMutate: (id: string) => setPostingId(id),
@@ -116,11 +116,11 @@ export default function PayrollJournal() {
 
   const postAll = useMutation({
     mutationFn: async () => {
-      const { supabase } = await import("@/integrations/supabase/client");
+      const { db } = await import("@/integrations/db/client");
       let posted = 0;
       const failures: string[] = [];
       for (const r of unposted) {
-        const { error } = await supabase.rpc("post_payroll_to_ledger", { p_payroll_id: r.id });
+        const { error } = await db.rpc("post_payroll_to_ledger", { p_payroll_id: r.id });
         if (error) failures.push(`${r.staff?.name ?? "Staff"}: ${error.message}`);
         else posted += 1;
       }

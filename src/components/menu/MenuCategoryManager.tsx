@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import {
@@ -194,7 +194,7 @@ export function MenuCategoryManager({ open, onOpenChange, itemCounts }: Props) {
   const reorderMutation = useMutation({
     mutationFn: async (ids: string[]) => {
       const updates = ids.map((id, index) =>
-        supabase
+        db
           .from("menu_categories")
           .update({ display_order: index + 1 } as any)
           .eq("id", id),
@@ -235,7 +235,7 @@ export function MenuCategoryManager({ open, onOpenChange, itemCounts }: Props) {
       const key = slugifyCategoryKey(name);
       if (!key) throw new Error("Enter a name with latin letters or numbers");
       if (rows.some((r) => r.key === key)) throw new Error("That category already exists in this scope");
-      const { error } = await supabase.from("menu_categories").insert({
+      const { error } = await db.from("menu_categories").insert({
         tenant_id: tenant?.id,
         restaurant_id: restaurant?.id,
         branch_id: branchId,
@@ -259,7 +259,7 @@ export function MenuCategoryManager({ open, onOpenChange, itemCounts }: Props) {
     mutationFn: async (row: MenuCategory) => {
       const patch = edits[row.id];
       if (!patch) return;
-      const { error } = await supabase
+      const { error } = await db
         .from("menu_categories")
         .update({
           name_en: (patch.name_en ?? row.name_en) || row.name_en,
@@ -285,7 +285,7 @@ export function MenuCategoryManager({ open, onOpenChange, itemCounts }: Props) {
 
   const copyToBranch = useMutation({
     mutationFn: async (row: MenuCategory) => {
-      const { error } = await supabase.from("menu_categories").insert({
+      const { error } = await db.from("menu_categories").insert({
         tenant_id: tenant?.id,
         restaurant_id: restaurant?.id,
         branch_id: branchId,
@@ -307,7 +307,7 @@ export function MenuCategoryManager({ open, onOpenChange, itemCounts }: Props) {
   const bulkOverride = useMutation({
     mutationFn: async (cats: MenuCategory[]) => {
       if (!cats.length) throw new Error("Select at least one category");
-      const { error } = await supabase.from("menu_categories").insert(
+      const { error } = await db.from("menu_categories").insert(
         cats.map((row) => ({
           tenant_id: tenant?.id,
           restaurant_id: restaurant?.id,
@@ -333,7 +333,7 @@ export function MenuCategoryManager({ open, onOpenChange, itemCounts }: Props) {
   /** Deletes the branch-specific copy so the branch falls back to the tenant default. */
   const revertOverride = useMutation({
     mutationFn: async (row: MenuCategory) => {
-      const { error } = await supabase.from("menu_categories").delete().eq("id", row.id);
+      const { error } = await db.from("menu_categories").delete().eq("id", row.id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -349,7 +349,7 @@ export function MenuCategoryManager({ open, onOpenChange, itemCounts }: Props) {
     queryKey: ["menu-category-affected-items", restaurant?.id, deleting?.key],
     enabled: !!restaurant?.id && !!deleting && !deleting.branch_id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("id, name, category")
         .eq("restaurant_id", restaurant!.id)
@@ -375,7 +375,7 @@ export function MenuCategoryManager({ open, onOpenChange, itemCounts }: Props) {
       if (needsReassign) {
         if (!reassignTo) throw new Error("Choose a category to move the items to");
         // Bulk reassign: every affected item moves to the replacement in one statement.
-        const { data: movedRows, error: moveErr } = await supabase
+        const { data: movedRows, error: moveErr } = await db
           .from("menu_items")
           .update({ category: reassignTo })
           .eq("restaurant_id", restaurant?.id)
@@ -387,12 +387,12 @@ export function MenuCategoryManager({ open, onOpenChange, itemCounts }: Props) {
       setMovedCount(moved);
 
       if (deleting.branch_id) {
-        const { error } = await supabase.from("menu_categories").delete().eq("id", deleting.id);
+        const { error } = await db.from("menu_categories").delete().eq("id", deleting.id);
         if (error) throw error;
       } else {
         // Removing a shared category also removes its per-branch overrides so
         // no branch keeps pointing at a key that no longer exists.
-        const { error } = await supabase
+        const { error } = await db
           .from("menu_categories")
           .delete()
           .eq("restaurant_id", restaurant?.id)

@@ -1,122 +1,97 @@
-# Welcome to your Lovable project
+# Matbex
 
-## Project info
+Restaurant back-office, POS and accounting platform (web app + Android POS terminal).
+Fully self-hosted: React/Vite front end, a Node API you own, and PostgreSQL. No Supabase, no Lovable.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
-
-## How can I edit this code?
-
-There are several ways of editing your application.
-
-**Use Lovable**
-
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
-
-Changes made via Lovable will be committed automatically to this repo.
-
-**Use your preferred IDE**
-
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
-
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
-
-Follow these steps:
-
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
-
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
-
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
+```
+ Browser / Android POS ──HTTPS──►  Matbex API (server/, Fastify)  ──►  PostgreSQL 16
+                                    ├─ /auth/v1       sessions, MFA, email flows
+                                    ├─ /rest/v1  ───► PostgREST (private, RLS enforced)
+                                    ├─ /storage/v1    S3 / MinIO / local disk
+                                    ├─ /realtime/v1   websocket change feed (LISTEN/NOTIFY)
+                                    ├─ /functions/v1  99 server functions (server/functions)
+                                    ├─ /mcp           MCP tools endpoint
+                                    └─ jobs           cron + async HTTP queue
 ```
 
-**Edit a file directly in GitHub**
+| Path | What lives there |
+| --- | --- |
+| `src/` | Web app (React, Vite, Tailwind, shadcn/ui). API client: `src/integrations/db/client.ts` |
+| `packages/client/` | `@matbex/client` — dependency-free client for auth, data, rpc, storage, functions, realtime |
+| `server/src/` | API server (auth, data gateway, storage, realtime, function host, jobs, MCP) |
+| `server/functions/` | Server functions (payments, ZATCA, email, WhatsApp, reports, terminal API, …) |
+| `db/platform/` | Platform bootstrap SQL (roles, `auth`, `storage`, `cron`, `net` schemas) |
+| `db/migrations/` | Application schema history (applied in order by `db/migrate.mjs`) |
+| `deploy/`, `docker-compose.yml` | Production deployment (Caddy TLS, nginx web, API, PostgREST, Postgres, MinIO) |
+| `docs/self-hosting/MIGRATION.md` | Architecture, cutover runbook from the hosted stack, roadmap |
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## Local development
 
-**Use GitHub Codespaces**
+Requirements: Node 22+, Docker (for Postgres + PostgREST).
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+```sh
+npm install && npm --prefix server install
+cp .env.example .env
+npm --prefix server run keys            # paste JWT_SECRET / ANON_KEY / SERVICE_ROLE_KEY / AUTHENTICATOR_PASSWORD into .env
+```
 
-## What technologies are used for this project?
+Set these for local work in `.env`:
 
-This project is built with:
+```sh
+DATABASE_URL=postgres://postgres:postgres@localhost:5432/matbex
+POSTGREST_URL=http://localhost:3000
+API_URL=http://localhost:8000
+SITE_URL=http://localhost:8080
+VITE_API_URL=http://localhost:8000
+VITE_API_KEY=<ANON_KEY>
+AUTH_AUTOCONFIRM=true
+STORAGE_DRIVER=fs
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+```sh
+docker compose -f docker-compose.dev.yml up -d   # Postgres :5432 + PostgREST :3000
+npm run db:migrate                               # platform bootstrap + all migrations
+npm run dev:api                                  # API on http://localhost:8000
+npm run dev                                      # web app on http://localhost:8080
+npm --prefix server run smoke                    # optional end-to-end check (25 checks)
+```
 
-## How can I deploy this project?
+## Everyday commands
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+| Task | Command |
+| --- | --- |
+| New migration | `npm run db:new add_something` → edit `db/migrations/<ts>_add_something.sql` |
+| Apply migrations | `npm run db:migrate` (status: `npm run db:status`) |
+| Regenerate DB types | `npm run db:types` (CI fails if they drift) |
+| Typecheck everything | `npm run typecheck` |
+| Unit tests | `npm test` and `npm --prefix server test` |
+| Build API | `npm --prefix server run build` → `server/dist` |
+| Build web | `npm run build` → `dist` |
 
-## Can I connect a custom domain to my Lovable project?
+## Production
 
-Yes, you can!
+```sh
+cp .env.example .env            # fill in domains, keys, S3, Resend, Anthropic, Stripe, Twilio…
+docker compose up -d --build
+docker compose run --rm migrate
+```
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Caddy obtains TLS certificates for `APP_DOMAIN` and `API_DOMAIN`. Moving existing data from the old hosted
+project is covered step by step in [`docs/self-hosting/MIGRATION.md`](docs/self-hosting/MIGRATION.md).
 
 ## Android POS terminal (Capacitor)
 
-The web POS can be wrapped as a native Android app using the included Capacitor config.
-The sandbox cannot produce APKs directly - export to GitHub and build locally.
-
-### Quickstart: build and run Android
+The Android app wraps the web build. `VITE_API_URL` / `VITE_API_KEY` are baked in at build time
+(CI reads them from repository variables).
 
 ```bash
-npm install                  # install JS deps
 npm run android:doctor       # verify JDK 21, Android SDK, ANDROID_HOME, adb, Capacitor
-npx cap add android          # one-time: scaffold the android/ folder
 npm run android              # build + sync + run on device/emulator
-```
-
-Need a signed release APK?
-
-```bash
 npm run android:keystore     # one-time: generate release.keystore
-cp keystore.properties.example keystore.properties   # fill in passwords
 npm run android:release      # → android/app/build/outputs/apk/release/app-release.apk
 ```
 
-### Full guides
-
-- [`docs/android-local-setup.md`](./docs/android-local-setup.md) - Android Studio, SDK, emulator, Logcat, troubleshooting
-- [`docs/android-release-checklist.md`](./docs/android-release-checklist.md) - Step-by-step keystore + signed APK checklist
-- [`docs/android-signing.md`](./docs/android-signing.md) - Local + CI signing config details
-- [`docs/terminal-api.md`](./docs/terminal-api.md) - Matbex Terminal API used by the Android app
-
-### Pairing a terminal
-
-The Android app communicates with the backend via the **Matbex Terminal API**.
-
-1. **Generate a pairing code**  
-   In the web app, go to **Settings → POS Terminals → Pair Android terminal** (or **New pairing code**).  
-   A 6-digit code appears - it is valid for 15 minutes.
-
-2. **Enter the code on the device**  
-   Launch the Android app, tap **Pair terminal**, and type the 6-digit code.  
-   The app calls the `/pair` endpoint and receives a `device_key`, which it stores in the Android Keystore.
-
-3. **Log in as a cashier**  
-   After pairing, log in with a cashier account. The app now sends both the terminal key and the cashier JWT on every request.
-
-4. **Test connectivity**  
-   Once paired and logged in, the app hits `/health` automatically. You can also verify manually in the web app: **Settings → POS Terminals** shows the paired device with its last-seen timestamp. If it is grayed out or shows "Offline", check that the device has network access and that `X-Terminal-Key` is being sent correctly.
-
-Full API reference: [`docs/terminal-api.md`](./docs/terminal-api.md)
+Guides: [`docs/android-local-setup.md`](docs/android-local-setup.md) ·
+[`docs/android-release-checklist.md`](docs/android-release-checklist.md) ·
+[`docs/terminal-api.md`](docs/terminal-api.md). The terminal API lives at
+`{API_URL}/functions/v1/terminal-api` (same path as before; only the base URL changed).

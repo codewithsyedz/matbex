@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -40,34 +40,34 @@ export default function AdminChatAnalytics() {
       const thirtyDaysAgo = startOfDay(subDays(now, 30)).toISOString();
 
       // Total messages
-      const { count: totalMessages } = await supabase
+      const { count: totalMessages } = await db
         .from("chat_messages")
         .select("*", { count: "exact", head: true });
 
       // Messages last 7 days
-      const { count: messagesLast7Days } = await supabase
+      const { count: messagesLast7Days } = await db
         .from("chat_messages")
         .select("*", { count: "exact", head: true })
         .gte("created_at", sevenDaysAgo);
 
       // Messages last 30 days
-      const { count: messagesLast30Days } = await supabase
+      const { count: messagesLast30Days } = await db
         .from("chat_messages")
         .select("*", { count: "exact", head: true })
         .gte("created_at", thirtyDaysAgo);
 
       // Total channels
-      const { count: totalChannels } = await supabase
+      const { count: totalChannels } = await db
         .from("chat_channels")
         .select("*", { count: "exact", head: true });
 
       // Total conversations
-      const { count: totalConversations } = await supabase
+      const { count: totalConversations } = await db
         .from("chat_conversations")
         .select("*", { count: "exact", head: true });
 
       // Active users (distinct senders in last 30 days)
-      const { data: activeUsersData } = await supabase
+      const { data: activeUsersData } = await db
         .from("chat_messages")
         .select("sender_id")
         .gte("created_at", thirtyDaysAgo);
@@ -94,7 +94,7 @@ export default function AdminChatAnalytics() {
       const thirtyDaysAgo = startOfDay(subDays(now, 30)).toISOString();
 
       // Get all tenants
-      const { data: tenants } = await supabase
+      const { data: tenants } = await db
         .from("tenants")
         .select("id, name")
         .order("name");
@@ -102,7 +102,7 @@ export default function AdminChatAnalytics() {
       if (!tenants) return [];
 
       // Get all restaurants with tenant mapping
-      const { data: restaurants } = await supabase
+      const { data: restaurants } = await db
         .from("restaurants")
         .select("id, tenant_id");
 
@@ -113,17 +113,17 @@ export default function AdminChatAnalytics() {
       });
 
       // Get all messages
-      const { data: allMessages } = await supabase
+      const { data: allMessages } = await db
         .from("chat_messages")
         .select("id, restaurant_id, sender_id, created_at");
 
       // Get all channels
-      const { data: allChannels } = await supabase
+      const { data: allChannels } = await db
         .from("chat_channels")
         .select("id, restaurant_id");
 
       // Get all conversations
-      const { data: allConversations } = await supabase
+      const { data: allConversations } = await db
         .from("chat_conversations")
         .select("id, restaurant_id");
 

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { render, screen, act, waitFor, fireEvent } from "@testing-library/react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { MemoryRouter } from "react-router-dom";
 
 /**
  * Behavior test for the cashier branch hard-lock.
@@ -35,7 +36,7 @@ vi.mock("@/contexts/AuthContext", async () => {
   };
 });
 
-vi.mock("@/integrations/supabase/client", () => {
+vi.mock("@/integrations/db/client", () => {
   const branches = [
     {
       id: "branch-A",
@@ -84,7 +85,7 @@ vi.mock("@/integrations/supabase/client", () => {
   }
 
   return {
-    supabase: {
+    db: {
       from: (table: string) => {
         if (table === "branches") return makeBranchesChain();
         if (table === "staff") return makeStaffChain();
@@ -142,9 +143,12 @@ function renderApp() {
   });
   return render(
     <QueryClientProvider client={client}>
-      <BranchProvider>
-        <Probe />
-      </BranchProvider>
+      {/* BranchProvider reads the router location. */}
+      <MemoryRouter initialEntries={["/dashboard"]}>
+        <BranchProvider>
+          <Probe />
+        </BranchProvider>
+      </MemoryRouter>
     </QueryClientProvider>,
   );
 }

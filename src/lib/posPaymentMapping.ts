@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type PaymentBucket = "cash" | "card" | "delivery" | "other";
 
@@ -188,7 +188,7 @@ export function suggestBucket(
 export async function fetchPaymentMap(
   restaurantId: string,
 ): Promise<Record<string, PaymentBucket>> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("pos_payment_method_map")
     .select("payment_method,bucket")
     .eq("restaurant_id", restaurantId);
@@ -209,7 +209,7 @@ export async function savePaymentMap(
   map: Record<string, PaymentBucket>,
 ) {
   // Snapshot existing rows so we can compute a diff for audit logging
-  const { data: existingRows } = await supabase
+  const { data: existingRows } = await db
     .from("pos_payment_method_map")
     .select("payment_method,bucket")
     .eq("restaurant_id", restaurantId);
@@ -230,7 +230,7 @@ export async function savePaymentMap(
   }));
 
   if (rows.length > 0) {
-    const { error } = await supabase
+    const { error } = await db
       .from("pos_payment_method_map")
       .upsert(rows, { onConflict: "restaurant_id,payment_method" });
     if (error) throw error;
@@ -238,7 +238,7 @@ export async function savePaymentMap(
 
   // Remove rows that are no longer in the map
   const keep = rows.map((r) => r.payment_method);
-  let del = supabase
+  let del = db
     .from("pos_payment_method_map")
     .delete()
     .eq("restaurant_id", restaurantId);
@@ -249,7 +249,7 @@ export async function savePaymentMap(
   if (delErr) throw delErr;
 
   // Build and insert audit entries
-  const { data: userData } = await supabase.auth.getUser();
+  const { data: userData } = await db.auth.getUser();
   const uid = userData.user?.id ?? null;
   const audit: Array<{
     tenant_id: string;
@@ -276,7 +276,7 @@ export async function savePaymentMap(
     });
   }
   if (audit.length > 0 && uid) {
-    await supabase.from("pos_payment_method_audit").insert(audit);
+    await db.from("pos_payment_method_audit").insert(audit);
   }
 }
 
@@ -294,7 +294,7 @@ export async function fetchPaymentMappingAudit(
   restaurantId: string,
   limit = 100,
 ): Promise<PaymentMappingAuditEntry[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("pos_payment_method_audit")
     .select("id,payment_method,from_bucket,to_bucket,action,changed_by,changed_at")
     .eq("restaurant_id", restaurantId)
@@ -305,7 +305,7 @@ export async function fetchPaymentMappingAudit(
 }
 
 export async function fetchPaymentRules(restaurantId: string): Promise<PaymentRule[]> {
-  const { data, error } = await supabase
+  const { data, error } = await db
     .from("pos_payment_method_rules")
     .select("id,pattern,match_type,bucket,priority")
     .eq("restaurant_id", restaurantId)
@@ -320,7 +320,7 @@ export async function savePaymentRules(
   rules: PaymentRule[],
 ) {
   // Replace all rules for this restaurant
-  const { error: delErr } = await supabase
+  const { error: delErr } = await db
     .from("pos_payment_method_rules")
     .delete()
     .eq("restaurant_id", restaurantId);
@@ -336,6 +336,6 @@ export async function savePaymentRules(
     bucket: r.bucket,
     priority: r.priority ?? i * 10,
   }));
-  const { error } = await supabase.from("pos_payment_method_rules").insert(rows);
+  const { error } = await db.from("pos_payment_method_rules").insert(rows);
   if (error) throw error;
 }

@@ -19,7 +19,7 @@ import {
 import { useAddonCatalog, Addon } from "@/hooks/useAddons";
 import { AddonFormDialog } from "@/components/admin/AddonFormDialog";
 import { Plus, Pencil, Trash2, Loader2, Package } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 export default function AdminAddons() {
@@ -39,7 +39,7 @@ export default function AdminAddons() {
 
   const handleDelete = async (a: Addon) => {
     if (!confirm(`Delete addon "${a.name}"? Tenants who own it will lose access.`)) return;
-    const { error } = await supabase.from("addons" as any).delete().eq("id", a.id);
+    const { error } = await db.from("addons" as any).delete().eq("id", a.id);
     if (error) {
       toast.error(error.message);
       return;
@@ -129,7 +129,7 @@ export default function AdminAddons() {
                         {Object.entries(a.quota_boosts).length === 0 ? (
                           <span className="text-xs text-muted-foreground">—</span>
                         ) : (
-                          Object.entries(a.quota_boosts).map(([k, v]) => (
+                          Object.entries(a.quota_boosts as Record<string, number>).map(([k, v]) => (
                             <Badge key={k} variant="outline" className="text-[10px]">
                               +{v} {k}
                             </Badge>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMenuCategories } from "@/hooks/useMenuCategories";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
@@ -56,9 +57,11 @@ import { AdminPinDialog } from "@/components/pos/AdminPinDialog";
 import { EmergencyKioskUnlockDialog } from "@/components/pos/EmergencyKioskUnlockDialog";
 import { KioskWifiDialog } from "@/components/pos/KioskWifiDialog";
 import { recordOfflineSale } from "@/lib/offline/posService";
+import { recordSale, type PriceChangedDetails, type SaleLineSize } from "@/lib/api/pos";
+import { ApiError } from "@/lib/api/http";
 import { isOnline } from "@/lib/offline/connectivity";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { prefetchImages, getCachedImageSrc, rememberImage } from "@/lib/offline/imageCache";
 import { PendingSyncBadge } from "@/components/pos/PendingSyncBadge";
 import { RecordExpenseDialog } from "@/components/expenses/RecordExpenseDialog";
@@ -144,6 +147,8 @@ interface MenuItem {
   full_price?: number | null;
   image_url?: string | null;
   is_chefs_special?: boolean | null;
+  /** A combo package shown as a card; sold as a combo line (the server records its items). */
+  is_combo?: boolean;
 }
 
 type Variant = "quarter" | "half" | "full" | "default";
@@ -156,6 +161,8 @@ interface CartLine {
   price: number;
   qty: number;
   image_url?: string | null;
+  /** The line is a combo package: `id` is the combo's id. */
+  combo?: boolean;
 }
 
 type PaymentMethod = "cash" | "card" | "other";
@@ -241,7 +248,7 @@ export default function RecordSaleMobile() {
     queryKey: ["pos-tablet-menu", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as MenuItem[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select(
           "id, name, category, selling_price, quarter_price, half_price, full_price, image_url, is_chefs_special",
@@ -271,11 +278,36 @@ export default function RecordSaleMobile() {
     });
   }, [rawMenuItems, priceMap]);
 
+  // Combo packages: shown under their own category as one card each, at the combo price.
+  const combosLabel = t("app.pos.order.combos", { defaultValue: "Combos" });
+  const { data: comboItems = [] } = useQuery({
+    queryKey: ["pos-tablet-combos", restaurant?.id],
+    queryFn: async () => {
+      if (!restaurant?.id) return [] as MenuItem[];
+      const { data, error } = await db
+        .from("combo_packages")
+        .select("id, name, price")
+        .eq("restaurant_id", restaurant.id)
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        category: combosLabel,
+        selling_price: Number(c.price) || 0,
+        is_combo: true,
+      })) as MenuItem[];
+    },
+    enabled: !!restaurant?.id,
+  });
+  const sellableItems = useMemo(() => [...menuItems, ...comboItems], [menuItems, comboItems]);
+
   const { data: activeShifts = [] } = useQuery({
     queryKey: ["pos-tablet-shifts", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id")
         .eq("restaurant_id", restaurant.id)
@@ -287,14 +319,14 @@ export default function RecordSaleMobile() {
     enabled: !!restaurant?.id,
   });
 
-  const { data: topSellingData = [] } = useQuery({
+  const { data: topSellingData = [] } = useQuery<{ menuItemId: string; totalSold: number }[]>({
     queryKey: ["top-selling-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_items")
         .select("menu_item_id, quantity")
         .eq("restaurant_id", restaurant.id)
@@ -305,7 +337,7 @@ export default function RecordSaleMobile() {
       const aggregated = (data || []).reduce((acc, item) => {
         acc[item.menu_item_id] = (acc[item.menu_item_id] || 0) + item.quantity;
         return acc;
-      }, {} as Record<string, number>);
+      }, {} as Record<string, number>) as Record<string, number>;
 
       const ranked = Object.entries(aggregated)
         .sort(([, a], [, b]) => b - a)
@@ -323,7 +355,7 @@ export default function RecordSaleMobile() {
     queryKey: ["pos-tablet-customers", restaurant?.id, customerBranchId ?? "all"],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Customer[];
-      let qb = supabase
+      let qb = db
         .from("customers")
         .select("id, name, phone, credit_limit, current_balance, credit_status")
         .eq("restaurant_id", restaurant.id)
@@ -354,9 +386,12 @@ export default function RecordSaleMobile() {
     void prefetchImages(menuItems.map((m) => toCdnUrl(m.image_url)));
   }, [menuItems]);
 
+  // Category names (en/ar) for the chips; items store the category key.
+  const { labelOf: categoryLabel } = useMenuCategories(pricingBranchId || null);
+
   const categories = useMemo(() => {
     const set = new Set<string>();
-    menuItems.forEach((m) => m.category && set.add(m.category));
+    sellableItems.forEach((m) => m.category && set.add(m.category));
     const all = Array.from(set);
     // Surface "Main" (case-insensitive) first
     all.sort((a, b) => {
@@ -366,7 +401,7 @@ export default function RecordSaleMobile() {
       return a.localeCompare(b);
     });
     return all;
-  }, [menuItems]);
+  }, [sellableItems]);
 
   useEffect(() => {
     if (categoryInitialized || categories.length === 0) return;
@@ -384,7 +419,7 @@ export default function RecordSaleMobile() {
 
   const visibleItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let items = menuItems.filter((m) => {
+    let items = sellableItems.filter((m) => {
       if (category !== ALL && m.category !== category) return false;
       if (q && !m.name.toLowerCase().includes(q)) return false;
       return true;
@@ -398,7 +433,7 @@ export default function RecordSaleMobile() {
       });
     }
     return items;
-  }, [menuItems, search, category, sortByTopSales, salesRankMap]);
+  }, [sellableItems, search, category, sortByTopSales, salesRankMap]);
 
   const { activeBranchId, activeBranch } = useBranch();
   // VAT rate is configured per branch (Settings → Branches).
@@ -457,12 +492,19 @@ export default function RecordSaleMobile() {
   );
   const total = grossTotal;
 
-  const queueSaleOffline = async () => {
+  const sizeOf = (v: Variant): SaleLineSize => (v === "default" ? "regular" : v);
+
+  // `idempotencyKey`: the key of the online attempt that just failed, so a sale that did reach
+  // the server is returned, not recorded again, when the queue replays it.
+  const queueSaleOffline = async (idempotencyKey?: string) => {
     if (!restaurant?.id || !user?.id || cart.length === 0) throw new Error("Cart is empty");
 
     const activeShift = activeShifts[0];
     const result = await recordOfflineSale({
-      branchId: activeBranchId ?? restaurant.id,
+      // Queue scope is the restaurant (the sync engine drains by it); the branch rides along.
+      branchId: restaurant.id,
+      saleBranchId: activeBranchId ?? null,
+      idempotencyKey,
       cashierId: user.id,
       shiftId: activeShift?.id || null,
       paymentMethod: payment,
@@ -472,7 +514,9 @@ export default function RecordSaleMobile() {
       pricesVatInclusive: pricesInclusive,
       items: cart.map((l) => ({
         menu_item_id: l.id,
+        combo_id: l.combo ? l.id : null,
         name: l.name,
+        size: sizeOf(l.variant),
         quantity: l.qty,
         unit_price: l.price,
       })),
@@ -573,7 +617,7 @@ export default function RecordSaleMobile() {
       }
       return [
         ...prev,
-        { key, id: m.id, name: m.name, variant, price, qty: 1, image_url: toCdnUrl(m.image_url) },
+        { key, id: m.id, name: m.name, variant, price, qty: 1, image_url: toCdnUrl(m.image_url), combo: m.is_combo || undefined },
       ];
     });
     setJustAdded(key);
@@ -666,87 +710,55 @@ export default function RecordSaleMobile() {
       // Trust `navigator.onLine === false` as the primary signal - the
       // connectivity watcher's cached state can lag behind reality,
       // which would otherwise leave the Pay button hanging on a stuck
-      // Supabase fetch with no timeout.
+      // the API fetch with no timeout.
       const browserOffline =
         typeof navigator !== "undefined" && navigator.onLine === false;
+      const saleKey = crypto.randomUUID();
       if (browserOffline || !isOnline()) {
-        return queueSaleOffline();
+        return queueSaleOffline(saleKey);
       }
 
-      const receiptNumber = `RCP-${format(new Date(), "yyyyMMdd")}-${Math.floor(
-        Math.random() * 10000,
-      )
-        .toString()
-        .padStart(4, "0")}`;
-
-      let tx;
-      let txErr;
+      // One server transaction (POST /api/v1/pos/sales): sale, lines, cash event, stock,
+      // food-cost usage, kitchen ticket. The server prices the lines and numbers the receipt.
+      let receiptNumber: string;
       try {
-        const response = await withOnlineWriteTimeout(
-          supabase
-          .from("sales_transactions")
-          .insert({
-            restaurant_id: restaurant.id,
-            shift_id: activeShift?.id || null,
-            payment_method: payment,
-            subtotal,
-            tax: vat,
-            total,
-            receipt_number: receiptNumber,
-            settlement_status: unpaid ? "unpaid" : "paid",
-            paid_amount: unpaid ? 0 : total,
-            customer_id: unpaid ? selectedCustomer?.id ?? null : null,
-            created_at: new Date().toISOString(),
-          } as never)
-          .select()
-          .single(),
+        const saved = await withOnlineWriteTimeout(
+          recordSale(
+            {
+              restaurantId: restaurant.id,
+              branchId: activeBranchId ?? null,
+              shiftId: activeShift?.id ?? null,
+              customerId: unpaid ? selectedCustomer?.id ?? null : null,
+              paymentMethod: payment,
+              settlement: unpaid ? "unpaid" : "paid",
+              lines: cart.map((l) =>
+                l.combo
+                  ? { comboId: l.id, quantity: l.qty, unitPrice: l.price }
+                  : { menuItemId: l.id, size: sizeOf(l.variant), quantity: l.qty, unitPrice: l.price },
+              ),
+            },
+            { idempotencyKey: saleKey },
+          ),
           "Recording sale",
         );
-
-        tx = response.data;
-        txErr = response.error;
+        receiptNumber = saved.receiptNumber;
       } catch (error) {
-        if (isRecoverableNetworkError(error)) {
-          return queueSaleOffline();
+        if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
+          return queueSaleOffline(saleKey);
+        }
+        if (error instanceof ApiError && error.code === "price_changed") {
+          const changed = (error.details as PriceChangedDetails | undefined)?.lines ?? [];
+          setCart((prev) =>
+            prev.map((l) => {
+              const hit = changed.find((c) => c.menuItemId === l.id && c.size === sizeOf(l.variant));
+              return hit ? { ...l, price: hit.current } : l;
+            }),
+          );
+          void queryClient.invalidateQueries({ queryKey: ["pos-tablet-menu"] });
+          void queryClient.invalidateQueries({ queryKey: ["branch-menu-prices"] });
+          throw new Error("Prices changed since the menu was loaded. The cart now shows the current prices; check the total and charge again.");
         }
         throw error;
-      }
-      if (txErr) {
-        if (isRecoverableNetworkError(txErr)) {
-          return queueSaleOffline();
-        }
-        throw txErr;
-      }
-
-      const items = cart.map((l) => ({
-        restaurant_id: restaurant.id,
-        transaction_id: (tx as { id: string }).id,
-        menu_item_id: l.id,
-        quantity: l.qty,
-        unit_price: l.price,
-        total_price: l.price * l.qty,
-      }));
-      const { error: itemsErr } = await withOnlineWriteTimeout(
-        supabase.from("sales_items").insert(items),
-        "Saving sale items",
-      );
-      if (itemsErr) throw itemsErr;
-
-      if (activeShift?.id && !unpaid) {
-        await withOnlineWriteTimeout(
-          supabase.from("cash_events").insert([
-            {
-              shift_id: activeShift.id,
-              restaurant_id: restaurant.id,
-              event_type: "sale",
-              amount: total,
-              payment_method: payment === "other" ? "other" : payment,
-              created_by: user.id,
-              description: `POS Sale ${receiptNumber}`,
-            },
-          ]),
-          "Saving cash event",
-        );
       }
       return { receiptNumber, queuedOffline: false };
     },
@@ -950,7 +962,7 @@ export default function RecordSaleMobile() {
                   active={category === c}
                   onClick={() => setCategory(c)}
                 >
-                  {c}
+                  {c === combosLabel ? c : categoryLabel(c)}
                 </CategoryChip>
               ))}
             </div>
@@ -1253,8 +1265,11 @@ export default function RecordSaleMobile() {
           </div>
           <ScrollArea className="max-h-[55vh] px-3 py-3">
             {filteredCustomers.length === 0 ? (
-              <div className="text-center text-sm text-muted-foreground py-10">
-                {t("app.pos.mobile.noCustomers")}
+              <div className="text-center text-sm text-muted-foreground py-10 px-4 space-y-1">
+                <p>{t("app.pos.mobile.noCustomers")}</p>
+                {/* Account customers carry a credit limit, so they are added in the back office,
+                    not at the till. */}
+                <p className="text-xs">{t("app.pos.mobile.customersAddedBy")}</p>
               </div>
             ) : (
               <div className="space-y-1.5">

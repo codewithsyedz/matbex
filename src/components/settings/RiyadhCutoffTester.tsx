@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useWhatsAppSubscription } from "@/hooks/useWhatsAppSubscription";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -77,7 +77,7 @@ export function RiyadhCutoffTester() {
     setRows((prev) => prev.map((r, i) => (i === idx ? { ...r, loading: true, error: undefined } : r)));
     try {
       const atUtc = riyadhLocalToUtcIso(row.localInput);
-      const { data, error } = await supabase.functions.invoke("send-daily-whatsapp-summary", {
+      const { data, error } = await db.functions.invoke("send-daily-whatsapp-summary", {
         body: { restaurant_id: restaurant.id, cutoffCheck: true, atUtc },
       });
       if (error) throw error;

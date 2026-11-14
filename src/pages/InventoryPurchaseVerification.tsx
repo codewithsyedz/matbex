@@ -4,7 +4,7 @@ import { format, subDays } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
 import { AlertTriangle, ArrowLeft, CheckCircle2, FileDown, RefreshCw } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -114,7 +114,7 @@ export default function InventoryPurchaseVerification() {
     enabled: !!tenantId,
     queryFn: async () => {
       // 1) Inventory-flagged expenses in range
-      let eq = (supabase as any)
+      let eq = (db as any)
         .from("expenses")
         .select("id, expense_date, amount, quantity, inventory_item_id, branch_id, description")
         .eq("tenant_id", tenantId)
@@ -137,7 +137,7 @@ export default function InventoryPurchaseVerification() {
       }));
 
       // 2) Purchases in range (same tenant/branch)
-      let pq = (supabase as any)
+      let pq = (db as any)
         .from("purchases")
         .select(
           "id, received_at, inventory_item_id, branch_id, quantity_received, unit_cost, total_cost"
@@ -165,9 +165,9 @@ export default function InventoryPurchaseVerification() {
         ])
       ).filter(Boolean);
 
-      let items: Record<string, ItemMeta> = {};
+      const items: Record<string, ItemMeta> = {};
       if (itemIds.length > 0) {
-        const { data: itemRows } = await (supabase as any)
+        const { data: itemRows } = await (db as any)
           .from("inventory_items")
           .select("id, name, unit, current_stock, unit_cost")
           .in("id", itemIds);

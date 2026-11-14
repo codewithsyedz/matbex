@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   cacheStaffPins,
@@ -39,7 +39,7 @@ export function useStaffPosPins() {
     enabled: !!restaurantId,
     staleTime: 5 * 60 * 1000,
     queryFn: async (): Promise<PinRow[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_staff_pins")
         .select("id, user_id, display_name, pin_hash, pin_salt, iterations, is_active, rotated_at")
         .eq("restaurant_id", restaurantId!)
@@ -69,7 +69,7 @@ export function useStaffPosPins() {
       if (!restaurantId || !tenant?.id) throw new Error("Missing restaurant context");
       const pin_salt = generateSalt();
       const pin_hash = await hashPin(input.pin, pin_salt, STAFF_PIN_ITERATIONS);
-      const { error } = await supabase.from("pos_staff_pins").upsert(
+      const { error } = await db.from("pos_staff_pins").upsert(
         {
           tenant_id: tenant.id,
           restaurant_id: restaurantId,
@@ -92,7 +92,7 @@ export function useStaffPosPins() {
   const clearPin = useMutation({
     mutationFn: async (userId: string) => {
       if (!restaurantId) throw new Error("Missing restaurant context");
-      const { error } = await supabase
+      const { error } = await db
         .from("pos_staff_pins")
         .delete()
         .eq("restaurant_id", restaurantId)

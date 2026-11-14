@@ -1,10 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /** Untyped client helper for the daily-overhead / ledger tables. */
-const db = supabase as any;
-
 export type ReconStatus = "matched" | "unposted" | "missing_gl" | "amount_mismatch" | "unbalanced" | "voided";
 
 export interface ReconLine {
@@ -92,7 +90,7 @@ export function useOverheadReconciliation({ branchId, periodStart, periodEnd }: 
 
       // 3. Account metadata
       const accountIds = Array.from(new Set(lines.map(l => l.account_id).filter(Boolean)));
-      let accounts: Record<string, { code: string; name: string; type: string }> = {};
+      const accounts: Record<string, { code: string; name: string; type: string }> = {};
       if (accountIds.length) {
         const { data: accs } = await db
           .from("chart_of_accounts")
@@ -105,7 +103,7 @@ export function useOverheadReconciliation({ branchId, periodStart, periodEnd }: 
 
       // 4. Branch names
       const branchIds = Array.from(new Set(rows.map(r => r.branch_id).filter(Boolean)));
-      let branches: Record<string, string> = {};
+      const branches: Record<string, string> = {};
       if (branchIds.length) {
         const { data: bs } = await db.from("branches").select("id, name").in("id", branchIds);
         for (const b of bs || []) branches[b.id] = b.name;

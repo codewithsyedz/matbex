@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
@@ -70,7 +70,7 @@ export function useCOGS(selectedDate?: Date) {
     queryKey: ["cogs-inventory", restaurant?.id, branchId],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("inventory_items")
         .select("*")
         .eq("restaurant_id", restaurant.id);
@@ -87,7 +87,7 @@ export function useCOGS(selectedDate?: Date) {
     queryKey: ["cogs-purchases", restaurant?.id, branchId, monthStart, monthEnd],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("purchases")
         .select("*, inventory_items(name, unit)")
         .eq("restaurant_id", restaurant.id)
@@ -109,7 +109,7 @@ export function useCOGS(selectedDate?: Date) {
       // inventory_usage has no branch column; scope through the branch's items.
       let branchItemIds: string[] | null = null;
       if (branchId) {
-        const { data: bItems, error: bErr } = await supabase
+        const { data: bItems, error: bErr } = await db
           .from("inventory_items")
           .select("id")
           .eq("restaurant_id", restaurant.id)
@@ -118,7 +118,7 @@ export function useCOGS(selectedDate?: Date) {
         branchItemIds = (bItems || []).map((i) => i.id);
         if (branchItemIds.length === 0) return [];
       }
-      let q = supabase
+      let q = db
         .from("inventory_usage")
         .select("*, inventory_items(name, unit)")
         .eq("restaurant_id", restaurant.id)
@@ -139,7 +139,7 @@ export function useCOGS(selectedDate?: Date) {
       if (!restaurant?.id) return [];
       const { start } = getRestaurantDayBoundsUTC(new Date(monthStart), tz);
       const { endExclusive } = getRestaurantDayBoundsUTC(new Date(monthEnd), tz);
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("total, created_at")
         .eq("restaurant_id", restaurant.id)
@@ -159,7 +159,7 @@ export function useCOGS(selectedDate?: Date) {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const { start, endExclusive } = getRestaurantDayBoundsUTC(today, tz);
-      let q = supabase
+      let q = db
         .from("sales_items")
         .select("*, menu_items(id, name)")
         .eq("restaurant_id", restaurant.id)
@@ -178,7 +178,7 @@ export function useCOGS(selectedDate?: Date) {
     queryKey: ["cogs-recipes", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("recipe_ingredients")
         .select("*, inventory_items(unit_cost, name)")
         .eq("restaurant_id", restaurant.id);

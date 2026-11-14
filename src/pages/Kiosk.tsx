@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery } from "@tanstack/react-query";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,7 @@ export default function Kiosk() {
     enabled: !!restaurant?.id,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("id,name,selling_price,full_price,half_price,quarter_price,category,image_url,is_active,available_online")
         .eq("restaurant_id", restaurant!.id)
@@ -90,7 +90,7 @@ export default function Kiosk() {
     setPlacing(true);
     try {
       // Create kiosk session
-      const sessionRes: any = await supabase
+      const sessionRes: any = await db
         .from("kiosk_sessions" as any)
         .insert({
           restaurant_id: restaurant.id,
@@ -110,7 +110,7 @@ export default function Kiosk() {
         unit_price: l.price,
         line_total: l.price * l.qty,
       }));
-      const rpcRes: any = await supabase.rpc("public_create_online_order" as any, {
+      const rpcRes: any = await db.rpc("public_create_online_order" as any, {
         p_payload: {
           restaurant_id: restaurant.id,
           channel: "qr",
@@ -128,7 +128,7 @@ export default function Kiosk() {
       if (rpcRes?.error) throw rpcRes.error;
       const orderId = rpcRes?.data;
 
-      await supabase
+      await db
         .from("kiosk_sessions" as any)
         .update({ status: "completed", order_id: orderId, ended_at: new Date().toISOString() })
         .eq("id", sessionId);

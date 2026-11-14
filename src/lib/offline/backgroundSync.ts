@@ -4,7 +4,7 @@
 // - Registers public/sw-pos-sync.js with a dedicated scope (/pos-sync)
 //   so it never intercepts navigations.
 // - Persists the credentials the SW needs (auth token, terminal,
-//   branch, Supabase URL/anon) into IndexedDB KV - the SW reads them
+//   branch, the API URL/anon) into IndexedDB KV - the SW reads them
 //   from there at sync time, the page does NOT need to be open.
 // - Exposes:
 //     ensurePosSyncWorker()      -> idempotent registration
@@ -12,7 +12,7 @@
 //     persistSyncCredentials()   -> refresh the JWT/branch/etc.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { kvSet } from "./db";
 
 const SW_URL = "/sw-pos-sync.js";
@@ -23,7 +23,7 @@ const PERIODIC_TAG = "pos-sync-periodic";
 let _registration: ServiceWorkerRegistration | null = null;
 let _registerPromise: Promise<ServiceWorkerRegistration | null> | null = null;
 
-/** True only outside Lovable previews/iframes (matches PWA guidance). */
+/** True only outside previews/iframes (matches PWA guidance). */
 function shouldRegisterSW(): boolean {
   if (typeof window === "undefined" || !("serviceWorker" in navigator)) return false;
   const inIframe = (() => {
@@ -32,8 +32,7 @@ function shouldRegisterSW(): boolean {
   const host = window.location.hostname;
   const isPreview =
     host.includes("id-preview--") ||
-    host.includes("lovableproject.com") ||
-    host.includes("lovable.app") && host.includes("--");
+    host.startsWith("preview.");
   return !inIframe && !isPreview;
 }
 
@@ -82,10 +81,10 @@ export async function persistSyncCredentials(opts: {
 }) {
   if (opts.branchId) await kvSet("pos.branch_id", opts.branchId);
   if (opts.terminalId) await kvSet("pos.terminal_id", opts.terminalId);
-  await kvSet("pos.supabase_url", import.meta.env.VITE_SUPABASE_URL as string);
-  await kvSet("pos.supabase_anon", import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string);
+  await kvSet("pos.api_url", import.meta.env.VITE_API_URL as string);
+  await kvSet("pos.api_key", import.meta.env.VITE_API_KEY as string);
 
-  const { data } = await supabase.auth.getSession();
+  const { data } = await db.auth.getSession();
   if (data.session?.access_token) {
     await kvSet("pos.auth_token", {
       access_token: data.session.access_token,

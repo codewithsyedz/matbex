@@ -1,9 +1,7 @@
-import { defineConfig } from "vite";
+import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react-swc";
 import path from "path";
-import { componentTagger } from "lovable-tagger";
 import { VitePWA } from "vite-plugin-pwa";
-import { mcpPlugin } from "@lovable.dev/mcp-js/stacks/supabase/vite";
 
 // Make Vite's injected main stylesheet non-render-blocking in production.
 // The pre-hydration LCP shell in index.html uses only inline styles, so the
@@ -21,16 +19,23 @@ const asyncCssPlugin = () => ({
 });
 
 // https://vitejs.dev/config/
-export default defineConfig(({ mode }) => ({
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), "VITE_");
+  const apiHost = (() => {
+    try {
+      return new URL(env.VITE_API_URL ?? "").hostname;
+    } catch {
+      return "";
+    }
+  })();
+  return {
   server: {
     host: "::",
     port: 8080,
   },
   plugins: [
     react(),
-    mode === "development" && componentTagger(),
     asyncCssPlugin(),
-    mcpPlugin(),
     VitePWA({
       // The manifest is hand-maintained in public/manifest.webmanifest.
       manifest: false,
@@ -87,7 +92,7 @@ export default defineConfig(({ mode }) => ({
             // the network is unavailable. Writes are never cached.
             urlPattern: ({ url, request }) =>
               request.method === "GET" &&
-              url.hostname.endsWith(".supabase.co") &&
+              url.hostname === apiHost &&
               url.pathname.startsWith("/rest/v1/"),
             handler: "NetworkFirst",
             options: {
@@ -104,15 +109,19 @@ export default defineConfig(({ mode }) => ({
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
+      "@matbex/client": path.resolve(__dirname, "./packages/client/src/index.ts"),
     },
   },
   build: {
     // Conservative manual chunking: only isolate libraries that are
     // self-contained and don't share circular init with each other.
-    // Supabase + React Query are intentionally LEFT in the default
+    // The API client + React Query are intentionally LEFT in the default
     // chunk — grouping them caused a TDZ crash in production.
     rollupOptions: {
       output: {
+        // Distinct name for the startup entry, so the size budget (.size-limit.json) measures
+        // it alone and not lazily loaded chunks that also end up named "index-*".
+        entryFileNames: "assets/entry-[hash].js",
         manualChunks(id: string) {
           if (!id.includes("node_modules")) return;
           if (id.includes("framer-motion") || id.includes("motion-dom") || id.includes("motion-utils")) {
@@ -128,4 +137,5 @@ export default defineConfig(({ mode }) => ({
       },
     },
   },
-}));
+};
+});

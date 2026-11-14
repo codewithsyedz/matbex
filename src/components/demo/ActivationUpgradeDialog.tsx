@@ -19,7 +19,7 @@ import {
   ShieldCheck,
   Users,
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDemoTrial } from "@/hooks/useDemoTrial";
 import { useFunnelTracker } from "@/hooks/useFunnelTracker";
@@ -41,7 +41,7 @@ export function ActivationUpgradeDialog({ open, onOpenChange }: Props) {
     setBusy(true);
     track("upgrade_clicked", { days_left: daysLeft });
     try {
-      const { error } = await supabase.functions.invoke("activate-demo-tenant", {
+      const { error } = await db.functions.invoke("activate-demo-tenant", {
         body: { tenant_id: tenant.id },
       });
       if (error) throw error;

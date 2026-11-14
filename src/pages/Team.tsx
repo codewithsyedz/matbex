@@ -48,7 +48,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { AccountantPermissionsCard } from "@/components/team/AccountantPermissionsCard";
 import { InvitationActivityDialog } from "@/components/team/InvitationActivityDialog";
 import { useQuota } from "@/hooks/useQuota";
@@ -167,7 +167,7 @@ interface FriendlyInviteError {
   message: string;
 }
 async function getFriendlyInviteError(error: any, email: string): Promise<FriendlyInviteError> {
-  // supabase-js wraps non-2xx responses in FunctionsHttpError with a Response
+  // db-js wraps non-2xx responses in FunctionsHttpError with a Response
   // in error.context. Extract the JSON body so we can read the real reason.
   let serverMessage: string | undefined;
   let status: number | undefined;
@@ -303,7 +303,7 @@ export default function Team() {
     if (!restaurant?.id) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("user_roles")
         .select(`
           id,
@@ -319,7 +319,7 @@ export default function Team() {
       // Fetch profiles for each user
       const membersWithProfiles = await Promise.all(
         (data || []).map(async (member) => {
-          const { data: profileData } = await supabase
+          const { data: profileData } = await db
             .from("profiles")
             .select("full_name")
             .eq("id", member.user_id)
@@ -345,7 +345,7 @@ export default function Team() {
     if (!restaurant?.id) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("team_invitations")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -374,7 +374,7 @@ export default function Team() {
   const fetchOwnerEmails = async () => {
     if (!tenant?.id) return;
     try {
-      const { data, error } = await (supabase as any).rpc("get_tenant_owner_emails", {
+      const { data, error } = await (db as any).rpc("get_tenant_owner_emails", {
         p_tenant_id: tenant.id,
       });
       if (error) throw error;
@@ -389,7 +389,7 @@ export default function Team() {
     if (!tenant?.id || !quotaErrorDetails) return;
     setIsRequestingSeats(true);
     try {
-      const { error } = await supabase.functions.invoke("send-seat-request", {
+      const { error } = await db.functions.invoke("send-seat-request", {
         body: {
           tenant_id: tenant.id,
           restaurant_id: restaurant?.id,
@@ -494,7 +494,7 @@ export default function Team() {
       }
 
       // Pre-check: is this email already a pending invite for this restaurant?
-      const { data: pendingDup } = await supabase
+      const { data: pendingDup } = await db
         .from("team_invitations")
         .select("id, email, role")
         .eq("restaurant_id", restaurant.id)
@@ -512,7 +512,7 @@ export default function Team() {
         return;
       }
 
-      const { data, error } = await supabase.functions.invoke("send-invite", {
+      const { data, error } = await db.functions.invoke("send-invite", {
         body: {
           email: inviteEmail,
           role: inviteRole,
@@ -531,6 +531,8 @@ export default function Team() {
       setInviteEmail("");
       setInviteRole("cashier");
       fetchInvitations();
+      // send-invite creates the account and its role right away: the member list changes too.
+      fetchTeamMembers();
     } catch (error: any) {
       console.error("Error inviting team member:", error);
       const friendly = await getFriendlyInviteError(error, inviteEmail);
@@ -545,7 +547,7 @@ export default function Team() {
 
     setResendingId(invitation.id);
     try {
-      const { error } = await supabase.functions.invoke("send-invite", {
+      const { error } = await db.functions.invoke("send-invite", {
         body: {
           email: invitation.email,
           role: invitation.role,
@@ -589,7 +591,7 @@ export default function Team() {
 
   const handleCancelInvite = async (invitationId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("team_invitations")
         .update({ status: "cancelled" })
         .eq("id", invitationId);
@@ -599,7 +601,7 @@ export default function Team() {
       // Best-effort: write an audit-log entry for the cancellation.
       const invitation = invitations.find((i) => i.id === invitationId);
       if (invitation && restaurant?.id && tenant?.id) {
-        await (supabase as any).from("team_invitation_events").insert({
+        await (db as any).from("team_invitation_events").insert({
           invitation_id: invitationId,
           restaurant_id: restaurant.id,
           tenant_id: tenant.id,
@@ -623,7 +625,7 @@ export default function Team() {
     if (!deleteInviteId) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("team_invitations")
         .delete()
         .eq("id", deleteInviteId);
@@ -646,7 +648,7 @@ export default function Team() {
     }
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("user_roles")
         .update({ role: newRole })
         .eq("id", memberId);
@@ -679,7 +681,7 @@ export default function Team() {
       return;
     }
     try {
-      const { data, error } = await (supabase as any).rpc("grant_tenant_ownership", {
+      const { data, error } = await (db as any).rpc("grant_tenant_ownership", {
         _tenant_id: tenant.id,
         _target_user_id: member.user_id,
       });
@@ -713,7 +715,7 @@ export default function Team() {
       return;
     }
     try {
-      const { error } = await (supabase as any).rpc("revoke_tenant_ownership", {
+      const { error } = await (db as any).rpc("revoke_tenant_ownership", {
         _tenant_id: tenant.id,
         _target_user_id: member.user_id,
         _new_role: newRole,
@@ -745,7 +747,7 @@ export default function Team() {
 
       // Atomic removal of both restaurant + tenant roles via RPC, so the
       // seat quota counter can't drift out of sync.
-      const { data, error } = await (supabase as any).rpc("remove_team_member", {
+      const { data, error } = await (db as any).rpc("remove_team_member", {
         p_user_role_id: memberId,
         p_user_id: userId,
         p_restaurant_id: restaurant.id,
@@ -796,7 +798,7 @@ export default function Team() {
 
     setIsSettingPassword(true);
     try {
-      const { data, error } = await supabase.functions.invoke("set-team-password", {
+      const { data, error } = await db.functions.invoke("set-team-password", {
         body: {
           user_id: selectedMemberForPassword.user_id,
           new_password: newPassword,
@@ -966,7 +968,7 @@ export default function Team() {
                                         try {
                                           // Server-side rate limit also enforces a cooldown so the
                                           // log can't be flooded even if the client check is bypassed.
-                                          await supabase.rpc("log_audit_event_rate_limited", {
+                                          await db.rpc("log_audit_event_rate_limited", {
                                             _action: "quota_admin_email_copied",
                                             _entity_type: "team_quota",
                                             _new_data: {

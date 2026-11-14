@@ -1,6 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
+import { subscribeEvents } from "@/integrations/db/events";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type KdsTicketStatus = "new" | "in_progress" | "ready" | "served" | "cancelled";
@@ -55,7 +56,7 @@ export function useKdsStations() {
     queryKey: ["kds-stations", rid],
     queryFn: async () => {
       if (!rid) return [] as KdsStation[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_kds_stations" as any)
         .select("*")
         .eq("restaurant_id", rid)
@@ -69,7 +70,7 @@ export function useKdsStations() {
   const create = useMutation({
     mutationFn: async (input: { name: string; station_type?: string }) => {
       if (!rid) throw new Error("No restaurant");
-      const { error } = await supabase.from("pos_kds_stations" as any).insert({
+      const { error } = await db.from("pos_kds_stations" as any).insert({
         restaurant_id: rid,
         name: input.name,
         station_type: input.station_type || "kitchen",
@@ -81,7 +82,7 @@ export function useKdsStations() {
 
   const update = useMutation({
     mutationFn: async ({ id, ...patch }: { id: string } & Partial<KdsStation>) => {
-      const { error } = await supabase.from("pos_kds_stations" as any).update(patch).eq("id", id);
+      const { error } = await db.from("pos_kds_stations" as any).update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["kds-stations"] }),
@@ -89,7 +90,7 @@ export function useKdsStations() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("pos_kds_stations" as any).delete().eq("id", id);
+      const { error } = await db.from("pos_kds_stations" as any).delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["kds-stations"] }),
@@ -107,7 +108,7 @@ export function useKdsTickets(stationId?: string | "all") {
     queryKey: ["kds-tickets", rid, stationId ?? "all"],
     queryFn: async () => {
       if (!rid) return [] as KdsTicket[];
-      const { data: tickets, error } = await supabase
+      const { data: tickets, error } = await db
         .from("pos_kds_tickets" as any)
         .select("*")
         .eq("restaurant_id", rid)
@@ -116,7 +117,7 @@ export function useKdsTickets(stationId?: string | "all") {
       if (error) throw error;
       const ids = (tickets || []).map((t: any) => t.id);
       if (ids.length === 0) return [] as KdsTicket[];
-      let itemsQ = supabase
+      let itemsQ = db
         .from("pos_kds_ticket_items" as any)
         .select("*")
         .in("ticket_id", ids);
@@ -137,24 +138,16 @@ export function useKdsTickets(stationId?: string | "all") {
       return result;
     },
     enabled: !!rid,
-    refetchInterval: 10000,
+    // Safety net only; changes arrive as events.
+    refetchInterval: 30000,
   });
 
-  // Realtime subscription
+  // Live updates: outbox events over Socket.IO (src/integrations/db/events.ts). Any ticket or
+  // item change refetches; reconnecting also refetches, covering events missed while offline.
   useEffect(() => {
     if (!rid) return;
-    const channel = supabase
-      .channel(`kds-${rid}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "pos_kds_tickets", filter: `restaurant_id=eq.${rid}` }, () => {
-        qc.invalidateQueries({ queryKey: ["kds-tickets", rid] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "pos_kds_ticket_items", filter: `restaurant_id=eq.${rid}` }, () => {
-        qc.invalidateQueries({ queryKey: ["kds-tickets", rid] });
-      })
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
+    const refresh = () => qc.invalidateQueries({ queryKey: ["kds-tickets", rid] });
+    return subscribeEvents("kds", rid, refresh, refresh);
   }, [rid, qc]);
 
   const setTicketStatus = useMutation({
@@ -165,7 +158,7 @@ export function useKdsTickets(stationId?: string | "all") {
       if (status === "ready") patch.ready_at = now;
       if (status === "served") patch.served_at = now;
       if (status === "cancelled") patch.cancelled_at = now;
-      const { error } = await supabase.from("pos_kds_tickets" as any).update(patch).eq("id", id);
+      const { error } = await db.from("pos_kds_tickets" as any).update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["kds-tickets"] }),
@@ -173,7 +166,7 @@ export function useKdsTickets(stationId?: string | "all") {
 
   const setItemStatus = useMutation({
     mutationFn: async ({ id, status }: { id: string; status: KdsItemStatus }) => {
-      const { error } = await supabase.from("pos_kds_ticket_items" as any).update({ status }).eq("id", id);
+      const { error } = await db.from("pos_kds_ticket_items" as any).update({ status }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["kds-tickets"] }),

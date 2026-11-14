@@ -55,14 +55,14 @@ export function AutoPostPayrollDialog({
     mutationFn: async () => {
       if (!restaurantId || !userId) throw new Error("Missing restaurant or user");
       if (!cycle) throw new Error("No cycle selected");
-      const { supabase } = await import("@/integrations/supabase/client");
+      const { db } = await import("@/integrations/db/client");
 
       let created = 0;
       let posted = 0;
       const failures: string[] = [];
 
       for (const { row, cell } of candidates) {
-        const { data: inserted, error } = await supabase
+        const { data: inserted, error } = await db
           .from("payroll_records")
           .insert({
             restaurant_id: restaurantId,
@@ -87,7 +87,7 @@ export function AutoPostPayrollDialog({
         created += 1;
 
         if (postToLedger) {
-          const { error: postError } = await supabase.rpc("post_payroll_to_ledger", {
+          const { error: postError } = await db.rpc("post_payroll_to_ledger", {
             p_payroll_id: inserted.id,
           });
           if (postError) failures.push(`${row.staff.name}: ${postError.message}`);

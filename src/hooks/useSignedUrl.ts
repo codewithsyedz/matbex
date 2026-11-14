@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 /**
  * Hook to get a signed URL for private storage buckets.
@@ -39,7 +39,7 @@ export function useSignedUrl(
           }
         }
 
-        const { data, error: signError } = await supabase.storage
+        const { data, error: signError } = await db.storage
           .from(bucketName)
           .createSignedUrl(path, expiresIn);
 
@@ -88,7 +88,7 @@ export async function createSignedUrl(
     // Extract the file path from a full URL if necessary
     const path = extractFilePath(filePath, bucketName);
 
-    const { data, error } = await supabase.storage
+    const { data, error } = await db.storage
       .from(bucketName)
       .createSignedUrl(path, expiresIn);
 

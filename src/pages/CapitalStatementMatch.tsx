@@ -115,7 +115,7 @@ export default function CapitalStatementMatch() {
       if (cells.length < 3) continue;
       const [date, description, amountRaw, reference] = cells;
       if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
-      const num = Number(String(amountRaw).replace(/[^0-9.\-]/g, ""));
+      const num = Number(String(amountRaw).replace(/[^0-9.-]/g, ""));
       if (!Number.isFinite(num) || num === 0) continue;
       rows.push({
         capitalAccountId: acct,

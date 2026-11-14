@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback, useMemo } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type PlanTierName = "trial" | "free" | "pro" | "enterprise";
@@ -44,7 +44,7 @@ async function fetchFlags() {
   // Try direct table read first — succeeds only for SuperAdmins. Regular
   // users hit RLS and get an empty array, so we fall back to the per-tenant
   // RPC which returns only resolved {key, enabled} entries.
-  const { data: direct, error: directErr } = await supabase
+  const { data: direct, error: directErr } = await db
     .from("feature_flags")
     .select("*")
     .order("key");
@@ -56,7 +56,7 @@ async function fetchFlags() {
     notify([]);
     return;
   }
-  const { data: rpcData, error: rpcErr } = await supabase.rpc(
+  const { data: rpcData, error: rpcErr } = await db.rpc(
     "get_feature_flags_for_tenant",
     { _tenant_id: activeTenantId }
   );
@@ -93,9 +93,9 @@ function ensureChannel() {
   // Only open a realtime WebSocket for authenticated sessions. Public/marketing
   // pages (e.g. matbex.com landing) must not open WS connections — they cause
   // noisy console errors for visitors behind restrictive networks/DNS.
-  void supabase.auth.getSession().then(({ data }) => {
+  void db.auth.getSession().then(({ data }) => {
     if (!data.session) return;
-    supabase
+    db
       .channel("feature-flags-realtime")
       .on(
         "postgres_changes",
@@ -110,7 +110,7 @@ function ensureChannel() {
 
 /**
  * Subscribes to remote feature flags. Returns the live list of flags.
- * Updates propagate in real time via Supabase Realtime.
+ * Updates propagate in real time via the API Realtime.
  */
 export function useFeatureFlags() {
   const [flags, setFlags] = useState<FeatureFlag[]>(cachedFlags ?? []);
@@ -193,7 +193,7 @@ export function useFeatureFlagAdmin() {
       disabled_tenant_ids?: string[];
       min_plan?: string | null;
     }) => {
-      const { error } = await supabase.from("feature_flags").upsert(
+      const { error } = await db.from("feature_flags").upsert(
         {
           key: input.key,
           enabled: input.enabled,
@@ -210,7 +210,7 @@ export function useFeatureFlagAdmin() {
   );
 
   const toggle = useCallback(async (id: string, enabled: boolean) => {
-    const { error } = await supabase
+    const { error } = await db
       .from("feature_flags")
       .update({ enabled })
       .eq("id", id);
@@ -218,7 +218,7 @@ export function useFeatureFlagAdmin() {
   }, []);
 
   const setMinPlan = useCallback(async (id: string, min_plan: string | null) => {
-    const { error } = await supabase
+    const { error } = await db
       .from("feature_flags")
       .update({ min_plan })
       .eq("id", id);
@@ -226,7 +226,7 @@ export function useFeatureFlagAdmin() {
   }, []);
 
   const remove = useCallback(async (id: string) => {
-    const { error } = await supabase.from("feature_flags").delete().eq("id", id);
+    const { error } = await db.from("feature_flags").delete().eq("id", id);
     if (error) throw error;
   }, []);
 

@@ -4,7 +4,7 @@ import { Laptop, Loader2, ShieldOff, RefreshCw, Pencil, AlertTriangle, Info } fr
 import { useEffect, useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLicense } from "@/contexts/LicenseContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -67,7 +67,7 @@ export default function DeviceManagement() {
     refetchInterval: 30_000,
     refetchOnWindowFocus: true,
     queryFn: async (): Promise<DeviceRow[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("device_licenses" as never)
         .select("id, terminal_id, device_label, platform, user_agent, claimed_at, last_seen_at, last_validated_at")
         .eq("restaurant_id", restaurantId!)
@@ -82,7 +82,7 @@ export default function DeviceManagement() {
     queryKey: ["branch-license-seats", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branch_license_seats" as never)
         .select("seat_count")
         .eq("restaurant_id", restaurantId!)
@@ -147,7 +147,7 @@ export default function DeviceManagement() {
   const handleSaveName = async () => {
     if (!renameTarget || !renameValue.trim()) return;
     setSavingName(true);
-    const { error } = await supabase
+    const { error } = await db
       .from("device_licenses" as never)
       .update(({ device_label: renameValue.trim() }) as never)
       .eq("id", renameTarget.id);

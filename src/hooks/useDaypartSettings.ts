@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { qk } from "@/lib/query/queryKeys";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface DaypartConfig {
@@ -42,7 +42,7 @@ export function useDaypartSettings() {
     enabled: !!restaurant?.id,
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("daypart_settings")
         .select("morning_start, noon_start, evening_start, late_night_start")
         .eq("restaurant_id", restaurant!.id)
@@ -55,7 +55,7 @@ export function useDaypartSettings() {
   const updateMutation = useMutation({
     mutationFn: async (cfg: DaypartConfig) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("daypart_settings")
         .upsert({ restaurant_id: restaurant.id, ...cfg }, { onConflict: "restaurant_id" })
         .select()

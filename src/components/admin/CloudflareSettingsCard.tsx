@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Cloud, Eye, EyeOff, Loader2, Save, CheckCircle2, AlertCircle } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 const KEY = "cloudflare";
@@ -37,7 +37,7 @@ export function CloudflareSettingsCard() {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("platform_settings" as any)
       .select("value")
       .eq("key", KEY)
@@ -70,14 +70,14 @@ export function CloudflareSettingsCard() {
     }
 
     // Merge with existing
-    const { data: existing } = await supabase
+    const { data: existing } = await db
       .from("platform_settings" as any)
       .select("value")
       .eq("key", KEY)
       .maybeSingle();
     const merged = { ...((existing as any)?.value ?? {}), ...payload };
 
-    const { error } = await supabase
+    const { error } = await db
       .from("platform_settings" as any)
       .upsert({ key: KEY, value: merged, is_secret: true, description: "Cloudflare API token & zone for custom-domain SSL automation" }, { onConflict: "key" });
 
@@ -94,7 +94,7 @@ export function CloudflareSettingsCard() {
     setTesting(true);
     setTestResult(null);
     try {
-      const { data, error } = await supabase.functions.invoke("test-cloudflare-connection");
+      const { data, error } = await db.functions.invoke("test-cloudflare-connection");
       if (error) {
         setTestResult({ ok: false, message: error.message });
         return;

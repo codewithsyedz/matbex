@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { qk } from "@/lib/query/queryKeys";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useBranch } from "@/contexts/BranchContext";
@@ -31,6 +31,8 @@ import { Plus, Minus, ShoppingCart, Receipt, Trash2, CreditCard, Banknote, Walle
 import { QRScanner } from "./QRScanner";
 import { usePOSHardware } from "@/hooks/usePOSHardware";
 import { recordOfflineSale } from "@/lib/offline/posService";
+import { quoteSale, recordSale, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize } from "@/lib/api/pos";
+import { ApiError } from "@/lib/api/http";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
 import { useBranchVatRate } from "@/hooks/useBranchVatRate";
 import { PricingBranchBanner } from "@/components/pos/PricingBranchBanner";
@@ -91,7 +93,7 @@ export function SalesRecorder() {
     queryKey: ["menu-items-for-sale", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -122,7 +124,7 @@ export function SalesRecorder() {
     queryKey: ["active-shifts-for-sale", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id, opened_at, drawer_id")
         .eq("restaurant_id", restaurant.id)
@@ -149,18 +151,21 @@ export function SalesRecorder() {
         pricesInclusive,
       );
       const shiftId = activeShifts[0]?.id || null;
-      const receiptNumber = `RCP-${Date.now()}`;
+      // One key per checkout, shared by the online attempt and the offline queue.
+      const saleKey = crypto.randomUUID();
+      const order = {
+        restaurantId: restaurant.id,
+        branchId: priceBranchId ?? null,
+        shiftId,
+        paymentMethod,
+        lines: cart.map((c) => ({ menuItemId: c.menuItemId, size: (c.size ?? "regular") as SaleLineSize, quantity: c.quantity, unitPrice: c.unitPrice })),
+      };
 
-      // ── Offline guardrail ────────────────────────────────────────────
-      // If the device is offline, do NOT attempt direct Supabase inserts
-      // - fetch() has no timeout in most browsers and the Pay button
-      // would spin forever. Queue the sale to IndexedDB instead; the
-      // sync engine drains it when connectivity returns.
-      const browserOffline =
-        typeof navigator !== "undefined" && navigator.onLine === false;
-      if (browserOffline || !isPosOnline()) {
+      const queueOffline = async () => {
         const result = await recordOfflineSale({
           branchId: restaurant.id,
+          saleBranchId: priceBranchId ?? null,
+          idempotencyKey: saleKey,
           cashierId: user.id,
           shiftId,
           paymentMethod,
@@ -170,30 +175,50 @@ export function SalesRecorder() {
           items: cart.map((c) => ({
             menu_item_id: c.menuItemId,
             name: c.name,
+            size: c.size ?? "regular",
             quantity: c.quantity,
             unit_price: c.unitPrice,
           })),
         });
         return { receiptNumber: result.receiptNumber, total, offline: true as const };
-      }
+      };
 
-      // If paying by card and Hala terminal is enabled, push the charge first
-      // and only persist the sale on an approved response.
-      let halaResult: {
-        status: string;
-        reference: string | null;
-        message?: string;
-        [k: string]: unknown;
-      } | null = null;
+      // ── Offline guardrail ────────────────────────────────────────────
+      // If the device is offline, queue the sale to IndexedDB instead of
+      // letting the Pay button spin; the sync engine drains it later.
+      const browserOffline =
+        typeof navigator !== "undefined" && navigator.onLine === false;
+      if (browserOffline || !isPosOnline()) return queueOffline();
 
+      const applyCurrentPrices = (current: { menuItemId: string; size: string; current: number }[]) => {
+        setCart((prev) =>
+          prev.map((c) => {
+            const hit = current.find((l) => l.menuItemId === c.menuItemId && l.size === (c.size ?? "regular"));
+            return hit ? { ...c, unitPrice: hit.current } : c;
+          }),
+        );
+        void queryClient.invalidateQueries({ queryKey: ["branch-menu-prices"] });
+        return new Error("Prices changed since the menu was loaded. The cart now shows the current prices; check the total and charge again.");
+      };
+
+      // If paying by card and the Hala terminal is enabled, charge the server's quoted total
+      // first and only record the sale on an approved response, so the card and the receipt
+      // always show the same amount.
+      let cardTerminal: RecordSaleInput["cardTerminal"] = null;
       if (paymentMethod === "card" && posSettings?.hala_enabled) {
+        const quote = await quoteSale(order);
+        const stale = quote.lines
+          .map((q, i) => ({ menuItemId: q.menuItemId, size: q.size, shown: order.lines[i].unitPrice, current: q.unitPrice }))
+          .filter((l) => Math.abs(l.shown - l.current) >= 0.005);
+        if (stale.length) throw applyCurrentPrices(stale);
+
         toast.info("Sending amount to Hala terminal...", { id: "hala-charge" });
-        const { data, error } = await supabase.functions.invoke("charge-hala-card", {
+        const { data, error } = await db.functions.invoke("charge-hala-card", {
           body: {
-            amount: total,
+            amount: quote.total,
             currency: "SAR",
             terminalId: posSettings.hala_terminal_id,
-            receiptNumber,
+            receiptNumber: `POS-${saleKey.slice(0, 8)}`,
             mock: posSettings.hala_mock_mode ?? true,
             approveProbability: posSettings.hala_approve_probability ?? 0.9,
           },
@@ -203,7 +228,6 @@ export function SalesRecorder() {
         if (error) {
           throw new Error(`Hala terminal error: ${error.message}`);
         }
-        halaResult = data;
         if (data?.status !== "approved") {
           throw new Error(
             data?.status === "declined"
@@ -211,198 +235,25 @@ export function SalesRecorder() {
               : `Hala terminal did not approve the charge`
           );
         }
+        cardTerminal = { provider: "hala", status: data.status, reference: data.reference ?? null, response: data };
       }
 
-      // Create transaction
-      const txPayload: {
-        restaurant_id: string;
-        shift_id: string | null;
-        payment_method: typeof paymentMethod;
-        subtotal: number;
-        tax: number;
-        total: number;
-        receipt_number: string;
-        hala_status?: string;
-        hala_reference?: string | null;
-        hala_response?: unknown;
-        hala_charged_at?: string;
-      } = {
-        restaurant_id: restaurant.id,
-        shift_id: shiftId,
-        payment_method: paymentMethod,
-        subtotal,
-        tax,
-        total,
-        receipt_number: receiptNumber,
+      // One server transaction (POST /api/v1/pos/sales): sale, lines, cash event, stock
+      // (database trigger, once), food-cost usage, reorder requests, kitchen ticket.
+      let saved;
+      try {
+        saved = await recordSale({ ...order, cardTerminal }, { idempotencyKey: saleKey });
+      } catch (error) {
+        if (!(error instanceof ApiError) && !cardTerminal) return queueOffline();
+        if (error instanceof ApiError && error.code === "price_changed") {
+          throw applyCurrentPrices((error.details as PriceChangedDetails | undefined)?.lines ?? []);
+        }
+        throw error;
+      }
+      return {
+        transaction: saved.transaction,
+        lowStockItems: saved.lowStock.map((l) => ({ name: l.name, newStock: l.currentStock, reorderLevel: l.reorderLevel })),
       };
-      if (halaResult) {
-        txPayload.hala_status = halaResult.status;
-        txPayload.hala_reference = halaResult.reference;
-        txPayload.hala_response = halaResult as unknown;
-        txPayload.hala_charged_at = new Date().toISOString();
-      }
-
-      const { data: transaction, error: txError } = await supabase
-        .from("sales_transactions")
-        .insert([txPayload as never])
-        .select()
-        .single();
-
-      if (txError) throw txError;
-
-      // Create sales items
-      const salesItems = cart.map((item) => ({
-        transaction_id: transaction.id,
-        menu_item_id: item.menuItemId,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        total_price: item.unitPrice * item.quantity,
-        restaurant_id: restaurant.id,
-      }));
-
-      const { error: itemsError } = await supabase.from("sales_items").insert(salesItems);
-
-      if (itemsError) throw itemsError;
-      // Note: result type is widened by the offline branch above; the
-      // rest of the online path implicitly returns void on success which
-      // onSuccess handles via `void`-compatible toast.
-
-      // Create cash_event for shift tracking (all payment methods)
-      if (shiftId) {
-        await supabase.from("cash_events").insert({
-          shift_id: shiftId,
-          restaurant_id: restaurant.id,
-          event_type: "sale",
-          amount: total,
-          payment_method: paymentMethod,
-          created_by: user.id,
-          description: `POS Sale ${transaction.receipt_number}`,
-        });
-      }
-
-      // Auto-deduct inventory based on recipe ingredients
-      const menuItemIds = cart.map((item) => item.menuItemId);
-      
-      const { data: recipeIngredients, error: recipeError } = await supabase
-        .from("recipe_ingredients")
-        .select("menu_item_id, inventory_item_id, quantity_required")
-        .eq("restaurant_id", restaurant.id)
-        .in("menu_item_id", menuItemIds);
-
-      if (recipeError) {
-        console.error("Failed to fetch recipe ingredients:", recipeError);
-      } else if (recipeIngredients && recipeIngredients.length > 0) {
-        const usageMap = new Map<string, number>();
-        
-        for (const cartItem of cart) {
-          const itemRecipes = recipeIngredients.filter(
-            (r) => r.menu_item_id === cartItem.menuItemId
-          );
-          for (const recipe of itemRecipes) {
-            const currentUsage = usageMap.get(recipe.inventory_item_id) || 0;
-            usageMap.set(
-              recipe.inventory_item_id,
-              currentUsage + Number(recipe.quantity_required) * cartItem.quantity
-            );
-          }
-        }
-
-        const inventoryIds = Array.from(usageMap.keys());
-        if (inventoryIds.length > 0) {
-          const { data: inventoryItems, error: invError } = await supabase
-            .from("inventory_items")
-            .select("id, name, current_stock, unit_cost, reorder_level")
-            .in("id", inventoryIds);
-
-          if (invError) {
-            console.error("Failed to fetch inventory items:", invError);
-          } else if (inventoryItems) {
-            const usageRecords = [];
-            const stockUpdates = [];
-            const lowStockItems: { name: string; newStock: number; reorderLevel: number }[] = [];
-            const reorderRequests: any[] = [];
-
-            for (const [inventoryId, quantityUsed] of usageMap) {
-              const item = inventoryItems.find((i) => i.id === inventoryId);
-              if (item) {
-                const unitCost = Number(item.unit_cost);
-                const newStock = Math.max(0, Number(item.current_stock) - quantityUsed);
-                const reorderLevel = Number(item.reorder_level || 0);
-                
-                usageRecords.push({
-                  inventory_item_id: inventoryId,
-                  quantity_used: quantityUsed,
-                  unit_cost: unitCost,
-                  total_cost: unitCost * quantityUsed,
-                  shift_id: shiftId,
-                  restaurant_id: restaurant.id,
-                  created_by: user.id,
-                  usage_date: new Date().toISOString().split("T")[0],
-                  notes: `Auto-deducted from sale ${transaction.receipt_number}`,
-                });
-                
-                stockUpdates.push({
-                  id: inventoryId,
-                  newStock,
-                });
-
-                if (reorderLevel > 0 && newStock <= reorderLevel) {
-                  lowStockItems.push({
-                    name: item.name,
-                    newStock,
-                    reorderLevel,
-                  });
-                  
-                  reorderRequests.push({
-                    restaurant_id: restaurant.id,
-                    inventory_item_id: inventoryId,
-                    requested_quantity: reorderLevel * 2 - newStock,
-                    current_stock: newStock,
-                    reorder_level: reorderLevel,
-                    status: "pending",
-                    notes: `Auto-generated: Stock fell to ${newStock.toFixed(2)} (reorder level: ${reorderLevel})`,
-                  });
-                }
-              }
-            }
-
-            if (usageRecords.length > 0) {
-              const { error: usageError } = await supabase
-                .from("inventory_usage")
-                .insert(usageRecords);
-              if (usageError) {
-                console.error("Failed to record inventory usage:", usageError);
-              }
-            }
-
-            for (const update of stockUpdates) {
-              await supabase
-                .from("inventory_items")
-                .update({ current_stock: update.newStock })
-                .eq("id", update.id);
-            }
-
-            if (reorderRequests.length > 0) {
-              for (const request of reorderRequests) {
-                const { data: existingRequest } = await supabase
-                  .from("reorder_requests")
-                  .select("id")
-                  .eq("inventory_item_id", request.inventory_item_id)
-                  .eq("status", "pending")
-                  .maybeSingle();
-
-                if (!existingRequest) {
-                  await supabase.from("reorder_requests").insert(request);
-                }
-              }
-            }
-
-            return { transaction, lowStockItems };
-          }
-        }
-      }
-
-      return { transaction, lowStockItems: [] };
     },
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: qk.dailyProfit.entityAll("sales") });
@@ -435,7 +286,7 @@ export function SalesRecorder() {
     },
     onError: (error) => {
       console.error("Sale error:", error);
-      toast.error("Failed to record sale");
+      toast.error(error instanceof Error && error.message ? error.message : "Failed to record sale");
     },
   });
 

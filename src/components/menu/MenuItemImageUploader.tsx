@@ -1,6 +1,6 @@
 import { useState, useRef } from "react";
 import { toCdnUrl } from "@/lib/imageCdn";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { Upload, X, ImageIcon, Loader2 } from "lucide-react";
@@ -115,8 +115,8 @@ export function MenuItemImageUploader({
       // Generate unique filename
       const fileName = `${restaurantId}/${menuItemId || "new"}-${Date.now()}.jpg`;
 
-      // Upload to Supabase storage
-      const { error: uploadError } = await supabase.storage
+      // Upload to object storage
+      const { error: uploadError } = await db.storage
         .from("menu-images")
         .upload(fileName, resizedBlob, { 
           upsert: true,
@@ -126,7 +126,7 @@ export function MenuItemImageUploader({
       if (uploadError) throw uploadError;
 
       // Get public URL
-      const { data: { publicUrl } } = supabase.storage
+      const { data: { publicUrl } } = db.storage
         .from("menu-images")
         .getPublicUrl(fileName);
 

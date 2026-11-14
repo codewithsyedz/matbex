@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import {
   Card,
@@ -59,7 +59,7 @@ export default function AdminCurrencies() {
   const { data: currencies, isLoading } = useQuery({
     queryKey: ["platform-currencies", "all"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("platform_currencies" as any)
         .select("*")
         .order("sort_order", { ascending: true });
@@ -76,20 +76,20 @@ export default function AdminCurrencies() {
     mutationFn: async (c: PlatformCurrency) => {
       const payload = { ...c, code: c.code.toUpperCase().trim() };
       if (editing) {
-        const { error } = await supabase
+        const { error } = await db
           .from("platform_currencies" as any)
           .update(payload)
           .eq("code", editing.code);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("platform_currencies" as any)
           .insert(payload);
         if (error) throw error;
       }
       // If marking as default, unset other defaults
       if (payload.is_default) {
-        await supabase
+        await db
           .from("platform_currencies" as any)
           .update({ is_default: false })
           .neq("code", payload.code);
@@ -107,7 +107,7 @@ export default function AdminCurrencies() {
 
   const toggleEnabled = useMutation({
     mutationFn: async (c: PlatformCurrency) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("platform_currencies" as any)
         .update({ enabled: !c.enabled })
         .eq("code", c.code);
@@ -119,7 +119,7 @@ export default function AdminCurrencies() {
 
   const deleteMutation = useMutation({
     mutationFn: async (code: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("platform_currencies" as any)
         .delete()
         .eq("code", code);

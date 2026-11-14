@@ -16,7 +16,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { toast } from "sonner";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
 import { useTenantDomain } from "@/hooks/useTenantDomain";
 import { cn } from "@/lib/utils";
@@ -73,7 +73,7 @@ export function SubdomainSetup() {
     if (!tenant?.id) return;
     setIsProvisioning(true);
     try {
-      const { error } = await (supabase.rpc as any)("provision_tenant_subdomain", {
+      const { error } = await (db.rpc as any)("provision_tenant_subdomain", {
         _tenant_id: tenant.id,
       });
       if (error) throw error;

@@ -3,7 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 /** Flush enough microtasks for chained dynamic-import .then()s to settle. */
 async function flush(times = 10) {
   for (let i = 0; i < times; i++) {
-    // eslint-disable-next-line no-await-in-loop
+     
     await Promise.resolve();
   }
 }

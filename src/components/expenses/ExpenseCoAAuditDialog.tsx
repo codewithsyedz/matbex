@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Dialog,
@@ -137,7 +137,7 @@ export function ExpenseCoAAuditDialog({ open, onOpenChange, onEditExpense }: Pro
     queryKey: ["coa-audit-accounts", tenantId],
     queryFn: async () => {
       if (!tenantId) return [] as Account[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenantId)
@@ -154,7 +154,7 @@ export function ExpenseCoAAuditDialog({ open, onOpenChange, onEditExpense }: Pro
     queryKey: ["coa-audit-categories", restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [] as Category[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_categories")
         .select("id, name, color, account_id")
         .eq("restaurant_id", restaurantId);
@@ -178,7 +178,7 @@ export function ExpenseCoAAuditDialog({ open, onOpenChange, onEditExpense }: Pro
         if (remaining <= 0) break;
         const pageSize = Math.min(PAGE, remaining);
         const to = from + pageSize - 1;
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("expenses")
           .select("id, amount, description, expense_date, category_id, account_id")
           .eq("restaurant_id", restaurantId)
@@ -349,7 +349,7 @@ export function ExpenseCoAAuditDialog({ open, onOpenChange, onEditExpense }: Pro
       });
       for (const [accountId, ids] of byTarget.entries()) {
         const payload: { account_id: string } = { account_id: accountId };
-        const { error } = await (supabase
+        const { error } = await (db
           .from("expenses") as any)
           .update(payload)
           .in("id", ids);

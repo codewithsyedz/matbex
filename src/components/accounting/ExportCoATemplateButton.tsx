@@ -12,7 +12,7 @@ import {
 import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Download, Loader2, FileJson, FileSpreadsheet } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -71,7 +71,7 @@ export function ExportCoATemplateButton() {
       let mappings: any[] = [];
 
       if (includeCoA) {
-        let q = supabase
+        let q = db
           .from("chart_of_accounts")
           .select(
             "account_code, account_name, account_type, description, is_system_account, is_active, parent_id"
@@ -86,7 +86,7 @@ export function ExportCoATemplateButton() {
         const byId = new Map((data || []).map((r: any) => [r.parent_id, r]));
         const byPk = new Map<string, string>();
         // We need a second lookup to map UUIDs to codes
-        const { data: allRows } = await supabase
+        const { data: allRows } = await db
           .from("chart_of_accounts")
           .select("id, account_code")
           .eq("tenant_id", tenantId);
@@ -103,7 +103,7 @@ export function ExportCoATemplateButton() {
       }
 
       if (includeMappings) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("accounting_account_mappings")
           .select(
             "matbex_account_code, matbex_account_name, external_account_id, external_account_name, external_account_type, integration_id"

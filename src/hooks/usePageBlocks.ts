@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
-import { Json } from "@/integrations/supabase/types";
+import { Json } from "@/integrations/db/types";
 
 export type BlockType = 'hero' | 'menu' | 'hours' | 'location' | 'gallery' | 'testimonials' | 'cta' | 'custom';
 
@@ -99,7 +99,7 @@ export function usePageBlocks(pageId: string | null | undefined) {
     queryKey: ["page-blocks", pageId],
     queryFn: async () => {
       if (!pageId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_page_blocks")
         .select("*")
         .eq("page_id", pageId)
@@ -122,7 +122,7 @@ export function usePageBlocks(pageId: string | null | undefined) {
         is_visible: block.is_visible,
       }));
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_page_blocks")
         .insert(blocksToCreate)
         .select();
@@ -142,7 +142,7 @@ export function usePageBlocks(pageId: string | null | undefined) {
       
       const maxOrder = blocks?.reduce((max, b) => Math.max(max, b.block_order), -1) ?? -1;
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_page_blocks")
         .insert({
           page_id: pageId,
@@ -178,7 +178,7 @@ export function usePageBlocks(pageId: string | null | undefined) {
         updateData.content = updates.content as Json;
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_page_blocks")
         .update(updateData)
         .eq("id", blockId)
@@ -207,7 +207,7 @@ export function usePageBlocks(pageId: string | null | undefined) {
 
       // Update each block's order
       for (const update of updates) {
-        const { error } = await supabase
+        const { error } = await db
           .from("tenant_page_blocks")
           .update({ block_order: update.block_order, updated_at: update.updated_at })
           .eq("id", update.id);
@@ -226,7 +226,7 @@ export function usePageBlocks(pageId: string | null | undefined) {
   // Delete a block
   const deleteBlockMutation = useMutation({
     mutationFn: async (blockId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenant_page_blocks")
         .delete()
         .eq("id", blockId);
@@ -245,7 +245,7 @@ export function usePageBlocks(pageId: string | null | undefined) {
   // Toggle block visibility
   const toggleVisibilityMutation = useMutation({
     mutationFn: async ({ blockId, isVisible }: { blockId: string; isVisible: boolean }) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_page_blocks")
         .update({ is_visible: isVisible, updated_at: new Date().toISOString() })
         .eq("id", blockId)
