@@ -182,7 +182,7 @@ export function computeVatReturn(
   }
 
   const sales_: BoxRow[] = [
-    { key: "box1", number: "1", description: "Standard rated domestic sales (15%)", descriptionAr: "المبيعات المحلية الخاضعة للنسبة الأساسية (15%)", hint: "Auto-pulled from your POS sales.", amount: round(box1Net), adjustment: adjustments.box1_adjustment, vatRate: 0.15 },
+    { key: "box1", number: "1", description: "Standard rated domestic sales (15%)", descriptionAr: "المبيعات المحلية الخاضعة للنسبة الأساسية (15%)", hint: "From the books: sales VAT posted to 2200 VAT Payable (all branches), at End of Day.", amount: round(box1Net), adjustment: adjustments.box1_adjustment, vatRate: 0.15 },
     { key: "box1_1", number: "1.1", description: "Standard rated domestic sales (5%)", descriptionAr: "المبيعات المحلية الخاضعة للنسبة الأساسية (5%)", amount: adjustments.box1_1_amount, adjustment: adjustments.box1_1_adjustment, vatRate: 0.05 },
     { key: "box2", number: "2", description: "Private Healthcare/Private Education/First house sales to citizens", descriptionAr: "الرعاية الصحية الخاصة / التعليم الخاص / المنازل الأولى للمواطنين", amount: adjustments.box2_amount, adjustment: adjustments.box2_adjustment, vatRate: null },
     { key: "box3", number: "3", description: "Zero rated domestic sales", descriptionAr: "المبيعات المحلية الخاضعة لنسبة الصفر", amount: adjustments.box3_amount, adjustment: adjustments.box3_adjustment, vatRate: null },
@@ -191,7 +191,7 @@ export function computeVatReturn(
   ];
 
   const purchases_: BoxRow[] = [
-    { key: "box7", number: "7", description: "Standard rated domestic purchases (15%)", descriptionAr: "المشتريات المحلية الخاضعة للنسبة الأساسية (15%)", hint: "Auto-pulled from purchase invoices and expenses.", amount: round(box7Net), adjustment: adjustments.box7_adjustment, vatRate: 0.15 },
+    { key: "box7", number: "7", description: "Standard rated domestic purchases (15%)", descriptionAr: "المشتريات المحلية الخاضعة للنسبة الأساسية (15%)", hint: "From the books: input VAT posted to 1180 Input VAT Recoverable (VAT-split expenses with a tax invoice).", amount: round(box7Net), adjustment: adjustments.box7_adjustment, vatRate: 0.15 },
     { key: "box7_1", number: "7.1", description: "Standard rated domestic purchases (5%)", descriptionAr: "المشتريات المحلية الخاضعة للنسبة الأساسية (5%)", amount: adjustments.box7_1_amount, adjustment: adjustments.box7_1_adjustment, vatRate: 0.05 },
     { key: "box8", number: "8", description: "Imports subject to VAT paid at customs (15%)", descriptionAr: "الواردات الخاضعة للضريبة المدفوعة في الجمارك (15%)", amount: adjustments.box8_amount, adjustment: adjustments.box8_adjustment, vatRate: 0.15 },
     { key: "box8_1", number: "8.1", description: "Imports subject to VAT paid at customs (5%)", descriptionAr: "الواردات الخاضعة للضريبة المدفوعة في الجمارك (5%)", amount: adjustments.box8_1_amount, adjustment: adjustments.box8_1_adjustment, vatRate: 0.05 },

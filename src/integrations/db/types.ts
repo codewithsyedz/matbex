@@ -22605,6 +22605,11 @@ export type Database = {
           expires_at: string
         }[]
       }
+      vat_return_ledger_figures:
+        | {
+        Args: { p_tenant_id: unknown }
+        Returns: Json
+      }
       verify_cron_token:
         | {
         Args: { _token: string }

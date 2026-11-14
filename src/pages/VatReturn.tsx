@@ -64,6 +64,13 @@ const STEPS = [
   { id: 4, label: "Final review" },
 ] as const;
 
+interface LedgerVatFigures {
+  output_vat: number; output_net: number; input_vat: number; input_net: number;
+  unposted_days: number; unposted_vat: number;
+  days_without_eod: number; days_without_eod_vat: number;
+  pending_vat_split: number; pending_vat_split_vat: number;
+}
+
 export default function VatReturn() {
   const { restaurant, user } = useAuth() as any;
   const queryClient = useQueryClient();
@@ -89,52 +96,24 @@ export default function VatReturn() {
   // ---- Stepper state ----
   const [step, setStep] = useState(1);
 
-  // ---- Sales / purchases / expenses queries ----
-  const salesQ = useQuery({
-    queryKey: ["vat-sales", restaurant?.id, startISO, endISO],
-    enabled: !!restaurant?.id,
+  // ---- Figures from the books (whole business: every restaurant and branch) ----
+  // Output VAT = 2200 VAT Payable credited by posted sales; input VAT = 1180 Input VAT
+  // Recoverable. The return agrees with the ledger; what is not in the books yet is listed.
+  const tenantId: string | undefined = restaurant?.tenant_id;
+  const ledgerQ = useQuery({
+    queryKey: ["vat-ledger-figures", tenantId, startISO, endISO],
+    enabled: !!tenantId,
     queryFn: async () => {
-      const { data, error } = await db
-        .from("sales_transactions")
-        .select("subtotal, tax, total")
-        .eq("restaurant_id", restaurant!.id)
-        .gte("created_at", start.toISOString())
-        .lt("created_at", endExclusive.toISOString());
+      const { data, error } = await db.rpc("vat_return_ledger_figures" as never, {
+        p_tenant_id: tenantId, p_start: startISO, p_end: endISO,
+      } as never);
       if (error) throw error;
-      return data ?? [];
+      return data as unknown as LedgerVatFigures;
     },
   });
-
-  const purchasesQ = useQuery({
-    queryKey: ["vat-purchases", restaurant?.id, startISO, endISO],
-    enabled: !!restaurant?.id,
-    queryFn: async () => {
-      const { data, error } = await db
-        .from("purchase_invoices")
-        .select("subtotal, tax_amount, total_amount")
-        .eq("restaurant_id", restaurant!.id)
-        .gte("invoice_date", startISO)
-        .lte("invoice_date", endISO);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
-
-  const expensesQ = useQuery({
-    queryKey: ["vat-expenses", restaurant?.id, startISO, endISO],
-    enabled: !!restaurant?.id,
-    queryFn: async () => {
-      const { data, error } = await db
-        .from("expenses")
-        .select("amount")
-        .eq("restaurant_id", restaurant!.id)
-        .is("deleted_at", null)
-        .gte("expense_date", startISO)
-        .lte("expense_date", endISO);
-      if (error) throw error;
-      return data ?? [];
-    },
-  });
+  const lf = ledgerQ.data;
+  const salesRows = lf ? [{ subtotal: lf.output_net, tax: lf.output_vat, total: lf.output_net + lf.output_vat }] : [];
+  const purchaseRows = lf ? [{ subtotal: lf.input_net, tax_amount: lf.input_vat, total_amount: lf.input_net + lf.input_vat }] : [];
 
   // ---- Previous period (for delta warning) ----
   const prevPeriod = useMemo(() => {
@@ -145,21 +124,18 @@ export default function VatReturn() {
       : monthBounds(d.getFullYear(), d.getMonth());
   }, [start, mode]);
 
-  const prevSalesQ = useQuery({
-    queryKey: ["vat-prev-sales", restaurant?.id, format(prevPeriod.start, "yyyy-MM-dd")],
-    enabled: !!restaurant?.id,
+  const prevLedgerQ = useQuery({
+    queryKey: ["vat-ledger-figures", tenantId, format(prevPeriod.start, "yyyy-MM-dd"), format(prevPeriod.end, "yyyy-MM-dd")],
+    enabled: !!tenantId,
     queryFn: async () => {
-      const e = new Date(prevPeriod.end); e.setDate(e.getDate() + 1);
-      const { data, error } = await db
-        .from("sales_transactions")
-        .select("subtotal, tax, total")
-        .eq("restaurant_id", restaurant!.id)
-        .gte("created_at", prevPeriod.start.toISOString())
-        .lt("created_at", e.toISOString());
+      const { data, error } = await db.rpc("vat_return_ledger_figures" as never, {
+        p_tenant_id: tenantId, p_start: format(prevPeriod.start, "yyyy-MM-dd"), p_end: format(prevPeriod.end, "yyyy-MM-dd"),
+      } as never);
       if (error) throw error;
-      return data ?? [];
+      return data as unknown as LedgerVatFigures;
     },
   });
+  const plf = prevLedgerQ.data;
 
   // ---- Saved filing record ----
   const savedQ = useQuery({
@@ -245,25 +221,32 @@ export default function VatReturn() {
   }, [savedQ.data, startISO, endISO]);
 
   const result = useMemo(
-    () => computeVatReturn(salesQ.data ?? [], purchasesQ.data ?? [], expensesQ.data ?? [], adjustments),
-    [salesQ.data, purchasesQ.data, expensesQ.data, adjustments],
+    () => computeVatReturn(salesRows, purchaseRows, [], adjustments),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [lf, adjustments],
   );
 
   const prevResult = useMemo(
-    () => computeVatReturn(prevSalesQ.data ?? [], [], [], EMPTY_ADJUSTMENTS),
-    [prevSalesQ.data],
+    () => computeVatReturn(plf ? [{ subtotal: plf.output_net, tax: plf.output_vat, total: plf.output_net + plf.output_vat }] : [], [], [], EMPTY_ADJUSTMENTS),
+    [plf],
   );
 
   // ---- Smart warnings ----
   const warnings = useMemo(() => {
     const list: { level: "warn" | "info"; title: string; msg: string }[] = [];
-    const salesCount = (salesQ.data ?? []).length;
-    const purchaseCount = (purchasesQ.data ?? []).length + (expensesQ.data ?? []).length;
-    if (purchaseCount === 0) {
-      list.push({ level: "warn", title: "No purchases found", msg: "Input VAT = 0. Verify that no purchase invoices or expenses are missing for this period." });
-    }
-    if (salesCount > 0 && result.totals.salesVat === 0) {
-      list.push({ level: "warn", title: "Sales exist but VAT = 0", msg: "Likely a data issue - your sales transactions may be missing tax amounts." });
+    if (lf) {
+      if (lf.unposted_days > 0) {
+        list.push({ level: "warn", title: `${lf.unposted_days} closed day(s) not posted`, msg: `About ${fmt(lf.unposted_vat)} of output VAT is not in the books yet. Post them (Daily Profit → Auto-post) before filing.` });
+      }
+      if (lf.days_without_eod > 0) {
+        list.push({ level: "warn", title: `${lf.days_without_eod} day(s) with sales but no End of Day`, msg: `About ${fmt(lf.days_without_eod_vat)} of output VAT. Close them in Sales → Day-End and post them before filing.` });
+      }
+      if (lf.pending_vat_split > 0) {
+        list.push({ level: "info", title: `${lf.pending_vat_split} expense(s) waiting for their VAT split`, msg: `${fmt(lf.pending_vat_split_vat)} of input VAT is recorded on expenses but not yet in 1180. Review them in Pending VAT Split (only VAT on a valid tax invoice is claimable); approved ones are then included here.` });
+      }
+      if (lf.output_vat === 0 && lf.unposted_days === 0) {
+        list.push({ level: "warn", title: "No output VAT in the books", msg: "No posted sales VAT for this period. Check that End of Day was closed and posted." });
+      }
     }
     const prevSalesVat = prevResult.totals.salesVat;
     if (prevSalesVat > 0) {
@@ -284,19 +267,19 @@ export default function VatReturn() {
       list.push({ level: "warn", title: "Manual adjustments without a reason", msg: "Add a note explaining your adjustments before filing - this is logged for audit." });
     }
     return list;
-  }, [salesQ.data, purchasesQ.data, expensesQ.data, result, prevResult, adjustments, notes]);
+  }, [lf, result, prevResult, adjustments, notes]);
 
   // ---- Checklist ----
   const checklist = useMemo(() => {
     const items = [
-      { key: "sales", label: "Sales transactions included", ok: !salesQ.isLoading && (salesQ.data?.length ?? 0) > 0 },
-      { key: "purchases", label: "Purchase invoices captured", ok: !purchasesQ.isLoading && ((purchasesQ.data?.length ?? 0) + (expensesQ.data?.length ?? 0)) > 0 },
-      { key: "vat", label: "No missing VAT values", ok: !(salesQ.data?.length && result.totals.salesVat === 0) },
+      { key: "sales", label: "Every day's sales closed and posted", ok: !!lf && lf.unposted_days === 0 && lf.days_without_eod === 0 },
+      { key: "purchases", label: "Expense VAT reviewed (no pending VAT splits)", ok: !!lf && lf.pending_vat_split === 0 },
+      { key: "vat", label: "Output VAT found in the books", ok: !!lf && lf.output_vat > 0 },
       { key: "adjReviewed", label: "Adjustments reviewed (Boxes 8–10, 14)", ok: notes.trim().length > 0 || warnings.every((w) => !w.title.toLowerCase().includes("adjust")) },
       { key: "period", label: "Period validated", ok: end.getTime() < Date.now() },
     ];
     return items;
-  }, [salesQ, purchasesQ, expensesQ, result, notes, warnings, end]);
+  }, [lf, notes, warnings, end]);
 
   const allChecksOk = checklist.every((c) => c.ok);
 
@@ -362,7 +345,7 @@ export default function VatReturn() {
 
   const periodLabel = formatPeriodLabel(start, end);
   const periodCode = mode === "quarter" ? `Q${quarter} ${year}` : `${MONTHS[month]} ${year}`;
-  const isLoading = salesQ.isLoading || purchasesQ.isLoading || expensesQ.isLoading;
+  const isLoading = ledgerQ.isLoading;
   const labelOf = (r: BoxRow) => (arabicLabels && r.descriptionAr ? r.descriptionAr : r.description);
 
   const setAdj = (k: keyof VatAdjustments) => (e: React.ChangeEvent<HTMLInputElement>) =>
@@ -517,9 +500,9 @@ export default function VatReturn() {
             </CardHeader>
             <CardContent className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <Stat label="Sales transactions" value={salesQ.data?.length ?? 0} />
-                <Stat label="Purchase invoices" value={purchasesQ.data?.length ?? 0} />
-                <Stat label="Expense entries" value={expensesQ.data?.length ?? 0} />
+                <Stat label="Output VAT in the books (2200)" value={fmt(lf?.output_vat ?? 0)} />
+                <Stat label="Input VAT in the books (1180)" value={fmt(lf?.input_vat ?? 0)} />
+                <Stat label="Not in the books yet (est. VAT)" value={fmt((lf?.unposted_vat ?? 0) + (lf?.days_without_eod_vat ?? 0) + (lf?.pending_vat_split_vat ?? 0))} />
               </div>
               <ul className="space-y-2 mt-4">
                 {checklist.map((c) => (
