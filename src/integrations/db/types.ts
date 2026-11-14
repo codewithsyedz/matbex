@@ -21023,6 +21023,17 @@ export type Database = {
           overdue_invoices: number
         }[]
       }
+      days_without_end_of_day:
+        | {
+        Args: { p_restaurant_id: string; p_branch_id?: string }
+        Returns: {
+          sales_date: string
+          branch_id: string
+          branch_name: string
+          sales_count: number
+          pos_total: number
+        }[]
+      }
       deduct_advance_from_payroll:
         | {
         Args: { p_advance_id?: unknown }

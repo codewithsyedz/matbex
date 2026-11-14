@@ -3,7 +3,7 @@ import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { formatZonedYMD } from "@/lib/timezone";
 import { toast } from "sonner";
-import { AiIncomeNeedsReviewError, postSalesWithAi } from "@/lib/aiIncomeJournal";
+import { AiIncomeNeedsReviewError, postSalesToConfirmedAccount, postSalesWithAi } from "@/lib/aiIncomeJournal";
 
 export interface PendingSalesDay {
   id: string;
@@ -14,8 +14,9 @@ export interface PendingSalesDay {
 }
 
 /**
- * Closed/approved daily sales summaries that have not been posted to the ledger yet,
- * looking back `lookbackDays` from the selected date.
+ * Closed/approved daily sales summaries that have not been posted to the ledger yet, up to
+ * the selected date: the last `lookbackDays` days, or every one when `lookbackDays` is 0
+ * (a closed day left unposted is missing from revenue however old it is).
  */
 export function usePendingDailySalesPostings(
   date: Date,
@@ -39,12 +40,12 @@ export function usePendingDailySalesPostings(
         .from("daily_sales_summary")
         .select("id, sales_date, total_sales, status, ledger_posted, branch_id")
         .eq("restaurant_id", restaurant!.id)
-        .gte("sales_date", startStr)
         .lte("sales_date", endStr)
         .in("status", ["closed", "approved"])
         .or("ledger_posted.is.null,ledger_posted.eq.false")
         .order("sales_date", { ascending: true });
 
+      if (lookbackDays > 0) q = q.gte("sales_date", startStr);
       if (branchKey) q = q.eq("branch_id", branchKey);
 
       const { data, error } = await q;
@@ -66,13 +67,17 @@ export function useAutoPostDailySales() {
   const qc = useQueryClient();
 
   return useMutation({
-    mutationFn: async (days: PendingSalesDay[]) => {
+    mutationFn: async (input: PendingSalesDay[] | { days: PendingSalesDay[]; accountId: string | null }) => {
+      // accountId: the revenue account a person chose for all these days (posted as confirmed);
+      // null: the AI chooses per day and asks when unsure.
+      const { days, accountId } = Array.isArray(input) ? { days: input, accountId: null } : input;
       let posted = 0;
       const failures: string[] = [];
       const toConfirm: string[] = [];
       for (const day of days) {
         try {
-          await postSalesWithAi(day.id);
+          if (accountId) await postSalesToConfirmedAccount(day.id, accountId);
+          else await postSalesWithAi(day.id);
           posted++;
         } catch (error) {
           // A person confirms the revenue account on the day's Day-End screen; never here.

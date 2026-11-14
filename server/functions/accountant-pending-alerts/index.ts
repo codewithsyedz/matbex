@@ -47,11 +47,27 @@ serve(async req => {
     ]);
     const pending=expenses.filter(r=>pendingExpenseReasons(r).length);
     const low=inventory.filter(inventoryNeedsAttention);
-    if(!pending.length && !low.length) return response({status:'nothing_pending'});
-    const digest = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(pendingSignature(expenses,inventory)));
+    // Sales missing from the ledger: closed days not posted, and days with POS sales but no End of Day.
+    const [{data: unposted, error: uErr}, {data: noEod, error: nErr}] = await Promise.all([
+      client.from('daily_sales_summary').select('sales_date,total_sales').eq('restaurant_id',RESTAURANT_ID)
+        .in('status',['closed','approved']).or('ledger_posted.is.null,ledger_posted.eq.false'),
+      client.rpc('days_without_end_of_day',{p_restaurant_id:RESTAURANT_ID,p_branch_id:null}),
+    ]);
+    if(uErr) throw uErr;
+    if(nErr) throw nErr;
+    const sum=(rows: Array<Record<string, unknown>>, k: string)=>rows.reduce((s,r)=>s+Number(r[k]||0),0);
+    const sar=(n: number)=>n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2})+' SAR';
+    const u=(unposted||[]) as Array<Record<string, unknown>>, n=(noEod||[]) as Array<Record<string, unknown>>;
+    const salesMissing=[
+      ...(u.length?[`${u.length} closed day(s) not posted · ${sar(sum(u,'total_sales'))} (Daily Profit → Auto-post)`]:[]),
+      ...(n.length?[`${n.length} day(s) with sales but no End of Day · ${sar(sum(n,'pos_total'))} (Sales → Day-End)`]:[]),
+    ];
+    if(!pending.length && !low.length && !salesMissing.length) return response({status:'nothing_pending'});
+    const signature=pendingSignature(expenses,inventory)+JSON.stringify(salesMissing);
+    const digest = await crypto.subtle.digest('SHA-256',new TextEncoder().encode(signature));
     const hash=Array.from(new Uint8Array(digest)).map(b=>b.toString(16).padStart(2,'0')).join('');
     const details=[...pending.slice(0,15).map(r=>`${r.description || 'Expense'} · ${pendingExpenseReasons(r).join(', ')}`),...low.slice(0,15).map(r=>`${r.name} · stock ${r.current_stock}, reorder level ${r.reorder_level}`)];
-    const result=await sendTemplateEmail('accountant-pending-alert','',{templateData:{restaurant:'Riyadh-HQ',expenses:pending.length,vat:pending.filter(r=>r.vat_split_status==='pending').length,inventory:low.length,details},idempotencyKey:`accountant-pending-${RESTAURANT_ID}-${hash}`});
+    const result=await sendTemplateEmail('accountant-pending-alert','',{templateData:{restaurant:'Riyadh-HQ',salesMissing,expenses:pending.length,vat:pending.filter(r=>r.vat_split_status==='pending').length,inventory:low.length,details},idempotencyKey:`accountant-pending-${RESTAURANT_ID}-${hash}`});
     return response(result.sent ? {status:'sent',expenses:pending.length,inventory:low.length} : {status:'suppressed'});
   } catch(error) {
     if(error instanceof Response) return response({error:'Unauthorized'},error.status);
