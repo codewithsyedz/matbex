@@ -90,7 +90,7 @@ async function tenantFixes(tx, t) {
            coalesce(sum(c.current_balance) filter (where c.current_balance < 0), 0)::float8 as credit_balances
     from customers c join restaurants r on r.id = c.restaurant_id where r.tenant_id = ${t.id}`;
   const [{ bal1130 }] = await tx`
-    select coalesce(sum(tr.debit - tr.credit), 0)::float8 as bal1130
+    select coalesce(sum(coalesce(tr.debit, 0) - coalesce(tr.credit, 0)), 0)::float8 as bal1130
     from account_transactions tr where tr.account_id = ${cust} and not coalesce(tr.is_voided, false)`;
   out.unposted = await tx`
     select to_char(sp.created_at, 'YYYY-MM-DD') as paid_on, si.invoice_number, sp.amount::float8 as amount, sp.payment_method
@@ -181,8 +181,8 @@ async function tenantFixes(tx, t) {
   // --- 5. Day-end adjustments posted on top of End of Day ---
   out.dea = await tx`
     select t.branch_id, coalesce(b.name, 'no branch') as branch,
-           sum(t.debit - t.credit) filter (where a.account_code = '1000')::float8 as cash,
-           sum(t.debit - t.credit) filter (where a.account_code = '6999')::float8 as overshort,
+           sum(coalesce(t.debit, 0) - coalesce(t.credit, 0)) filter (where a.account_code = '1000')::float8 as cash,
+           sum(coalesce(t.debit, 0) - coalesce(t.credit, 0)) filter (where a.account_code = '6999')::float8 as overshort,
            (select id from chart_of_accounts where tenant_id = ${t.id} and account_code = '1000' limit 1) as cash_id,
            (select id from chart_of_accounts where tenant_id = ${t.id} and account_code = '6999' limit 1) as os_id,
            exists (select 1 from journal_entry_batches j where j.tenant_id = ${t.id}
