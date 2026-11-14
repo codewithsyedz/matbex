@@ -37,6 +37,8 @@ const ACCOUNTANT_ALLOWED_ROUTES = [
   "/sales",
   // Posting closed sales days (Auto-post) lives here; accountants post them (finance role).
   "/daily-profit",
+  // Payroll Journal: posting needs journal rights (checked by the database).
+  "/staff/payroll-journal",
 ];
 
 export function ProtectedRoute({ children, requireOnboarding = true }: ProtectedRouteProps) {

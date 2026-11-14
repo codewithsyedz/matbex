@@ -84,7 +84,20 @@ serve(async req => {
     const {count: stockCounts, error: sErr}=await client.from('journal_entry_batches').select('id',{count:'exact',head:true})
       .eq('tenant_id',TENANT_ID).like('reference_number',`STOCK-%-${lastMonthEnd.slice(0,7).replace('-','')}`);
     if(sErr) throw sErr;
+    const lastMonthKey=lastMonthEnd.slice(0,7).replace('-','');
+    const {count: overheadItems, error: oiErr}=await client.from('overhead_allocation').select('id',{count:'exact',head:true})
+      .eq('restaurant_id',RESTAURANT_ID).eq('is_active',true).gt('monthly_amount',0).lte('created_at',`${lastMonthEnd}T23:59:59`);
+    if(oiErr) throw oiErr;
+    const {count: overheadAccrued, error: oaErr}=await client.from('journal_entry_batches').select('id',{count:'exact',head:true})
+      .eq('tenant_id',TENANT_ID).like('reference_number',`OHACC-${lastMonthKey}%`);
+    if(oaErr) throw oaErr;
+    const {data: unpaidPayroll, error: pErr}=await client.from('payroll_records').select('amount')
+      .eq('restaurant_id',RESTAURANT_ID).eq('ledger_posted',false).lte('period_end',lastMonthEnd);
+    if(pErr) throw pErr;
+    const payrollTotal=(unpaidPayroll||[]).reduce((s: number,r: Record<string, unknown>)=>s+Number(r.amount||0),0);
     const monthEnd=[
+      ...(overheadItems && !overheadAccrued?[`Rent and overheads not accrued for ${lastMonthLabel} (Accounting → Daily Overhead → Month-end overhead accrual)`]:[]),
+      ...((unpaidPayroll||[]).length?[`${(unpaidPayroll||[]).length} salary record(s) not in the ledger · ${sar(payrollTotal)} (Staff → Payroll Journal)`]:[]),
       ...(cardOutstanding>0.005?[`Card sales waiting for the payout to be recorded · ${sar(cardOutstanding)} (Accounting → Card Settlement Clearing)`]:[]),
       ...(!stockCounts?[`No stock count posted for ${lastMonthLabel}: food cost not booked (COGS True-up → Month-end stock count)`]:[]),
       ...(!lastLocked || lastLocked<lastMonthEnd?[`${lastMonthLabel} is not locked${lastLocked?` (last locked to ${lastLocked})`:' (no month locked yet)'} (Accounting → Period Close)`]:[]),

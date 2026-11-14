@@ -21777,6 +21777,16 @@ export type Database = {
         Args: { p_closure_id?: unknown }
         Returns: undefined
       }
+      overhead_item_accounts:
+        | {
+        Args: { p_tenant_id: string; p_name: string; p_account_id?: string; p_create?: boolean }
+        Returns: {
+          expense_account_id: string
+          expense_label: string
+          accrual_account_id: string
+          accrual_label: string
+        }[]
+      }
       pay_installment:
         | {
         Args: { p_installment_id?: unknown }
@@ -21866,6 +21876,11 @@ export type Database = {
         | {
         Args: { p_summary_id: string }
         Returns: string
+      }
+      post_overhead_month_accrual:
+        | {
+        Args: { p_restaurant_id?: unknown }
+        Returns: Json
       }
       post_overhead_payment_to_ledger:
         | {

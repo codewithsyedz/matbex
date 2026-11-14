@@ -113,6 +113,33 @@ export default function AccountantDashboard() {
     },
   });
   const stockCountMissing = stockCount.isSuccess && stockCount.data === 0;
+  // Rent and overheads: accrued for last month (post_overhead_month_accrual, OHACC-YYYYMM-*)? And
+  // salaries for past periods that never reached the ledger.
+  const overheadAccrual = useQuery({
+    queryKey: ["accountant-overhead-accrual", restaurant?.id, lastMonthKey],
+    enabled: !!restaurant?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const [items, accrued, payroll] = await Promise.all([
+        db.from("overhead_allocation").select("id", { count: "exact", head: true })
+          .eq("restaurant_id", restaurant!.id).eq("is_active", true).gt("monthly_amount", 0).lte("created_at", `${lastMonthEnd}T23:59:59`),
+        db.from("journal_entry_batches").select("id", { count: "exact", head: true })
+          .eq("tenant_id", restaurant!.tenant_id).like("reference_number", `OHACC-${lastMonthKey}%`),
+        db.from("payroll_records").select("amount").eq("restaurant_id", restaurant!.id)
+          .eq("ledger_posted", false).lte("period_end", lastMonthEnd),
+      ]);
+      if (items.error) throw items.error;
+      if (accrued.error) throw accrued.error;
+      if (payroll.error) throw payroll.error;
+      return {
+        missing: (items.count ?? 0) > 0 && (accrued.count ?? 0) === 0,
+        payrollCount: payroll.data?.length ?? 0,
+        payrollTotal: (payroll.data || []).reduce((s, r: { amount: number | null }) => s + Number(r.amount || 0), 0),
+      };
+    },
+  });
+  const overheadMissing = !!overheadAccrual.data?.missing;
+  const payrollUnposted = overheadAccrual.data?.payrollCount ?? 0;
   const reasons = { mapping: L("Account missing", "حساب مفقود"), posting: L("Awaiting posting", "بانتظار الترحيل"), approval: L("Awaiting approval", "بانتظار الموافقة"), vat: L("VAT review", "مراجعة الضريبة") };
   const tiles = [
     { label: L("Input VAT · posted", "ضريبة المدخلات · مرحّلة"), value: money(data?.postedInputVat || 0), detail: L("Expense VAT recorded", "ضريبة المصروفات المسجلة") + " · " + money(totals.vat), icon: Percent, path: "/reports/vat-audit" },
@@ -135,11 +162,13 @@ export default function AccountantDashboard() {
       <div className="space-y-1"><Label htmlFor="accountant-to">{L("To", "إلى")}</Label><Input id="accountant-to" type="date" value={to} min={from} onChange={e => setTo(e.target.value || null)} /></div>
     </div>
     {query.isError ? <div role="alert" className="border border-destructive p-4 text-destructive">{L("Could not load accounting data", "تعذر تحميل بيانات الحسابات")}<Button variant="outline" className="ms-3" onClick={() => query.refetch()}>{L("Retry", "إعادة المحاولة")}</Button></div> : <>
-    {(lastMonthOpen || cardOutstanding > 0.005 || stockCountMissing) && <div role="status" className="rounded-md border bg-card p-4 space-y-2">
+    {(lastMonthOpen || cardOutstanding > 0.005 || stockCountMissing || overheadMissing || payrollUnposted > 0) && <div role="status" className="rounded-md border bg-card p-4 space-y-2">
       <p className="font-medium flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-primary" />{L("Month-end", "إقفال الشهر")}</p>
       <ul className="text-sm space-y-1">
         {cardOutstanding > 0.005 && <li className="flex flex-wrap items-center gap-2">{L("Card sales waiting for the payout to be recorded", "مبيعات بطاقات بانتظار تسجيل التحويل")} · <span className="font-medium tabular-nums">{money(cardOutstanding)}</span>{card.oldestTakingDate && <span className="text-muted-foreground">{L(`oldest ${card.oldestTakingDate}`, `الأقدم ${card.oldestTakingDate}`)}</span>} <Link className="text-primary underline" to="/accounting/card-settlement-clearing">{L("Record payouts from the bank statement", "سجّل التحويلات من كشف البنك")}</Link></li>}
         {stockCountMissing && <li className="flex flex-wrap items-center gap-2">{L(`No stock count posted for ${lastMonthLabel}: food cost for the month is not booked`, `لا يوجد جرد مخزون مرحّل لشهر ${lastMonthLabel}: تكلفة الطعام للشهر غير مسجلة`)} <Link className="text-primary underline" to="/cogs-trueup">{L("Enter the month-end count", "أدخل جرد نهاية الشهر")}</Link></li>}
+        {overheadMissing && <li className="flex flex-wrap items-center gap-2">{L(`Rent and overheads not accrued for ${lastMonthLabel}`, `الإيجار والمصاريف الثابتة غير مستحقة لشهر ${lastMonthLabel}`)} <Link className="text-primary underline" to="/accounting/daily-overhead">{L("Post the month-end accrual", "رحّل استحقاق نهاية الشهر")}</Link></li>}
+        {payrollUnposted > 0 && <li className="flex flex-wrap items-center gap-2">{L(`${payrollUnposted} salary record(s) not in the ledger`, `${payrollUnposted} سجل راتب غير مرحّل`)} · <span className="font-medium tabular-nums">{money(overheadAccrual.data?.payrollTotal || 0)}</span> <Link className="text-primary underline" to="/staff/payroll-journal">{L("Review in the Payroll Journal", "راجعها في دفتر الرواتب")}</Link></li>}
         {lastMonthOpen && <li className="flex flex-wrap items-center gap-2">{L(`${lastMonthLabel} is not locked`, `شهر ${lastMonthLabel} غير مقفل`)}{lastLockedEnd ? <span className="text-muted-foreground">{L(`last locked to ${lastLockedEnd}`, `آخر إقفال حتى ${lastLockedEnd}`)}</span> : <span className="text-muted-foreground">{L("no month has been locked yet", "لم يُقفل أي شهر بعد")}</span>} <Link className="text-primary underline" to="/accounting?tab=period-close">{L("Review and lock in Period Close", "راجع وأقفل من إقفال الفترة")}</Link></li>}
       </ul>
       <p className="text-xs text-muted-foreground">{L("Lock a month once its sales, expenses and payouts are in: nothing can change it afterwards.", "أقفل الشهر بعد ترحيل مبيعاته ومصروفاته وتحويلاته؛ لا يمكن تغييره بعدها.")}</p>

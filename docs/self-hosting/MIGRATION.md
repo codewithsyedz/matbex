@@ -162,6 +162,21 @@ Do a full dry run on a staging server with a copy of production first; time each
    `--csv=<file>` writes them; the list is `accountant-review/unapproved-expenses-smoke-grill.csv`. The
    accountant decides per month: food as inventory purchases / COGS, overheads as expenses, and whether
    each was paid from cash or is owed to the supplier.
+   **Accountant decision: rent, utilities and salaries** (migration 20261114213009, CFO review
+   2026-11-14). Rent and utilities are set up as overhead items (Smoke Grill: 9,214 SAR/month Main
+   Branch, 8,000.33 Al-Wadi) but were only ever expensed by one daily overhead closing (3 Aug, 616.58).
+   The accountant posts each past month from Accounting → Daily Overhead → Month-end overhead accrual
+   (DR rent/electricity/internet / CR 2100 Accrued Liabilities, month end; 6015 Rent Expense is created
+   on Smoke Grill's chart, where 6000 is Salaries). From which month is their call: the business was
+   taken over on 24 May with 26,250 SAR of rent prepaid for 3 months (1300 Prepaid Rent, never
+   released); once those months are accrued, a manual journal DR 2100 / CR 1300 uses the prepayment.
+   The 4 recorded overhead payments (Jan 2,180; Jul 1,700) never reached the ledger (the posting
+   function was broken) and are listed on the same card to post. Salaries are booked on the payment date
+   until now; from this migration a salary paid after its period's month is expensed at the period end
+   via 2150 Payroll Payable. 27 payroll records are not in the ledger: 11 for the period ending
+   12 Jan 2026 (18,950, from before the takeover: one, Hameed's, has its period start typed as
+   12 Dec 2026), and 16 for 16-31 Aug (13,086.67, paid 1 Sept). They are posted from Staff → Payroll
+   Journal, or left out if they were paid outside the business.
 7c. **Billing settings** in production's `.env`: `STRIPE_PRICE_GROWTH` (the 349 SAR/month Growth price) and
    `BRANCH_BILLING_ENABLED=true`, so `sync-branch-billing` (hourly) sets each Starter/Growth subscription's
    quantity to the business's active branches (at least 1, prorated by Stripe; each change in `audit_logs`,
