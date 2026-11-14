@@ -22,6 +22,7 @@ import { Scale, Play, CheckCircle2, AlertTriangle, ArrowRight, Loader2, ShieldCh
 import { toast } from "sonner";
 import { format as fmtDate } from "date-fns";
 import { TrueupScheduler } from "@/components/cogs/TrueupScheduler";
+import { StockCountTrueUpCard } from "@/components/cogs/StockCountTrueUpCard";
 
 type CheckSeverity = "ok" | "warn" | "fail";
 type CheckResult = {
@@ -303,6 +304,9 @@ export default function CogsTrueup() {
             </p>
           </div>
         </div>
+
+        {/* Without recipes there is no per-sale COGS: the month-end count is what books food cost. */}
+        <StockCountTrueUpCard />
 
         <Card>
           <CardHeader className="pb-3">

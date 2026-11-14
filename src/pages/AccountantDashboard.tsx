@@ -99,6 +99,20 @@ export default function AccountantDashboard() {
   const lastLockedEnd = locks.data;
   const lastMonthOpen = locks.isSuccess && (!lastLockedEnd || lastLockedEnd < lastMonthEnd);
   const cardOutstanding = Number(card.outstanding || 0);
+  // Stock count: has last month's food cost been booked (post_stock_count_true_up, STOCK-<code>-YYYYMM)?
+  const lastMonthKey = lastMonthEnd.slice(0, 7).replace("-", "");
+  const stockCount = useQuery({
+    queryKey: ["accountant-stock-count", restaurant?.tenant_id, lastMonthKey],
+    enabled: !!restaurant?.tenant_id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { count, error } = await db.from("journal_entry_batches").select("id", { count: "exact", head: true })
+        .eq("tenant_id", restaurant!.tenant_id).like("reference_number", `STOCK-%-${lastMonthKey}`);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+  const stockCountMissing = stockCount.isSuccess && stockCount.data === 0;
   const reasons = { mapping: L("Account missing", "حساب مفقود"), posting: L("Awaiting posting", "بانتظار الترحيل"), approval: L("Awaiting approval", "بانتظار الموافقة"), vat: L("VAT review", "مراجعة الضريبة") };
   const tiles = [
     { label: L("Input VAT · posted", "ضريبة المدخلات · مرحّلة"), value: money(data?.postedInputVat || 0), detail: L("Expense VAT recorded", "ضريبة المصروفات المسجلة") + " · " + money(totals.vat), icon: Percent, path: "/reports/vat-audit" },
@@ -121,10 +135,11 @@ export default function AccountantDashboard() {
       <div className="space-y-1"><Label htmlFor="accountant-to">{L("To", "إلى")}</Label><Input id="accountant-to" type="date" value={to} min={from} onChange={e => setTo(e.target.value || null)} /></div>
     </div>
     {query.isError ? <div role="alert" className="border border-destructive p-4 text-destructive">{L("Could not load accounting data", "تعذر تحميل بيانات الحسابات")}<Button variant="outline" className="ms-3" onClick={() => query.refetch()}>{L("Retry", "إعادة المحاولة")}</Button></div> : <>
-    {(lastMonthOpen || cardOutstanding > 0.005) && <div role="status" className="rounded-md border bg-card p-4 space-y-2">
+    {(lastMonthOpen || cardOutstanding > 0.005 || stockCountMissing) && <div role="status" className="rounded-md border bg-card p-4 space-y-2">
       <p className="font-medium flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-primary" />{L("Month-end", "إقفال الشهر")}</p>
       <ul className="text-sm space-y-1">
         {cardOutstanding > 0.005 && <li className="flex flex-wrap items-center gap-2">{L("Card sales waiting for the payout to be recorded", "مبيعات بطاقات بانتظار تسجيل التحويل")} · <span className="font-medium tabular-nums">{money(cardOutstanding)}</span>{card.oldestTakingDate && <span className="text-muted-foreground">{L(`oldest ${card.oldestTakingDate}`, `الأقدم ${card.oldestTakingDate}`)}</span>} <Link className="text-primary underline" to="/accounting/card-settlement-clearing">{L("Record payouts from the bank statement", "سجّل التحويلات من كشف البنك")}</Link></li>}
+        {stockCountMissing && <li className="flex flex-wrap items-center gap-2">{L(`No stock count posted for ${lastMonthLabel}: food cost for the month is not booked`, `لا يوجد جرد مخزون مرحّل لشهر ${lastMonthLabel}: تكلفة الطعام للشهر غير مسجلة`)} <Link className="text-primary underline" to="/cogs-trueup">{L("Enter the month-end count", "أدخل جرد نهاية الشهر")}</Link></li>}
         {lastMonthOpen && <li className="flex flex-wrap items-center gap-2">{L(`${lastMonthLabel} is not locked`, `شهر ${lastMonthLabel} غير مقفل`)}{lastLockedEnd ? <span className="text-muted-foreground">{L(`last locked to ${lastLockedEnd}`, `آخر إقفال حتى ${lastLockedEnd}`)}</span> : <span className="text-muted-foreground">{L("no month has been locked yet", "لم يُقفل أي شهر بعد")}</span>} <Link className="text-primary underline" to="/accounting?tab=period-close">{L("Review and lock in Period Close", "راجع وأقفل من إقفال الفترة")}</Link></li>}
       </ul>
       <p className="text-xs text-muted-foreground">{L("Lock a month once its sales, expenses and payouts are in: nothing can change it afterwards.", "أقفل الشهر بعد ترحيل مبيعاته ومصروفاته وتحويلاته؛ لا يمكن تغييره بعدها.")}</p>

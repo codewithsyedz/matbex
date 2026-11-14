@@ -81,8 +81,12 @@ serve(async req => {
       }
     }
     const lastLocked=(lock?.[0]?.period_end as string|undefined) ?? null;
+    const {count: stockCounts, error: sErr}=await client.from('journal_entry_batches').select('id',{count:'exact',head:true})
+      .eq('tenant_id',TENANT_ID).like('reference_number',`STOCK-%-${lastMonthEnd.slice(0,7).replace('-','')}`);
+    if(sErr) throw sErr;
     const monthEnd=[
       ...(cardOutstanding>0.005?[`Card sales waiting for the payout to be recorded · ${sar(cardOutstanding)} (Accounting → Card Settlement Clearing)`]:[]),
+      ...(!stockCounts?[`No stock count posted for ${lastMonthLabel}: food cost not booked (COGS True-up → Month-end stock count)`]:[]),
       ...(!lastLocked || lastLocked<lastMonthEnd?[`${lastMonthLabel} is not locked${lastLocked?` (last locked to ${lastLocked})`:' (no month locked yet)'} (Accounting → Period Close)`]:[]),
     ];
     if(!pending.length && !low.length && !salesMissing.length && !monthEnd.length) return response({status:'nothing_pending'});

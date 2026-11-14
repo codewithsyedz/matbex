@@ -21917,6 +21917,11 @@ export type Database = {
         Args: { p_advance_id: string }
         Returns: string
       }
+      post_stock_count_true_up:
+        | {
+        Args: { p_restaurant_id?: unknown }
+        Returns: Json
+      }
       post_supplier_payment_to_ledger:
         | {
         Args: { p_payment_id: string }
