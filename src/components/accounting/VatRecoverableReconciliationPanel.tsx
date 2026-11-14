@@ -42,17 +42,21 @@ export function VatRecoverableReconciliationPanel({
   branchId = null,
 }: Props) {
   const { format: formatCurrency } = useCurrency();
-  const { isOwner, isAccountant } = useAuth() as any;
+  const { isOwner, isAccountant, tenant, profile } = useAuth() as any;
+  // Accounts and ledger lines belong to the business (tenant); expenses and invoices to the
+  // restaurant. Filtering tenant_id by the restaurant id matched nothing except where the two
+  // ids happen to be equal.
+  const tenantId: string | undefined = tenant?.id ?? profile?.tenant_id;
   const [correctionPlanId, setCorrectionPlanId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["vat-recoverable-recon", restaurantId, dateFrom, dateTo, branchId],
-    enabled: !!restaurantId && !!dateFrom && !!dateTo,
+    queryKey: ["vat-recoverable-recon", tenantId, restaurantId, dateFrom, dateTo, branchId],
+    enabled: !!tenantId && !!restaurantId && !!dateFrom && !!dateTo,
     queryFn: async () => {
       const { data: accounts, error: accErr } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name")
-        .eq("tenant_id", restaurantId!);
+        .eq("tenant_id", tenantId!);
       if (accErr) throw accErr;
 
       const vatAccounts = (accounts ?? []).filter((a: any) =>
@@ -66,7 +70,7 @@ export function VatRecoverableReconciliationPanel({
         let q = db
           .from("account_transactions")
           .select("batch_id, account_id, debit, credit, transaction_date, is_voided")
-          .eq("tenant_id", restaurantId!)
+          .eq("tenant_id", tenantId!)
           .in("account_id", accountIds)
           .gte("transaction_date", dateFrom)
           .lte("transaction_date", dateTo);
@@ -105,7 +109,7 @@ export function VatRecoverableReconciliationPanel({
         .select(
           "id, description, supplier_name, provider, purchase_date, branch_id, vat_amount, finance_vat_amount, status",
         )
-        .eq("tenant_id", restaurantId!)
+        .eq("tenant_id", tenantId!)
         .gte("purchase_date", dateFrom)
         .lte("purchase_date", dateTo);
       if (branchId) instQ = instQ.eq("branch_id", branchId);

@@ -52,13 +52,15 @@ export function VatRemittancePanel({
   periodEnd,
   vatReturnId,
 }: VatRemittancePanelProps) {
-  const { tenant } = useAuth() as any;
+  const { tenant, profile } = useAuth() as any;
   const { branches, activeBranchId, pinnedBranchId } = useBranch();
   const { format: fmtMoney } = useCurrency();
   const queryClient = useQueryClient();
   const { accounts } = useChartOfAccounts();
 
-  const tenantId = restaurantId ?? tenant?.id;
+  // The ledger is per business (tenant), not per restaurant: a restaurant id here matched
+  // nothing except where the two ids happen to be equal.
+  const tenantId: string | undefined = tenant?.id ?? profile?.tenant_id;
   const [branchId, setBranchId] = useState<string>(pinnedBranchId ?? activeBranchId ?? "all");
   const [open, setOpen] = useState(false);
   const [paymentDate, setPaymentDate] = useState(format(new Date(), "yyyy-MM-dd"));
