@@ -25,7 +25,7 @@ export interface SubscriptionPaymentRow {
 }
 
 /** Opens Moyasar's payment page for a stored subscription payment; returns its URL. */
-export async function openPaymentPage(row: SubscriptionPaymentRow, description: string, returnUrl: string): Promise<string> {
+export async function openPaymentPage(row: SubscriptionPaymentRow, description: string, returnUrl: string, expiresInMinutes?: number): Promise<string> {
   const db = serviceClient();
   const r = await moyasarAdapter.createPaymentIntent({
     tenantId: row.tenant_id ?? "",
@@ -34,6 +34,7 @@ export async function openPaymentPage(row: SubscriptionPaymentRow, description: 
     idempotencyKey: row.id,
     returnUrl,
     notifyUrl: notifyUrl("moyasar"),
+    expiresInMinutes,
     metadata: { description },
     credentials: platformCredentials(),
   });

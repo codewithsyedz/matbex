@@ -102,7 +102,7 @@ export const moyasarAdapter: PaymentAdapter = {
       description,
       ...(input.notifyUrl ? { callback_url: input.notifyUrl } : {}),
       ...(input.returnUrl ? { success_url: input.returnUrl, back_url: input.returnUrl } : {}),
-      expired_at: new Date(Date.now() + INVOICE_TTL_MINUTES * 60_000).toISOString(),
+      expired_at: new Date(Date.now() + (input.expiresInMinutes ?? INVOICE_TTL_MINUTES) * 60_000).toISOString(),
     });
     if (inv.amount !== halalas || inv.currency !== "SAR") throw new Error("Moyasar returned a different amount or currency");
     return {

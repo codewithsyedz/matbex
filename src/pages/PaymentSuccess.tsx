@@ -23,13 +23,38 @@ export default function PaymentSuccess() {
   const [registration, setRegistration] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const sessionId = params.get("session_id");
+  const registrationPaymentId = params.get("registration");
   const subscription = params.get("flow") === "subscription";
 
   useEffect(() => {
     let cancelled = false;
-    if (!sessionId) { setStatus("missing"); return; }
+    if (!sessionId && !registrationPaymentId) { setStatus("missing"); return; }
     setStatus("verifying");
+    // Moyasar registration payment: the server confirms it with Moyasar and creates the account.
+    async function verifyRegistration() {
+      for (let i = 0; i < 8 && !cancelled; i++) {
+        const { data, error } = await db.functions.invoke("complete-registration-payment", { body: { payment_id: registrationPaymentId } });
+        if (data?.success) {
+          if (!cancelled) { setRegistration(true); setStatus("success"); }
+          return;
+        }
+        let message = data?.error;
+        if (!message && error && (error as { context?: unknown }).context instanceof Response) {
+          message = (await ((error as { context: Response }).context.clone().json().catch(() => null)))?.error;
+        }
+        if (data?.status && data.status !== "pending") throw new Error("The payment did not go through. Use the payment link in your email to try again.");
+        if (error && !data) throw new Error(message || error.message);
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+      throw new Error("Your payment is still being confirmed. You will receive your sign-in details by email shortly.");
+    }
     async function verify() {
+      if (registrationPaymentId) {
+        try { await verifyRegistration(); } catch (error) {
+          if (!cancelled) { setErrorMessage(error instanceof Error ? error.message : "Payment verification failed"); setStatus("error"); }
+        }
+        return;
+      }
       try {
         const { data: auth } = await db.auth.getSession();
         const fn = subscription || auth.session ? "verify-subscription-payment" : "complete-registration-payment";
@@ -59,7 +84,7 @@ export default function PaymentSuccess() {
     }
     void verify();
     return () => { cancelled = true; };
-  }, [sessionId, subscription, attempt]);
+  }, [sessionId, registrationPaymentId, subscription, attempt]);
 
   return (
     <main dir={ar ? "rtl" : "ltr"} className="min-h-screen bg-background flex items-center justify-center p-4">

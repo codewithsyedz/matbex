@@ -6,6 +6,7 @@ import { createClient } from "@matbex/client";
 import { Resend } from "resend";
 
 import { buildCorsHeaders } from "../_shared/cors.ts";
+import { settleSubscriptionPayment, type SubscriptionPaymentRow } from "../_shared/billing/platformMoyasar.ts";
 const logStep = (step: string, details?: unknown) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[COMPLETE-REGISTRATION-PAYMENT] ${step}${detailsStr}`);
@@ -17,19 +18,15 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Set once this call has claimed the application; released again if provisioning fails.
+  let claimedApplicationId: string | null = null;
   try {
     logStep("Function started");
 
-    const { session_id } = await req.json();
-    
-    if (!session_id) {
-      throw new Error("Missing session_id");
+    const { session_id, payment_id } = await req.json();
+    if (!session_id && !payment_id) {
+      throw new Error("Missing payment reference");
     }
-
-    logStep("Verifying session", { session_id });
-
-    const stripeKey = env("STRIPE_SECRET_KEY");
-    if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
 
     const dbAdmin = createClient(
       env("API_URL") ?? "",
@@ -37,31 +34,45 @@ serve(async (req) => {
       { auth: { persistSession: false } }
     );
 
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-
-    // Retrieve the checkout session
-    const session = await stripe.checkout.sessions.retrieve(session_id);
-    logStep("Session retrieved", { 
-      status: session.status, 
-      payment_status: session.payment_status,
-      application_id: session.metadata?.application_id 
-    });
-
-    if (session.status !== "complete" || session.payment_status !== "paid") {
-      return new Response(JSON.stringify({ 
-        success: false, 
-        error: "Payment not completed",
-        status: session.status,
-        payment_status: session.payment_status,
-      }), {
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-        status: 200,
-      });
+    let applicationId: string | undefined;
+    // Moyasar (Matbex's account): the payment must be confirmed by Moyasar itself.
+    let moyasarPayment: { id: string; months: number; plan_id: string | null } | null = null;
+    if (payment_id) {
+      if (typeof payment_id !== "string" || !/^[0-9a-f-]{36}$/i.test(payment_id)) throw new Error("Invalid payment reference");
+      const { data: row } = await dbAdmin.from("subscription_payments").select("*")
+        .eq("id", payment_id).eq("kind", "registration").maybeSingle();
+      if (!row) throw new Error("Payment not found");
+      const status = await settleSubscriptionPayment(row as SubscriptionPaymentRow);
+      if (status !== "paid") {
+        return new Response(JSON.stringify({ success: false, error: "Payment not completed", status }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      applicationId = row.application_id ?? undefined;
+      moyasarPayment = { id: row.id, months: Number(row.months) || 1, plan_id: row.plan_id };
+    } else {
+      // Legacy Stripe payment links sent before the move to Moyasar.
+      logStep("Verifying session", { session_id });
+      const stripeKey = env("STRIPE_SECRET_KEY");
+      if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
+      const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
+      const session = await stripe.checkout.sessions.retrieve(session_id);
+      if (session.status !== "complete" || session.payment_status !== "paid") {
+        return new Response(JSON.stringify({
+          success: false,
+          error: "Payment not completed",
+          status: session.status,
+          payment_status: session.payment_status,
+        }), {
+          headers: { ...corsHeaders, "Content-Type": "application/json" },
+          status: 200,
+        });
+      }
+      applicationId = session.metadata?.application_id;
     }
-
-    const applicationId = session.metadata?.application_id;
     if (!applicationId) {
-      throw new Error("Application ID not found in session metadata");
+      throw new Error("Application not found for this payment");
     }
 
     // Fetch the application
@@ -88,6 +99,20 @@ serve(async (req) => {
       });
     }
 
+    // Claim the application so the browser return and Moyasar's notification cannot both
+    // create the account.
+    const { data: claimed } = await dbAdmin.from("tenant_applications")
+      .update({ payment_status: "provisioning" })
+      .eq("id", applicationId).neq("payment_status", "provisioning").neq("status", "approved")
+      .select("id");
+    if (claimed?.length) claimedApplicationId = applicationId;
+    if (!claimed?.length) {
+      return new Response(JSON.stringify({ success: true, already_processed: true, message: "Your account is being created. Check your email for credentials." }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+        status: 200,
+      });
+    }
+
     logStep("Creating tenant and user", { applicationId, email: application.email });
 
     // Generate secure temporary password
@@ -104,12 +129,23 @@ serve(async (req) => {
         name: application.company_name,
         slug: application.company_name.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, ''),
         status: 'active',
-        plan_id: application.plan_id,
+        plan_id: moyasarPayment?.plan_id ?? application.plan_id,
+        ...(moyasarPayment
+          ? {
+              billing_provider: 'moyasar',
+              current_period_end: new Date(new Date().setMonth(new Date().getMonth() + moyasarPayment.months)).toISOString(),
+            }
+          : {}),
       })
       .select()
       .single();
 
     if (tenantError) throw new Error(`Failed to create tenant: ${tenantError.message}`);
+    if (moyasarPayment) {
+      await dbAdmin.from("subscription_payments")
+        .update({ tenant_id: tenant.id, period_start: new Date().toISOString(), period_end: tenant.current_period_end })
+        .eq("id", moyasarPayment.id);
+    }
     logStep("Tenant created", { tenantId: tenant.id });
 
     // Create restaurant
@@ -221,6 +257,12 @@ serve(async (req) => {
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     logStep("ERROR", { message: errorMessage });
+    if (claimedApplicationId) {
+      // Let a retry (the payment page return or Moyasar's next notification) try again.
+      const db = createClient(env("API_URL") ?? "", env("SERVICE_ROLE_KEY") ?? "", { auth: { persistSession: false } });
+      await db.from("tenant_applications").update({ payment_status: "paid" })
+        .eq("id", claimedApplicationId).eq("payment_status", "provisioning").neq("status", "approved");
+    }
     return new Response(JSON.stringify({ error: errorMessage, success: false }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
       status: 500,

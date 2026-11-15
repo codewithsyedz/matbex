@@ -30,6 +30,8 @@ export const DEFAULT_FUNCTION_SCHEDULES: Record<string, string | null> = {
   "sync-branch-billing": "20 * * * *",
   // Same check the accountant dashboard runs on refresh; unchanged backlogs are not re-sent.
   "accountant-pending-alerts": "0 9 * * *",
+  // Moyasar-billed subscriptions: renewal reminders (7/3/1 days) and past due after the paid-until date.
+  "subscription-renewals": "0 9 * * *",
   // Present but not scheduled by default — enable via JOB_SCHEDULES_JSON if you used them:
   "process-posting-job": null,
   "process-export-requests": null,

@@ -78,7 +78,17 @@ serve(async (req) => {
         .eq("moyasar_invoice_id", evt.gatewayIntentId).maybeSingle();
       if (sub) {
         try {
-          await settleSubscriptionPayment(sub as SubscriptionPaymentRow);
+          const status = await settleSubscriptionPayment(sub as SubscriptionPaymentRow);
+          // A paid registration: create the account even if the applicant closed the page.
+          if (status === "paid" && sub.kind === "registration") {
+            const r = await fetch(`${env("API_URL")}/functions/v1/complete-registration-payment`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json", apikey: env("ANON_KEY") ?? "" },
+              body: JSON.stringify({ payment_id: sub.id }),
+            });
+            const out = await r.json().catch(() => ({}));
+            if (!r.ok || out?.success === false) throw new Error(out?.error ?? `Account creation failed (${r.status})`);
+          }
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
           await db.from("payment_webhook_events").update({ error: msg })

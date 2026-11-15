@@ -12,6 +12,9 @@ import { env } from "../_runtime/env.ts";
 //   - customer.subscription.deleted       → mark tenant canceled
 //   - invoice.payment_failed              → mark tenant past_due
 //
+// Accounts moved to Moyasar (tenants.billing_provider = moyasar) are left alone: their paid-until
+// date comes from Moyasar payments, and a Stripe subscription ending must not cancel them.
+//
 // Config: this function MUST keep verify_jwt = false (Stripe doesn't
 // send the API JWTs). Authentication is the HMAC signature.
 // =====================================================================
@@ -149,7 +152,7 @@ serve(async (req) => {
           status: "active",
           stripe_customer_id: customerId ?? undefined,
           trial_ends_at: null,
-        }).eq("id", tenantId);
+        }).eq("id", tenantId).neq("billing_provider", "moyasar");
         log("checkout: tenant activated", { tenantId });
         await maybeProvisionSubdomain(tenantId);
         break;
@@ -170,7 +173,7 @@ serve(async (req) => {
           current_period_end: periodEnd
             ? new Date(periodEnd * 1000).toISOString()
             : null,
-        }).eq("id", tenantId);
+        }).eq("id", tenantId).neq("billing_provider", "moyasar");
         log("sub synced", { tenantId, status: sub.status });
         if (sub.status === "active" || sub.status === "trialing") {
           await maybeProvisionSubdomain(tenantId);
@@ -185,7 +188,7 @@ serve(async (req) => {
         if (!tenantId) break;
         await db.from("tenants").update({
           status: "canceled",
-        }).eq("id", tenantId);
+        }).eq("id", tenantId).neq("billing_provider", "moyasar");
         log("sub canceled", { tenantId });
         break;
       }
@@ -198,7 +201,7 @@ serve(async (req) => {
         if (!tenantId) break;
         await db.from("tenants").update({
           status: "past_due",
-        }).eq("id", tenantId);
+        }).eq("id", tenantId).neq("billing_provider", "moyasar");
         log("invoice failed → past_due", { tenantId });
         break;
       }

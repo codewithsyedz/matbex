@@ -2,16 +2,14 @@ import { env } from "../_runtime/env.ts";
 import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
-import Stripe from "stripe";
 import { Resend } from "resend";
 import { requireSuperAdmin } from "../_shared/superadmin.ts";
+import { openPaymentPage, type SubscriptionPaymentRow } from "../_shared/billing/platformMoyasar.ts";
+
+/** The emailed payment link stays payable this long. */
+const REGISTRATION_LINK_DAYS = 7;
 
 import { buildCorsHeaders } from "../_shared/cors.ts";
-// Plan to Stripe price ID mapping
-const PLAN_PRICES: Record<string, string> = {
-  pro: "price_1SFOA52MlXQdnUvp6fvItZdK",
-  enterprise: "price_1SFOAM2MlXQdnUvpxav6zSpe",
-};
 
 interface ApproveApplicationRequest {
   application_id: string;
@@ -80,10 +78,10 @@ serve(async (req) => {
       });
     }
 
-    // Get plan name and validate it has a Stripe price
+    // Get plan name
     const planName = application.plans?.name?.toLowerCase() || '';
 
-    // === TRIAL PLAN: provision tenant directly, skip Stripe ===
+    // === TRIAL PLAN: provision tenant directly, no payment ===
     if (planName === 'trial') {
       logStep("Trial plan detected - provisioning tenant directly");
 
@@ -203,68 +201,35 @@ serve(async (req) => {
       });
     }
 
-    const priceId = PLAN_PRICES[planName];
-
-    if (!priceId) {
-      return new Response(JSON.stringify({ 
-        error: `Plan "${application.plans?.name}" does not have a Stripe price configured` 
-      }), {
+    // Paid plan: the first month is paid through Matbex's Moyasar account before the account is
+    // created (complete-registration-payment, on return or on Moyasar's notification).
+    const planPrice = Number(application.plans?.price ?? 0);
+    if (!application.plan_id || !(planPrice > 0) || planName === "free") {
+      return new Response(JSON.stringify({ error: `Plan "${application.plans?.name}" cannot be paid online` }), {
         status: 400,
         headers: { 'Content-Type': 'application/json', ...corsHeaders },
       });
     }
-
-    // Initialize Stripe
-    const stripeKey = env("STRIPE_SECRET_KEY");
-    if (!stripeKey) throw new Error("STRIPE_SECRET_KEY is not set");
-    
-    const stripe = new Stripe(stripeKey, { apiVersion: "2025-08-27.basil" });
-
-    // Check if customer already exists or create new one
-    const customers = await stripe.customers.list({ email: application.email, limit: 1 });
-    let customerId: string;
-    
-    if (customers.data.length > 0) {
-      customerId = customers.data[0].id;
-      logStep("Found existing Stripe customer", { customerId });
-    } else {
-      const customer = await stripe.customers.create({
-        email: application.email,
-        name: application.full_name,
-        metadata: {
-          application_id: application.id,
-          company_name: application.company_name,
-        },
-      });
-      customerId = customer.id;
-      logStep("Created new Stripe customer", { customerId });
-    }
-
     const siteUrl = env('SITE_URL') || 'https://matbex.com';
+    const { data: payRow, error: payErr } = await dbAdmin.from("subscription_payments").insert({
+      application_id: application.id,
+      kind: "registration",
+      mode: "registration",
+      plan_id: application.plan_id,
+      months: 1,
+      branches: 1,
+      amount: planPrice,
+      created_by: requester.id,
+    }).select("*").single();
+    if (payErr || !payRow) throw new Error(payErr?.message ?? "Could not create the payment");
+    const paymentUrl = await openPaymentPage(
+      payRow as SubscriptionPaymentRow,
+      `Matbex ${planName === "pro" ? "Growth" : application.plans?.name} for ${application.company_name}, first month`,
+      `${siteUrl}/payment-success?registration=${payRow.id}`,
+      REGISTRATION_LINK_DAYS * 24 * 60,
+    );
+    logStep("Moyasar payment page created", { paymentId: payRow.id });
 
-    // Create Stripe Payment Link
-    const session = await stripe.checkout.sessions.create({
-      customer: customerId,
-      line_items: [{ price: priceId, quantity: 1 }],
-      mode: "subscription",
-      success_url: `${siteUrl}/payment-success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${siteUrl}/register?payment=canceled`,
-      metadata: {
-        application_id: application.id,
-        plan_name: planName,
-        type: "registration_approval",
-      },
-      subscription_data: {
-        metadata: {
-          application_id: application.id,
-          plan_name: planName,
-        },
-      },
-    });
-
-    logStep("Stripe checkout session created", { sessionId: session.id, url: session.url });
-
-    // Update application status to pending_payment
     await dbAdmin
       .from('tenant_applications')
       .update({
@@ -272,8 +237,6 @@ serve(async (req) => {
         reviewed_by: requester.id,
         reviewed_at: new Date().toISOString(),
         review_notes: review_notes || null,
-        stripe_session_id: session.id,
-        stripe_customer_id: customerId,
         payment_status: 'pending',
       })
       .eq('id', application_id);
@@ -292,7 +255,7 @@ serve(async (req) => {
         application.company_name, 
         application.plans?.name || 'Pro',
         application.plans?.price || 0,
-        session.url!
+        paymentUrl
       ),
     });
 
@@ -301,7 +264,7 @@ serve(async (req) => {
     return new Response(JSON.stringify({ 
       success: true, 
       message: 'Application approved. Payment link sent to customer.',
-      payment_url: session.url,
+      payment_url: paymentUrl,
     }), {
       status: 200,
       headers: { 'Content-Type': 'application/json', ...corsHeaders },

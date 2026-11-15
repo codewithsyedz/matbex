@@ -76,12 +76,14 @@ serve(async (req) => {
     // should not be gated by Stripe subscription status.
     const { data: tenantRow } = await db
       .from("tenants")
-      .select("plan_id, plans:plan_id ( id, name, price, stripe_price_id )")
+      .select("plan_id, billing_provider, current_period_end, plans:plan_id ( id, name, price, stripe_price_id )")
       .eq("id", tenantId)
       .maybeSingle();
     const plan = (tenantRow as any)?.plans ?? null;
+    // Billed through Moyasar (paid per period): the paid-until date decides, nothing to ask Stripe.
+    const moyasarBilled = (tenantRow as any)?.billing_provider === "moyasar" && Number(plan?.price ?? 0) > 0;
     const billingExempt =
-      !!plan && (Number(plan.price ?? 0) === 0 || !plan.stripe_price_id);
+      !moyasarBilled && !!plan && (Number(plan.price ?? 0) === 0 || !plan.stripe_price_id);
 
     // 1. Refresh subscription cache if stale
     let { data: cache } = await db
@@ -94,7 +96,9 @@ serve(async (req) => {
       ? Date.now() - new Date(cache.updated_at).getTime()
       : Infinity;
 
-    if (!billingExempt && (!cache || cacheAge > STATUS_STALE_MS)) {
+    if (moyasarBilled) {
+      cache = await refreshFromPaidUntil(db, tenantId, (tenantRow as any)?.current_period_end ?? null);
+    } else if (!billingExempt && (!cache || cacheAge > STATUS_STALE_MS)) {
       cache = await refreshFromStripe(db, tenantId, user.email ?? "");
     }
 
@@ -213,6 +217,22 @@ function computeSubMode(cache: any): "active" | "grace" | "limited" | "locked" {
     return "limited";
   }
   return "limited";
+}
+
+/** Moyasar-billed: active until the paid-until date, then GRACE_DAYS of grace (computeSubMode). */
+async function refreshFromPaidUntil(db: any, tenantId: string, periodEnd: string | null) {
+  const end = periodEnd ? new Date(periodEnd).getTime() : 0;
+  const status = end > Date.now() ? "active" : "past_due";
+  const row = {
+    tenant_id: tenantId,
+    subscription_status: status,
+    current_period_end: periodEnd,
+    grace_ends_at: status === "active" ? null : new Date((end || Date.now()) + GRACE_DAYS * 24 * 3600 * 1000).toISOString(),
+    stripe_customer_id: null,
+    updated_at: new Date().toISOString(),
+  };
+  await db.from("license_status_cache").upsert(row);
+  return row;
 }
 
 async function refreshFromStripe(db: any, tenantId: string, _email: string) {

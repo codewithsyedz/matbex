@@ -43,6 +43,8 @@ export interface CreateIntentInput {
   returnUrl?: string;
   /** Server-to-server notification URL (payments-webhook/<gateway>). */
   notifyUrl?: string;
+  /** How long the payment page stays payable (default: the gateway adapter's own). */
+  expiresInMinutes?: number;
   metadata?: Record<string, unknown>;
   credentials: GatewayCredentials;
 }

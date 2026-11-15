@@ -32,6 +32,7 @@
     "send-webhook-notifications",
     "send-weekly-digest",
     "stripe-webhook",
+    "subscription-renewals",
     "sync-branch-billing",
     "terminal-api",
     "track-login-attempt",
