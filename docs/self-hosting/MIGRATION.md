@@ -81,10 +81,10 @@ Everything is in `.env.example`. Generate secrets with `npm --prefix server run 
   `pbpaste | ssh <server> "bash ~/set-env.sh MATBEX_MOYASAR_SECRET_KEY"`. Without it, Billing shows
   "Online payment for Matbex subscriptions is not set up yet". Restaurants' keys live per restaurant
   in Settings → Payments; never put a restaurant key in the environment.
-* Existing Stripe customers: migration `move_stripe_customers_to_moyasar` moves accounts with a
-  known paid-until date; their Stripe subscriptions must be set to **cancel at period end** in the
-  Stripe dashboard. Accounts with a Stripe customer but no paid-until date (Smoke Grill) stay on
-  Stripe until an admin sets `current_period_end` and `billing_provider = 'moyasar'`.
+* Existing Stripe customers (Smoke Grill, paid until 5 Dec 2026; Starter Walkthrough, 8 Dec 2026)
+  were moved to Moyasar billing by migrations, and their Stripe subscriptions were cancelled
+  outright on 2026-11-15. The hosted system's stripe-webhook may mark them cancelled before cutover;
+  migration `moyasar_paid_accounts_active` sets still-paid Moyasar accounts back to active.
 * `subscription-renewals` runs daily at 09:00 (reminders 7/3/1 days, past due after the date);
   keep it `null` in `JOB_SCHEDULES_JSON` on staging.
 
