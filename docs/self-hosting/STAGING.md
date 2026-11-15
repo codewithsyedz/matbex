@@ -97,6 +97,24 @@ Done on 2026-11-11 with the export of 2026-11-10 (5 tenants, 14 users, 48,558 sa
    Then `docker compose up -d worker`; it registered 11 schedules.
 5. Smoke test (27/27 with production data), then remove `prodcopy` and the export.
 
+Refreshing staging with newer production data (done 2026-11-15 with that day's export: 7 tenants,
+16 users, 49,815 sales; 327/327 tables match, 641,343 rows, 1 min 7 s):
+
+1. `pg_dump -Fc` the current staging database to `~/export/` first (it holds the QA business).
+2. Steps 2-3 above with `--yes --fresh --skip files,urls`, using `~/run-move.sh` on the server (the
+   step 3 container, reading the password from `~/export/.prodcopy-pw`; dry run without `--yes`).
+3. Copied rows skip the data fixes of migrations written after the previous copy: re-run their
+   top-level statements (not the whole files, which would redefine functions). For 2026-11-11 to
+   2026-11-14: 1130 / 1180 / 1015 accounts on every chart, the plans price list, CFD pair codes,
+   bill header sync, a primary branch for branchless businesses, default menu categories.
+4. The cron step switches production's jobs back on: set the sending ones `active = false` again
+   (step 4 above) before `docker compose up -d worker`.
+5. QA Test Kitchen and its 3 users are not in production: `deploy/staging-restore-qa.sh` copies them
+   back from the step 1 dump (restored as database `oldstaging`; drop it afterwards).
+6. Files: `SOURCE_SUPABASE_URL=https://<ref>.supabase.co ~/copy-files.sh --yes` copies new public
+   files into R2; private files need `SOURCE_ANON_KEY=<old public key>` and `--email` (password
+   prompt), run by the account holder with `ssh -t`.
+
 Storage files (Lovable gives no service key): `server/scripts/copy-supabase-files.mjs` reads the
 file list from the new database and downloads public buckets by URL; with `--email` it signs in
 to the old project as that user (password at a hidden prompt) and copies the private files that
