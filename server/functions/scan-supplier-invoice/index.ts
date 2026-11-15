@@ -118,6 +118,8 @@ serve(async (req) => {
       ? "The AI service is busy; try again in a minute."
       : e instanceof Anthropic.AuthenticationError
         ? "AI is not set up correctly on this server."
+        : e instanceof Anthropic.BadRequestError && /credit balance/i.test(e.message)
+          ? "AI invoice reading is paused (Matbex's AI credit has run out). Enter the invoice by hand for now."
         : e instanceof Anthropic.APIError
           ? `The AI service failed (${e.status}).`
           : e instanceof Error ? e.message : "Scanning failed";
