@@ -3,6 +3,7 @@ import { buildCorsHeaders, corsPreflight } from "../_shared/cors.ts";
 import { requireUser, userHasTenantRole } from "../_shared/auth.ts";
 import { getAdapter, loadTenantCredentials } from "../_shared/payments/registry.ts";
 import type { PaymentGateway } from "../_shared/payments/types.ts";
+import { serviceClient } from "../_shared/payments/settle.ts";
 
 serve(async (req) => {
   const cors = buildCorsHeaders(req);
@@ -41,6 +42,20 @@ serve(async (req) => {
     });
   }
 
+  if (!["captured", "partial_refunded"].includes(intent.status)) {
+    return new Response(JSON.stringify({ error: "Only a paid payment can be refunded" }), {
+      status: 409, headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
+  const svc = serviceClient();
+  const { data: prior } = await svc.from("payment_transactions").select("amount")
+    .eq("intent_id", intent.id).eq("kind", "refund").eq("status", "success");
+  const alreadyRefunded = (prior ?? []).reduce((s: number, r: any) => s + Math.abs(Number(r.amount)), 0);
+  if (Number(amount) > Number(intent.amount) - alreadyRefunded + 0.005) {
+    return new Response(JSON.stringify({ error: "Refund is more than what is left of this payment" }), {
+      status: 400, headers: { ...cors, "Content-Type": "application/json" },
+    });
+  }
   const adapter = getAdapter(intent.gateway as PaymentGateway);
   const creds = await loadTenantCredentials(intent.tenant_id, intent.gateway as PaymentGateway);
 
@@ -54,7 +69,7 @@ serve(async (req) => {
     });
   }
 
-  await auth.db.from("payment_transactions").insert({
+  await svc.from("payment_transactions").insert({
     tenant_id: intent.tenant_id,
     branch_id: intent.branch_id,
     terminal_id: intent.terminal_id,
@@ -65,18 +80,21 @@ serve(async (req) => {
     method: intent.method,
     amount: -Math.abs(Number(amount)),
     currency: intent.currency,
-    status: result.status === "refunded" ? "success" : "failed",
+    status: result.status === "refunded" || result.status === "partial_refunded" ? "success" : "failed",
     gateway_reference: result.refundReference ?? null,
     raw_payload: result.raw as any,
     created_by: auth.userId,
   });
 
-  await auth.db
-    .from("payment_intents")
-    .update({
-      status: Number(amount) >= Number(intent.amount) ? "refunded" : "partial_refunded",
-    })
-    .eq("id", intent_id);
+  if (result.status === "refunded" || result.status === "partial_refunded") {
+    await svc
+      .from("payment_intents")
+      .update({
+        status: alreadyRefunded + Number(amount) >= Number(intent.amount) - 0.005 ? "refunded" : "partial_refunded",
+      })
+      .eq("id", intent_id)
+      .eq("tenant_id", intent.tenant_id);
+  }
 
   return new Response(JSON.stringify({ status: result.status }), {
     status: 200, headers: { ...cors, "Content-Type": "application/json" },

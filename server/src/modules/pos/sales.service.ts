@@ -206,6 +206,24 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
 
     const { byId, branchId, day, created_at, lines, subtotal, tax, total, documentDiscount, documentSurcharge } = await priceSale(t, repo, input, { offline: !!offline, saleAt });
 
+    // A Moyasar card payment must be a captured payment of this business, for this total, not
+    // already used by another sale. The browser cannot write payment intents, so this is the
+    // gateway's verified answer (payments-confirm / payments-webhook).
+    let moyasarIntentId: string | null = null;
+    if (input.cardTerminal?.provider === "moyasar") {
+      if (offline) throw badRequest("Online card payments cannot be replayed from offline sales", "card_terminal_mismatch");
+      const ref = input.cardTerminal.reference ?? "";
+      if (!/^[0-9a-f-]{36}$/i.test(ref)) throw badRequest("Missing Moyasar payment reference", "card_not_approved");
+      const intent = await repo.lockPaymentIntent(input.restaurantId, ref);
+      if (!intent || intent.gateway !== "moyasar") throw badRequest("Unknown Moyasar payment", "card_not_approved");
+      if (intent.status !== "captured") throw badRequest("The Moyasar payment is not paid", "card_not_approved");
+      if (intent.salesTransactionId) throw badRequest("This Moyasar payment was already used for another sale", "card_already_used");
+      if (Math.abs(Number(intent.amount) - Number(total)) >= 0.005) {
+        throw badRequest(`The Moyasar payment (${Number(intent.amount).toFixed(2)}) does not match the sale total (${Number(total).toFixed(2)})`, "card_amount_mismatch");
+      }
+      moyasarIntentId = intent.id;
+    }
+
     // ---- receipt number: the printed one for offline replays, else the next in sequence ----
     const receiptNumber = offline?.receiptNumber ?? (await repo.nextReceiptNumber(input.restaurantId, day));
 
@@ -233,11 +251,15 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
         ? {
             halaStatus: input.cardTerminal.status,
             halaReference: input.cardTerminal.reference ?? null,
-            halaResponse: input.cardTerminal.response ?? null,
+            halaResponse: input.cardTerminal.provider === "moyasar"
+              ? { provider: "moyasar", intent_id: moyasarIntentId }
+              : input.cardTerminal.response ?? null,
             halaChargedAt: new Date().toISOString(),
           }
         : {}),
     });
+
+    if (moyasarIntentId) await repo.linkPaymentIntent(moyasarIntentId, sale.id);
 
     const saleItems = await repo.insertItems(
       lines.map((l) => ({

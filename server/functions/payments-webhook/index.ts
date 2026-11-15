@@ -6,7 +6,8 @@ import { env } from "../_runtime/env.ts";
 
 import { buildCorsHeaders, corsPreflight } from "../_shared/cors.ts";
 import { createClient } from "@matbex/client";
-import { getAdapter, loadCredentials } from "../_shared/payments/registry.ts";
+import { getAdapter, loadCredentials, loadTenantCredentials } from "../_shared/payments/registry.ts";
+import { applyVerifiedStatus, type IntentRow } from "../_shared/payments/settle.ts";
 import type { PaymentGateway } from "../_shared/payments/types.ts";
 
 const SUPPORTED: PaymentGateway[] = [
@@ -66,30 +67,25 @@ serve(async (req) => {
     const { data: intent } = await db
       .from("payment_intents")
       .select("*")
+      .eq("gateway", gateway)
       .eq("gateway_intent_id", evt.gatewayIntentId)
       .maybeSingle();
 
     if (intent) {
-      await db
-        .from("payment_intents")
-        .update({ status: evt.status })
-        .eq("id", intent.id);
-
-      if (evt.status === "captured") {
-        await db.from("payment_transactions").insert({
-          tenant_id: intent.tenant_id,
-          branch_id: intent.branch_id,
-          terminal_id: intent.terminal_id,
-          intent_id: intent.id,
-          order_id: intent.order_id,
-          kind: "charge",
-          gateway: intent.gateway,
-          method: intent.method,
-          amount: intent.amount,
-          currency: intent.currency,
-          status: "success",
-          gateway_reference: evt.gatewayIntentId,
-          raw_payload: evt.raw as any,
+      try {
+        // Unsigned notifications (Moyasar) are only a hint: ask the gateway with the
+        // restaurant's own keys. Signed ones (HyperPay) carry a trusted status.
+        const result = evt.verifyWithGateway
+          ? await getAdapter(gateway).verifyPayment(evt.gatewayIntentId, await loadTenantCredentials(intent.tenant_id, gateway))
+          : { status: evt.status, gatewayReference: evt.gatewayIntentId, raw: evt.raw };
+        await applyVerifiedStatus(intent as IntentRow, result);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        await db.from("payment_webhook_events").update({ error: msg })
+          .eq("gateway", gateway).eq("event_id", evt.eventId);
+        // 500 so the gateway retries later.
+        return new Response(JSON.stringify({ error: msg }), {
+          status: 500, headers: { ...cors, "Content-Type": "application/json" },
         });
       }
     }

@@ -1,7 +1,8 @@
 import { serve } from "../_runtime/serve.ts";
 import { buildCorsHeaders, corsPreflight } from "../_shared/cors.ts";
 import { requireUser } from "../_shared/auth.ts";
-import { getAdapter, loadCredentials } from "../_shared/payments/registry.ts";
+import { getAdapter, loadTenantCredentials } from "../_shared/payments/registry.ts";
+import { applyVerifiedStatus, type IntentRow } from "../_shared/payments/settle.ts";
 import type { PaymentGateway } from "../_shared/payments/types.ts";
 
 serve(async (req) => {
@@ -34,36 +35,20 @@ serve(async (req) => {
     });
   }
 
-  // Always verify with the gateway - never trust the client.
+  // Always verify with the gateway, with the restaurant's own keys - never trust the client.
   const adapter = getAdapter(intent.gateway as PaymentGateway);
-  const creds = loadCredentials(intent.gateway as PaymentGateway);
-  const result = await adapter.verifyPayment(intent.gateway_intent_id ?? "", creds);
-
-  await auth.db
-    .from("payment_intents")
-    .update({ status: result.status, gateway_reference: result.gatewayReference ?? null })
-    .eq("id", intent_id);
-
-  if (result.status === "captured") {
-    await auth.db.from("payment_transactions").insert({
-      tenant_id: intent.tenant_id,
-      branch_id: intent.branch_id,
-      terminal_id: intent.terminal_id,
-      intent_id: intent.id,
-      order_id: intent.order_id,
-      kind: "charge",
-      gateway: intent.gateway,
-      method: intent.method,
-      amount: intent.amount,
-      currency: intent.currency,
-      status: "success",
-      gateway_reference: result.gatewayReference ?? null,
-      raw_payload: result.raw as any,
-      created_by: auth.userId,
+  const creds = await loadTenantCredentials(intent.tenant_id, intent.gateway as PaymentGateway);
+  let result;
+  try {
+    result = await adapter.verifyPayment(intent.gateway_intent_id ?? "", creds);
+  } catch (err) {
+    return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), {
+      status: 502, headers: { ...cors, "Content-Type": "application/json" },
     });
   }
+  const status = await applyVerifiedStatus(intent as IntentRow, result, auth.userId);
 
-  return new Response(JSON.stringify({ status: result.status, intent_id }), {
+  return new Response(JSON.stringify({ status, intent_id }), {
     status: 200, headers: { ...cors, "Content-Type": "application/json" },
   });
 });

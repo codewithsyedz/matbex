@@ -38,6 +38,5 @@ function makeStub(gateway: PaymentGateway): PaymentAdapter {
 
 export const stcpayAdapter = makeStub("stcpay");
 export const paymobAdapter = makeStub("paymob");
-export const moyasarAdapter = makeStub("moyasar");
 export const amazonPsAdapter = makeStub("amazon_ps");
 export const geideaAdapter = makeStub("geidea");

@@ -16,6 +16,7 @@ export interface ChargeOrderInput {
   returnUrl?: string;
   idempotencyKey?: string;
   externalReference?: string; // for bank-terminal recording
+  metadata?: Record<string, unknown>;
 }
 
 export interface ChargeOrderResult {
@@ -57,6 +58,7 @@ async function chargeViaGateway(input: ChargeOrderInput): Promise<ChargeOrderRes
       channel: input.channel ?? "pos",
       return_url: input.returnUrl,
       idempotency_key: input.idempotencyKey,
+      metadata: input.metadata,
     },
   });
   if (error) throw new Error(error.message);

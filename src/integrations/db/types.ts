@@ -11222,6 +11222,7 @@ export type Database = {
           order_id: string | null
           qr_payload: string | null
           redirect_url: string | null
+          sales_transaction_id: string | null
           status: Database["public"]["Enums"]["payment_intent_status"]
           tenant_id: string
           terminal_id: string | null
@@ -11244,6 +11245,7 @@ export type Database = {
           order_id?: string | null
           qr_payload?: string | null
           redirect_url?: string | null
+          sales_transaction_id?: string | null
           status?: Database["public"]["Enums"]["payment_intent_status"]
           tenant_id: string
           terminal_id?: string | null
@@ -11266,12 +11268,21 @@ export type Database = {
           order_id?: string | null
           qr_payload?: string | null
           redirect_url?: string | null
+          sales_transaction_id?: string | null
           status?: Database["public"]["Enums"]["payment_intent_status"]
           tenant_id?: string
           terminal_id?: string | null
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+            {
+              foreignKeyName: "payment_intents_sales_transaction_id_fkey"
+              columns: ["sales_transaction_id"]
+              isOneToOne: true
+              referencedRelation: "sales_transactions"
+              referencedColumns: ["id"]
+            },
+          ]
       }
       payment_reconciliation_jobs: {
         Row: {

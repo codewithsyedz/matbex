@@ -127,6 +127,22 @@ export function salesRepository({ db, tx }: ServiceTx) {
       await db.update(posIdempotencyKeys).set({ response, status: "completed", shiftId }).where(eq(posIdempotencyKeys.id, id));
     },
 
+    /** A payment intent of this restaurant's business, locked until the sale commits. */
+    async lockPaymentIntent(restaurantId: string, intentId: string) {
+      const [r] = await tx<{ id: string; gateway: string | null; status: string; amount: string; salesTransactionId: string | null }[]>`
+        select pi.id, pi.gateway::text as gateway, pi.status::text as status, pi.amount::text as amount,
+               pi.sales_transaction_id as "salesTransactionId"
+        from public.payment_intents pi
+        join public.restaurants r on r.tenant_id = pi.tenant_id
+        where pi.id = ${intentId} and r.id = ${restaurantId}
+        for update of pi`;
+      return r ?? null;
+    },
+
+    async linkPaymentIntent(intentId: string, saleId: string) {
+      await tx`update public.payment_intents set sales_transaction_id = ${saleId}, updated_at = now() where id = ${intentId} and sales_transaction_id is null`;
+    },
+
     async insertSale(values: typeof salesTransactions.$inferInsert) {
       const [row] = await db.insert(salesTransactions).values(values).returning();
       return row;

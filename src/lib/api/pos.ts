@@ -30,7 +30,7 @@ export interface RecordSaleInput {
   documentDiscount?: number;
   documentSurcharge?: number;
   /** Approval from the integrated card terminal (Hala) for a card sale. */
-  cardTerminal?: { provider: "hala"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
+  cardTerminal?: { provider: "hala" | "moyasar"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
   invoice?: {
     subtype?: "SIMPLIFIED" | "STANDARD";
     buyerName?: string | null;

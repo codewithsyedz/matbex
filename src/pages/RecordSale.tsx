@@ -3,7 +3,8 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { recordOfflineSale } from "@/lib/offline/posService";
-import { recordSale, type PriceChangedDetails, type RecordSaleResult, type SaleLineSize } from "@/lib/api/pos";
+import { quoteSale, recordSale, type PriceChangedDetails, type RecordSaleInput, type RecordSaleResult, type SaleLineSize } from "@/lib/api/pos";
+import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { ApiError } from "@/lib/api/http";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
@@ -175,6 +176,8 @@ export default function RecordSale() {
   const guardWrite = useImpersonationGuard();
   const { t } = useTranslation();
   const { activeBranchId, activeBranch } = useBranch();
+  const moyasar = useMoyasarCheckout(activeBranchId ?? null);
+  const moyasarPaidRef = useRef<{ intentId: string; amount: number } | null>(null);
   const shiftsEnabled = hasFeature("shifts");
   const { format: formatCurrency } = useCurrency();
   const queryClient = useQueryClient();
@@ -1314,46 +1317,63 @@ export default function RecordSale() {
       // deduction (database trigger, once), reorder requests, kitchen ticket and a live event.
       // The server assigns a sequential receipt number and recomputes totals with the branch's
       // VAT settings. Network failures still fall back to the offline queue.
+      const saleInput: RecordSaleInput = {
+        restaurantId: restaurant.id,
+        branchId: activeBranchId ?? null,
+        shiftId: activeShift?.id ?? null,
+        customerId: selectedCustomer?.id ?? null,
+        tableId: linkedTable?.id ?? null,
+        paymentMethod,
+        settlement: isUnpaidSale ? "unpaid" : "paid",
+        createdAt: isUnpaidSale && isBackdated ? transactionTimestamp : null,
+        // Same amounts the receipt and the ZATCA invoice use (zatcaTotals).
+        documentDiscount: zatcaTotals.discountSar,
+        documentSurcharge: zatcaTotals.surchargeSar,
+        lines: cart.map((item) =>
+          item.isCombo
+            ? { comboId: item.menuItemId, quantity: item.quantity, unitPrice: item.price }
+            : {
+                menuItemId: item.menuItemId,
+                size: item.size as SaleLineSize,
+                quantity: item.quantity,
+                unitPrice: item.price,
+              },
+        ),
+        invoice: {
+          subtype: invoiceSubtype,
+          buyerName: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,
+          buyerVat: invoiceSubtype === "STANDARD" ? buyerVat.trim() || null : null,
+          buyerOtherId: invoiceSubtype === "STANDARD" ? buyerIdValue.trim() || null : null,
+          buyerAddress: invoiceSubtype === "STANDARD" ? buyerAddress.trim() || null : null,
+        },
+      };
+
+      // Card through Moyasar (when enabled for the POS): charge the server's quoted total by QR
+      // first and record the sale only once it is paid; the sales API checks the payment again.
+      // A payment that went through but whose sale failed to record is reused on the next try.
+      let cardTerminal: RecordSaleInput["cardTerminal"] = null;
+      if (paymentMethod === "card" && !isUnpaidSale && moyasar.enabled) {
+        const quote = await quoteSale(saleInput);
+        const kept = moyasarPaidRef.current;
+        const intentId = kept && Math.abs(kept.amount - quote.total) < 0.005
+          ? kept.intentId
+          : await moyasar.charge({ amount: quote.total, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` });
+        moyasarPaidRef.current = { intentId, amount: quote.total };
+        cardTerminal = { provider: "moyasar", status: "approved", reference: intentId };
+      }
+
       let saved: RecordSaleResult;
       try {
         saved = await withOnlineWriteTimeout(
           recordSale(
-            {
-              restaurantId: restaurant.id,
-              branchId: activeBranchId ?? null,
-              shiftId: activeShift?.id ?? null,
-              customerId: selectedCustomer?.id ?? null,
-              tableId: linkedTable?.id ?? null,
-              paymentMethod,
-              settlement: isUnpaidSale ? "unpaid" : "paid",
-              createdAt: isUnpaidSale && isBackdated ? transactionTimestamp : null,
-              // Same amounts the receipt and the ZATCA invoice use (zatcaTotals).
-              documentDiscount: zatcaTotals.discountSar,
-              documentSurcharge: zatcaTotals.surchargeSar,
-              lines: cart.map((item) =>
-                item.isCombo
-                  ? { comboId: item.menuItemId, quantity: item.quantity, unitPrice: item.price }
-                  : {
-                      menuItemId: item.menuItemId,
-                      size: item.size as SaleLineSize,
-                      quantity: item.quantity,
-                      unitPrice: item.price,
-                    },
-              ),
-              invoice: {
-                subtype: invoiceSubtype,
-                buyerName: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,
-                buyerVat: invoiceSubtype === "STANDARD" ? buyerVat.trim() || null : null,
-                buyerOtherId: invoiceSubtype === "STANDARD" ? buyerIdValue.trim() || null : null,
-                buyerAddress: invoiceSubtype === "STANDARD" ? buyerAddress.trim() || null : null,
-              },
-            },
+            { ...saleInput, cardTerminal },
             { idempotencyKey: saleKey },
           ),
           "Recording sale",
         );
       } catch (error) {
         if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
+          if (cardTerminal) throw new Error("The card payment went through but the sale could not be saved. Check the connection and press Charge again; the customer will not be charged twice.");
           return queueSaleOffline(saleKey);
         }
         if (error instanceof ApiError && error.code === "price_changed") {
@@ -1372,6 +1392,7 @@ export default function RecordSale() {
         throw error;
       }
 
+      moyasarPaidRef.current = null;
       return { transaction: saved.transaction, receiptNumber: saved.receiptNumber, salesItems: saved.salesItems };
     },
     onSuccess: (data) => {
@@ -3143,6 +3164,7 @@ export default function RecordSale() {
 
   return (
     <AppLayout>
+      {moyasar.dialog}
       <DemoExpiredLock>
       <div className="h-[calc(100vh-4rem)] flex flex-col">
         {/* Minimal POS Header — IBM Windows POS style */}

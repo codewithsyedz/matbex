@@ -62,13 +62,16 @@ export const createSaleBody = {
      */
     documentDiscount: { type: "number", minimum: 0, maximum: 10000000 },
     documentSurcharge: { type: "number", minimum: 0, maximum: 10000000 },
-    /** Approval from an integrated card terminal (Hala), stored on the sale for audit. */
+    /**
+     * Approval from an integrated card payment, stored on the sale for audit. Hala: the terminal's
+     * answer. Moyasar: reference = the payment intent id; the server checks that intent itself.
+     */
     cardTerminal: {
       type: "object",
       additionalProperties: false,
       required: ["provider", "status"],
       properties: {
-        provider: { type: "string", enum: ["hala"] },
+        provider: { type: "string", enum: ["hala", "moyasar"] },
         status: { type: "string", maxLength: 40 },
         reference: { type: "string", maxLength: 200, nullable: true },
         response: { type: "object", nullable: true },
@@ -106,7 +109,7 @@ export interface CreateSaleInput {
   offline?: { receiptNumber: string; createdAt: string } | null;
   documentDiscount?: number;
   documentSurcharge?: number;
-  cardTerminal?: { provider: "hala"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
+  cardTerminal?: { provider: "hala" | "moyasar"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
   invoice?: {
     subtype?: "SIMPLIFIED" | "STANDARD";
     buyerName?: string | null;

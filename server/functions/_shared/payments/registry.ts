@@ -4,10 +4,10 @@ import { createClient } from "@matbex/client";
 import { hyperpayAdapter } from "./hyperpay.ts";
 import { halaAdapter } from "./hala.ts";
 import { checkoutComAdapter } from "./checkout_com.ts";
+import { moyasarAdapter } from "./moyasar.ts";
 import {
   amazonPsAdapter,
   geideaAdapter,
-  moyasarAdapter,
   paymobAdapter,
   stcpayAdapter,
 } from "./stubs.ts";

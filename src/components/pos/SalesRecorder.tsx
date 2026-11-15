@@ -1,4 +1,5 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { qk } from "@/lib/query/queryKeys";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/db/client";
@@ -83,6 +84,8 @@ export function SalesRecorder() {
 
   // Fetch menu items
   const { activeBranchId, isAllBranches, activeBranch } = useBranch();
+  const moyasar = useMoyasarCheckout(activeBranchId ?? null);
+  const moyasarPaidRef = useRef<{ intentId: string; amount: number } | null>(null);
   // Deferred until the dialog opens: passing null keeps these branch lookups
   // (prices, VAT, per-branch categories) idle while the dashboard loads.
   const priceBranchId = isOpen && !isAllBranches ? activeBranchId : null;
@@ -236,6 +239,19 @@ export function SalesRecorder() {
           );
         }
         cardTerminal = { provider: "hala", status: data.status, reference: data.reference ?? null, response: data };
+      } else if (paymentMethod === "card" && moyasar.enabled) {
+        // Moyasar: the customer pays the server's quoted total by QR; the sales API checks it again.
+        const quote = await quoteSale(order);
+        const stale = quote.lines
+          .map((q, i) => ({ menuItemId: q.menuItemId, size: q.size, shown: order.lines[i].unitPrice, current: q.unitPrice }))
+          .filter((l) => Math.abs(l.shown - l.current) >= 0.005);
+        if (stale.length) throw applyCurrentPrices(stale);
+        const kept = moyasarPaidRef.current;
+        const intentId = kept && Math.abs(kept.amount - quote.total) < 0.005
+          ? kept.intentId
+          : await moyasar.charge({ amount: quote.total, branchId: activeBranchId ?? null, description: `${restaurant?.name ?? "Matbex"} POS` });
+        moyasarPaidRef.current = { intentId, amount: quote.total };
+        cardTerminal = { provider: "moyasar", status: "approved", reference: intentId };
       }
 
       // One server transaction (POST /api/v1/pos/sales): sale, lines, cash event, stock
@@ -250,6 +266,7 @@ export function SalesRecorder() {
         }
         throw error;
       }
+      moyasarPaidRef.current = null;
       return {
         transaction: saved.transaction,
         lowStockItems: saved.lowStock.map((l) => ({ name: l.name, newStock: l.currentStock, reorderLevel: l.reorderLevel })),
@@ -402,6 +419,8 @@ export function SalesRecorder() {
   const hasVariants = (item: MenuItem) => item.quarter_price > 0 || item.half_price > 0;
 
   return (
+    <>
+    {moyasar.dialog}
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button size="sm" className="h-9 gap-2">
@@ -741,5 +760,6 @@ export function SalesRecorder() {
         )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }

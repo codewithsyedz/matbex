@@ -40,6 +40,8 @@ export interface CreateIntentInput {
   method: PaymentMethod;
   idempotencyKey: string;
   returnUrl?: string;
+  /** Server-to-server notification URL (payments-webhook/<gateway>). */
+  notifyUrl?: string;
   metadata?: Record<string, unknown>;
   credentials: GatewayCredentials;
 }
@@ -69,6 +71,8 @@ export interface WebhookResult {
   eventId: string;
   gatewayIntentId?: string;
   status: NormalizedStatus;
+  /** The notification is unsigned: payments-webhook must ask the gateway for the status. */
+  verifyWithGateway?: boolean;
   raw: unknown;
 }
 

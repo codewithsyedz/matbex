@@ -82,17 +82,7 @@ const SCHEMAS: Record<Gateway, FieldDef[]> = {
     { key: "PAYMOB_HMAC_SECRET", label: "HMAC secret", type: "password" },
   ],
   moyasar: [
-    {
-      key: "MOYASAR_MODE",
-      label: "Environment",
-      type: "select",
-      options: [
-        { value: "test", label: "Test" },
-        { value: "live", label: "Live" },
-      ],
-    },
-    { key: "MOYASAR_SECRET_KEY", label: "Secret key", type: "password" },
-    { key: "MOYASAR_PUBLISHABLE_KEY", label: "Publishable key" },
+    { key: "MOYASAR_SECRET_KEY", label: "Secret key (sk_test_… or sk_live_…)", type: "password" },
   ],
   amazon_ps: [
     {

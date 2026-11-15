@@ -2,6 +2,7 @@ import { serve } from "../_runtime/serve.ts";
 import { buildCorsHeaders, corsPreflight } from "../_shared/cors.ts";
 import { requireUser } from "../_shared/auth.ts";
 import { getAdapter, loadTenantCredentials } from "../_shared/payments/registry.ts";
+import { notifyUrl, serviceClient } from "../_shared/payments/settle.ts";
 import type {
   PaymentGateway,
   PaymentMethod,
@@ -71,6 +72,18 @@ serve(async (req) => {
     });
   }
 
+  // The branch must be one the caller can see (RLS); intents are written with the service client.
+  if (body.branch_id) {
+    const { data: br } = await auth.db.from("branches").select("id").eq("id", body.branch_id).maybeSingle();
+    if (!br) {
+      return new Response(JSON.stringify({ error: "Unknown branch" }), {
+        status: 403,
+        headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+  }
+  const svc = serviceClient();
+
   // Pick gateway: branch override → tenant default → highest priority that supports the method
   const { data: configs } = await auth.db
     .from("payment_gateway_configs")
@@ -101,7 +114,7 @@ serve(async (req) => {
   const idempotencyKey = body.idempotency_key ?? crypto.randomUUID();
 
   // Insert intent first in 'created' state for full auditability
-  const { data: intentRow, error: insertErr } = await auth.db
+  const { data: intentRow, error: insertErr } = await svc
     .from("payment_intents")
     .insert({
       tenant_id: tenantId,
@@ -139,11 +152,12 @@ serve(async (req) => {
       method: body.method,
       idempotencyKey,
       returnUrl: body.return_url,
+      notifyUrl: notifyUrl(gateway),
       metadata: body.metadata,
       credentials: creds,
     });
 
-    await auth.db
+    await svc
       .from("payment_intents")
       .update({
         status: result.status,
@@ -167,7 +181,7 @@ serve(async (req) => {
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    await auth.db
+    await svc
       .from("payment_intents")
       .update({ status: "failed", metadata: { ...(intentRow.metadata ?? {}), error: msg } })
       .eq("id", intentRow.id);
