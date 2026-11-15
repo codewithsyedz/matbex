@@ -55,7 +55,8 @@ export function CardRefundButton({ saleId, orderId, onRefunded }: { saleId?: str
       <AlertDialogTrigger asChild>
         <Button variant="outline" size="sm"><Undo2 className="h-4 w-4 mr-1" /> Refund to card</Button>
       </AlertDialogTrigger>
-      <AlertDialogContent>
+      {/* Opened from the order details dialog: stack above it. */}
+      <AlertDialogContent className="z-[60]" overlayClassName="z-[60]">
         <AlertDialogHeader>
           <AlertDialogTitle>Refund to the customer's card</AlertDialogTitle>
           <AlertDialogDescription>
