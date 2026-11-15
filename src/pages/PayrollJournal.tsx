@@ -166,7 +166,8 @@ export default function PayrollJournal() {
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
             Post each payroll record to the general ledger — DR Wages, CR Cash, with advance and fine
-            recoveries handled automatically.
+            recoveries handled automatically. A salary paid after the month it covers is expensed at the
+            period end (owed in Payroll Payable) and settled on the payment date.
           </p>
         </div>
 
