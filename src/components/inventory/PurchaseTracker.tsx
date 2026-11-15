@@ -242,34 +242,11 @@ export function PurchaseTracker() {
         .eq("id", invoice.id);
       if (totalsError) throw totalsError;
 
-      const { data: insertedItems } = await db
-        .from("invoice_items")
-        .select("id")
-        .eq("invoice_id", invoice.id);
-
-      // 3) Post each auto-created purchase to ledger
-      try {
-        const itemIds = (insertedItems || []).map((i) => i.id);
-        if (itemIds.length > 0) {
-          const { data: created } = await db
-            .from("purchases")
-            .select("id")
-            .in("invoice_item_id", itemIds);
-          for (const p of created || []) {
-            const { error: ledgerError } = await db.rpc(
-              "post_inventory_purchase_to_ledger",
-              { p_purchase_id: p.id, p_payment_method: paymentMethod }
-            );
-            if (ledgerError) console.warn("Ledger posting failed:", ledgerError.message);
-          }
-        }
-      } catch (ledgerErr) {
-        console.warn("Ledger posting error:", ledgerErr);
-      }
-
+      // Stock received on an invoice reaches the ledger once, when the invoice
+      // is posted (net to stock, VAT to input VAT, total to the supplier).
       toast({
         title: "Invoice created",
-        description: `${sharedInvoiceNumber} · ${prepared.length} item(s) added to inventory`,
+        description: `${sharedInvoiceNumber} · ${prepared.length} item(s) added to inventory. Post the invoice to record it in the ledger.`,
       });
       fetchData();
       closeDialog();
