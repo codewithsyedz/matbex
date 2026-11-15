@@ -64,7 +64,7 @@ const GATEWAY_HINTS: Record<Gateway, string> = {
   hyperpay: "Online gateway. Requires HYPERPAY_* secrets.",
   stcpay: "Wallet (KSA). Adapter stub - credentials required.",
   paymob: "Online gateway. Adapter stub - credentials required.",
-  moyasar: "mada, Visa / Mastercard, Apple Pay and STC Pay through your own Moyasar account. The POS shows a QR code the customer pays on their phone. Add the secret key (sk_test_ to try, sk_live_ for real payments) and enable it for the POS.",
+  moyasar: "mada, Visa / Mastercard, Apple Pay and STC Pay through your own Moyasar account. The POS shows a QR code the customer pays on their phone; with channel set to Both, online-order customers can also pay when ordering. Add the secret key (sk_test_ to try, sk_live_ for real payments).",
   amazon_ps: "Online gateway. Adapter stub - credentials required.",
   geidea: "Online gateway. Adapter stub - credentials required.",
   hala: "Standalone card terminal. Manual today; API later.",

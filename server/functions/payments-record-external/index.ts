@@ -54,13 +54,14 @@ serve(async (req) => {
     });
   }
 
+  // payment_method allows cash / card / other: an external terminal payment is a card payment.
   const { data, error } = await auth.db.from("payment_transactions").insert({
     tenant_id: tenantId,
     branch_id: body.branch_id ?? null,
     terminal_id: body.terminal_id ?? null,
     order_id: body.order_id ?? null,
     kind,
-    method,
+    method: method === "external_card" ? "card" : "cash",
     gateway: null,
     amount,
     currency: "SAR",

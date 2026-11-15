@@ -127,5 +127,9 @@
   "send-contact-enquiry": {
     "reason": "Public website contact/demo form - anonymous by design; rate-limit at the proxy.",
     "added_at": "2026-11-09"
+  },
+  "online-order-pay": {
+    "reason": "Guest checkout of an online order: amount is the order's server-priced total, paid status only from Moyasar's own API with the restaurant's key.",
+    "added_at": "2026-11-15"
   }
 }

@@ -13,6 +13,7 @@
     "delivery-webhook",
     "generate-invoice-pdf",
     "get-exchange-rates",
+    "online-order-pay",
     "payments-reconciler",
     "payments-webhook",
     "preview-transactional-email",

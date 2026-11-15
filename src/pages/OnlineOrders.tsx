@@ -89,7 +89,13 @@ export default function OnlineOrders() {
           </div>
           <div className="text-right">
             <p className="font-semibold">{fmt(o.total)}</p>
-            <p className="text-xs text-muted-foreground capitalize">{o.payment_method}</p>
+            {o.payment_method === "online" ? (
+              <Badge variant={o.payment_status === "paid" ? "secondary" : "outline"} className="text-xs">
+                {o.payment_status === "paid" ? "Paid online" : o.payment_status === "refunded" ? "Refunded" : "Awaiting online payment"}
+              </Badge>
+            ) : (
+              <p className="text-xs text-muted-foreground capitalize">{o.payment_method}</p>
+            )}
           </div>
         </div>
         <div className="flex flex-wrap gap-2 pt-2">

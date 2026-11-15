@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { computeDeliveryFee } from "@/lib/deliveryFee";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { onlinePaymentAvailable, startOnlinePayment } from "@/lib/onlineOrderPay";
 
 interface CartItem {
   menu_item_id: string;
@@ -55,7 +56,7 @@ export default function PublicOrder() {
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [notes, setNotes] = useState("");
-  const [payment, setPayment] = useState<"cash" | "card">("cash");
+  const [payment, setPayment] = useState<"cash" | "card" | "online">("cash");
   const [submitting, setSubmitting] = useState(false);
 
   // Prefill from signed-in customer
@@ -207,6 +208,13 @@ export default function PublicOrder() {
     );
   };
 
+  const onlinePay = useQuery({
+    queryKey: ["online-payment-available", restaurantId],
+    enabled: !!restaurantId,
+    staleTime: 5 * 60_000,
+    queryFn: () => onlinePaymentAvailable(restaurantId!),
+  });
+
   const submit = async () => {
     if (!restaurantId) return;
     if (!name.trim() || !phone.trim()) {
@@ -261,6 +269,14 @@ export default function PublicOrder() {
         customerAuth
           .apiFetch("?action=link-order", { method: "POST", body: JSON.stringify({ order_id: orderId }) })
           .catch(() => {});
+      }
+      if (payment === "online" && orderId) {
+        try {
+          // Leaves the page for Moyasar; the customer comes back to the tracking page.
+          if ((await startOnlinePayment(orderId)) === "redirected") return;
+        } catch (e: any) {
+          toast.error(`${e.message ?? "The payment page could not be opened"}. You can pay from the order page.`);
+        }
       }
       navigate(`/order/track/${orderId}`);
     } catch (e: any) {
@@ -596,7 +612,7 @@ export default function PublicOrder() {
                     </div>
                     <div>
                       <Label>Payment</Label>
-                      <RadioGroup value={payment} onValueChange={(v) => setPayment(v as any)} className="flex gap-4 mt-2">
+                      <RadioGroup value={payment} onValueChange={(v) => setPayment(v as any)} className="flex flex-wrap gap-4 mt-2">
                         <div className="flex items-center gap-2">
                           <RadioGroupItem value="cash" id="cash" />
                           <Label htmlFor="cash">Cash on {orderType === "delivery" ? "delivery" : "pickup"}</Label>
@@ -605,6 +621,12 @@ export default function PublicOrder() {
                           <RadioGroupItem value="card" id="card" />
                           <Label htmlFor="card">Card on arrival</Label>
                         </div>
+                        {onlinePay.data && (
+                          <div className="flex items-center gap-2">
+                            <RadioGroupItem value="online" id="online" />
+                            <Label htmlFor="online">Pay online now (mada, Apple Pay, STC Pay, card)</Label>
+                          </div>
+                        )}
                       </RadioGroup>
                     </div>
                   </div>

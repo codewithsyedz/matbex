@@ -65,6 +65,21 @@ export async function applyVerifiedStatus(intent: IntentRow, result: VerifyResul
       created_by: actorId,
     });
     if (error && !/duplicate|unique/i.test(error.message)) throw new Error(error.message);
+
+    // An online order paid online (online-order-pay): mark it paid. Scoped to the intent's
+    // business so an intent can only ever settle that business's order.
+    if (intent.order_id) {
+      const { data: rs } = await db.from("restaurants").select("id").eq("tenant_id", intent.tenant_id);
+      const ids = (rs ?? []).map((r: { id: string }) => r.id);
+      if (ids.length) {
+        const { error: oErr } = await db.from("online_orders")
+          .update({ payment_status: "paid" })
+          .eq("id", intent.order_id)
+          .eq("payment_method", "online")
+          .in("restaurant_id", ids);
+        if (oErr) throw new Error(oErr.message);
+      }
+    }
   }
   return result.status;
 }
