@@ -67,6 +67,7 @@ const TENANT_PRIVATE_TABLES = [
   "in_app_notifications",
   "inventory_category_mappings",
   "inventory_waste",
+  "invoice_scans",
   "journal_entry_batches",
   "license_status_cache",
   "menu_items",

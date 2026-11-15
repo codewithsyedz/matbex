@@ -8424,6 +8424,56 @@ export type Database = {
             },
           ]
       }
+      invoice_scans: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          draft: Json | null
+          error: string | null
+          id: string
+          image_path: string
+          input_tokens: number | null
+          model: string
+          output_tokens: number | null
+          restaurant_id: string
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          draft?: Json | null
+          error?: string | null
+          id?: string
+          image_path: string
+          input_tokens?: number | null
+          model: string
+          output_tokens?: number | null
+          restaurant_id: string
+          status: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          draft?: Json | null
+          error?: string | null
+          id?: string
+          image_path?: string
+          input_tokens?: number | null
+          model?: string
+          output_tokens?: number | null
+          restaurant_id?: string
+          status?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "invoice_scans_restaurant_id_fkey"
+              columns: ["restaurant_id"]
+              isOneToOne: false
+              referencedRelation: "restaurants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       journal_entry_batches: {
         Row: {
           approval_status: string

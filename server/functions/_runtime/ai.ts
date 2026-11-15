@@ -3,7 +3,18 @@
  * Configure ANTHROPIC_API_KEY (required) and ANTHROPIC_MODEL (optional).
  */
 import { createAnthropic } from "@ai-sdk/anthropic";
+import Anthropic from "@anthropic-ai/sdk";
 import { env } from "./env.ts";
+
+/** Current model for new AI features (official Anthropic SDK). */
+export const CLAUDE_MODEL = env("ANTHROPIC_SCAN_MODEL") ?? "claude-opus-5-5";
+
+/** Official Anthropic SDK client (new features use this; older ones still go through the AI SDK). */
+export function claudeClient(): Anthropic {
+  const apiKey = env("ANTHROPIC_API_KEY");
+  if (!apiKey) throw new Error("AI is not set up on this server (ANTHROPIC_API_KEY)");
+  return new Anthropic({ apiKey, timeout: 120_000, maxRetries: 2 });
+}
 
 export const AI_MODEL = env("ANTHROPIC_MODEL") ?? "claude-sonnet-4-5";
 
