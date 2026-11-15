@@ -2,7 +2,7 @@ import { Component, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { reportClientError } from "@/lib/errorReporter";
-import { reloadToLatestVersion } from "@/lib/pwa/registerAppServiceWorker";
+import { reloadToLatestVersion } from "@/lib/pwa/reloadToLatestVersion";
 
 interface Props {
   children: ReactNode;
