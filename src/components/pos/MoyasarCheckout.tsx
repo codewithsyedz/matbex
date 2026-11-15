@@ -10,7 +10,6 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { Button } from "@/components/ui/button";
 
 const POLL_MS = 3000;
-const PREFERRED_METHODS = ["mada", "visa", "mastercard", "apple_pay", "stc_pay"] as const;
 
 interface GatewayConfig {
   branch_id: string | null;
@@ -58,7 +57,9 @@ export function useMoyasarCheckout(branchId?: string | null) {
       return rows.find((r) => r.branch_id && r.branch_id === branchId) ?? rows.find((r) => !r.branch_id) ?? null;
     },
   });
-  const method = PREFERRED_METHODS.find((m) => config?.allowed_methods?.includes(m)) ?? null;
+  // Gateway configs allow cash / card / other (the payment_method enum); the customer picks
+  // mada, Apple Pay, STC Pay... on Moyasar's page.
+  const method = config?.allowed_methods?.includes("card") ? ("card" as const) : null;
 
   const [pending, setPending] = useState<Pending | null>(null);
   const [phase, setPhase] = useState<Phase>("creating");

@@ -4,7 +4,7 @@
 import { db } from "@/integrations/db/client";
 
 export type PaymentMethod =
-  | "mada" | "apple_pay" | "visa" | "mastercard" | "stc_pay" | "cash" | "external_card";
+  | "card" | "mada" | "apple_pay" | "visa" | "mastercard" | "stc_pay" | "cash" | "external_card";
 
 export interface ChargeOrderInput {
   orderId?: string;

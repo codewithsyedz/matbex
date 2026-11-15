@@ -11,6 +11,7 @@ export type PaymentGateway =
   | "checkout_com";
 
 export type PaymentMethod =
+  | "card"
   | "mada"
   | "apple_pay"
   | "visa"
