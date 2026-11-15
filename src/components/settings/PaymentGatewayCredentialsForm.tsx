@@ -1,6 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { db } from "@/integrations/db/client";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -199,19 +198,25 @@ const SCHEMAS: Record<Gateway, FieldDef[]> = {
 
 const MASK = "••••••••";
 
+/**
+ * Credential fields of one gateway. It has no save button of its own: the gateway card's Save
+ * calls the function given to `registerSave`, which stores changed credentials (or does nothing
+ * when nothing was typed) and returns false when they could not be saved.
+ */
 export function PaymentGatewayCredentialsForm({
   tenantId,
   gateway,
+  registerSave,
 }: {
   tenantId: string;
   gateway: Gateway;
+  registerSave: (save: (() => Promise<boolean>) | null) => void;
 }) {
   const schema = SCHEMAS[gateway];
   const [values, setValues] = useState<Record<string, string>>({});
   const [originals, setOriginals] = useState<Record<string, string>>({});
   const [revealed, setRevealed] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -235,11 +240,10 @@ export function PaymentGatewayCredentialsForm({
     })();
   }, [tenantId, gateway]);
 
-  const handleSave = async () => {
-    setSaving(true);
+  const handleSave = async (): Promise<boolean> => {
     const next: Record<string, string> = { ...originals };
     schema.forEach((f) => {
-      const v = values[f.key] ?? "";
+      const v = (values[f.key] ?? "").trim();
       // Skip masked password fields - keep original
       if (f.type === "password" && v === MASK) return;
       if (v === "") {
@@ -248,6 +252,13 @@ export function PaymentGatewayCredentialsForm({
         next[f.key] = v;
       }
     });
+    if (JSON.stringify(next) === JSON.stringify(originals)) return true;
+
+    const moyasarKey = next.MOYASAR_SECRET_KEY;
+    if (gateway === "moyasar" && moyasarKey && !/^sk_(test|live)_/.test(moyasarKey)) {
+      toast.error("The Moyasar secret key starts with sk_test_ or sk_live_ (not the publishable pk_ key).");
+      return false;
+    }
 
     const { data: userData } = await db.auth.getUser();
     const { error } = await db
@@ -261,10 +272,9 @@ export function PaymentGatewayCredentialsForm({
         },
         { onConflict: "tenant_id,gateway" },
       );
-    setSaving(false);
     if (error) {
       toast.error(`Failed to save credentials: ${error.message}`);
-      return;
+      return false;
     }
     setOriginals(next);
     // Re-mask password fields
@@ -276,8 +286,16 @@ export function PaymentGatewayCredentialsForm({
       return masked;
     });
     setRevealed({});
-    toast.success("Credentials saved securely");
+    return true;
   };
+
+  // The latest handleSave (it closes over the typed values) for the gateway card's Save.
+  const saveRef = useRef(handleSave);
+  saveRef.current = handleSave;
+  useEffect(() => {
+    registerSave(() => saveRef.current());
+    return () => registerSave(null);
+  }, [registerSave]);
 
   if (loading) {
     return (
@@ -294,7 +312,7 @@ export function PaymentGatewayCredentialsForm({
         <KeyRound className="h-3.5 w-3.5 text-muted-foreground" />
         Credentials
         <span className="text-xs font-normal text-muted-foreground">
-          (owner-only, stored encrypted)
+          (owner only; the server uses them to take payments)
         </span>
       </div>
       <div className="grid gap-3 sm:grid-cols-2">
@@ -364,15 +382,7 @@ export function PaymentGatewayCredentialsForm({
           );
         })}
       </div>
-      <div className="flex justify-end">
-        <Button size="sm" variant="secondary" onClick={handleSave} disabled={saving}>
-          {saving ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          ) : (
-            "Save credentials"
-          )}
-        </Button>
-      </div>
+      <p className="text-[11px] text-muted-foreground">Saved with the Save button below.</p>
     </div>
   );
 }
