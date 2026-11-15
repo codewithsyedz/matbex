@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useMenuCategories } from "@/hooks/useMenuCategories";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -57,7 +57,8 @@ import { AdminPinDialog } from "@/components/pos/AdminPinDialog";
 import { EmergencyKioskUnlockDialog } from "@/components/pos/EmergencyKioskUnlockDialog";
 import { KioskWifiDialog } from "@/components/pos/KioskWifiDialog";
 import { recordOfflineSale } from "@/lib/offline/posService";
-import { recordSale, type PriceChangedDetails, type SaleLineSize } from "@/lib/api/pos";
+import { quoteSale, recordSale, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize } from "@/lib/api/pos";
+import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { ApiError } from "@/lib/api/http";
 import { isOnline } from "@/lib/offline/connectivity";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -436,6 +437,8 @@ export default function RecordSaleMobile() {
   }, [sellableItems, search, category, sortByTopSales, salesRankMap]);
 
   const { activeBranchId, activeBranch } = useBranch();
+  const moyasar = useMoyasarCheckout(activeBranchId ?? null);
+  const moyasarPaidRef = useRef<{ intentId: string; amount: number } | null>(null);
   // VAT rate is configured per branch (Settings → Branches).
   const { vatRate, vatPercent, pricesInclusive } = useBranchVatRate(activeBranchId);
 
@@ -720,23 +723,39 @@ export default function RecordSaleMobile() {
 
       // One server transaction (POST /api/v1/pos/sales): sale, lines, cash event, stock,
       // food-cost usage, kitchen ticket. The server prices the lines and numbers the receipt.
+      const saleInput: RecordSaleInput = {
+        restaurantId: restaurant.id,
+        branchId: activeBranchId ?? null,
+        shiftId: activeShift?.id ?? null,
+        customerId: unpaid ? selectedCustomer?.id ?? null : null,
+        paymentMethod: payment,
+        settlement: unpaid ? "unpaid" : "paid",
+        lines: cart.map((l) =>
+          l.combo
+            ? { comboId: l.id, quantity: l.qty, unitPrice: l.price }
+            : { menuItemId: l.id, size: sizeOf(l.variant), quantity: l.qty, unitPrice: l.price },
+        ),
+      };
+
+      // Card through Moyasar (when enabled for the POS): the customer pays the server's quoted
+      // total by QR first; the sales API checks the payment again. A payment whose sale failed
+      // to record is reused on the next try.
+      let cardTerminal: RecordSaleInput["cardTerminal"] = null;
+      if (payment === "card" && !unpaid && moyasar.enabled) {
+        const quote = await quoteSale(saleInput);
+        const kept = moyasarPaidRef.current;
+        const intentId = kept && Math.abs(kept.amount - quote.total) < 0.005
+          ? kept.intentId
+          : await moyasar.charge({ amount: quote.total, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` });
+        moyasarPaidRef.current = { intentId, amount: quote.total };
+        cardTerminal = { provider: "moyasar", status: "approved", reference: intentId };
+      }
+
       let receiptNumber: string;
       try {
         const saved = await withOnlineWriteTimeout(
           recordSale(
-            {
-              restaurantId: restaurant.id,
-              branchId: activeBranchId ?? null,
-              shiftId: activeShift?.id ?? null,
-              customerId: unpaid ? selectedCustomer?.id ?? null : null,
-              paymentMethod: payment,
-              settlement: unpaid ? "unpaid" : "paid",
-              lines: cart.map((l) =>
-                l.combo
-                  ? { comboId: l.id, quantity: l.qty, unitPrice: l.price }
-                  : { menuItemId: l.id, size: sizeOf(l.variant), quantity: l.qty, unitPrice: l.price },
-              ),
-            },
+            { ...saleInput, cardTerminal },
             { idempotencyKey: saleKey },
           ),
           "Recording sale",
@@ -744,6 +763,7 @@ export default function RecordSaleMobile() {
         receiptNumber = saved.receiptNumber;
       } catch (error) {
         if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
+          if (cardTerminal) throw new Error("The card payment went through but the sale could not be saved. Check the connection and press Charge again; the customer will not be charged twice.");
           return queueSaleOffline(saleKey);
         }
         if (error instanceof ApiError && error.code === "price_changed") {
@@ -760,6 +780,7 @@ export default function RecordSaleMobile() {
         }
         throw error;
       }
+      moyasarPaidRef.current = null;
       return { receiptNumber, queuedOffline: false };
     },
     onSuccess: ({ receiptNumber, queuedOffline }) => {
@@ -790,6 +811,7 @@ export default function RecordSaleMobile() {
 
   return (
     <div className="fixed inset-0 flex bg-muted/30 text-foreground overflow-hidden">
+      {moyasar.dialog}
       {/* ============== LEFT: MENU ============== */}
       <div className="flex-1 min-w-0 flex flex-col bg-background">
         {/* Top bar */}
