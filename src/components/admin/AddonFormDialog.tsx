@@ -43,7 +43,7 @@ const FEATURE_FLAGS = [
   "web_builder",
 ];
 
-const QUOTA_KEYS = ["users", "menu_items", "image_uploads", "email_reminders"];
+const QUOTA_KEYS = ["users", "image_uploads", "email_reminders"];
 
 interface Props {
   open: boolean;
@@ -279,7 +279,7 @@ export function AddonFormDialog({ open, onOpenChange, addon, onSaved }: Props) {
               </div>
               {quotas.length === 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Add quota keys (e.g. users, menu_items) to increase tenant limits.
+                  Add quota keys (e.g. users, image_uploads) to increase tenant limits.
                 </p>
               )}
               {quotas.map((q, i) => (

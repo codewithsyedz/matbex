@@ -7,7 +7,6 @@ export interface QuotaLimits {
   owner?: number;
   manager?: number;
   cashier?: number;
-  menu_items?: number;
   image_uploads?: number;
   email_reminders?: number;
 }
@@ -151,7 +150,6 @@ export function useQuota() {
       owner: "owner_count",
       manager: "manager_count",
       cashier: "cashier_count",
-      menu_items: "menu_item_count",
       image_uploads: "image_upload_count",
       email_reminders: "email_reminder_count",
     };

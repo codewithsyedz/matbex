@@ -3,7 +3,7 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useQuota, QuotaLimits, TenantUsage } from "@/hooks/useQuota";
-import { Users, UtensilsCrossed, Image, Mail, ArrowUpCircle } from "lucide-react";
+import { Users, Image, Mail, ArrowUpCircle } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 interface QuotaItemProps {
@@ -88,12 +88,6 @@ export function QuotaUsageCard() {
           current={usage.user_count}
           limit={quotaLimits.users}
           icon={<Users className="h-4 w-4 text-muted-foreground" />}
-        />
-        <QuotaItem
-          label="Menu Items"
-          current={usage.menu_item_count}
-          limit={quotaLimits.menu_items}
-          icon={<UtensilsCrossed className="h-4 w-4 text-muted-foreground" />}
         />
         <QuotaItem
           label="Image Uploads"

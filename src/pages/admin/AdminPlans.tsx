@@ -44,7 +44,6 @@ const QUOTA_FIELDS = [
   { key: "owner", label: "Owners" },
   { key: "manager", label: "Managers" },
   { key: "cashier", label: "Cashiers" },
-  { key: "menu_items", label: "Menu Items" },
   { key: "image_uploads", label: "Image Uploads" },
   { key: "email_reminders", label: "Email Reminders" },
 ];

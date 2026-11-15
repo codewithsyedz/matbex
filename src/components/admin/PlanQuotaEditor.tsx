@@ -7,14 +7,13 @@ import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
 import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
-import { Save, Loader2, Users, UtensilsCrossed, Image, Mail } from "lucide-react";
+import { Save, Loader2, Users, Image, Mail } from "lucide-react";
 
 interface QuotaLimits {
   users?: number;
   owner?: number;
   manager?: number;
   cashier?: number;
-  menu_items?: number;
   image_uploads?: number;
   email_reminders?: number;
 }
@@ -36,7 +35,6 @@ const QUOTA_FIELDS = [
   { key: "owner", label: "Owners", icon: Users, description: "Maximum owner accounts" },
   { key: "manager", label: "Managers", icon: Users, description: "Maximum manager accounts" },
   { key: "cashier", label: "Cashiers", icon: Users, description: "Maximum cashier accounts" },
-  { key: "menu_items", label: "Menu Items", icon: UtensilsCrossed, description: "Maximum menu items" },
   { key: "image_uploads", label: "Image Uploads", icon: Image, description: "Maximum images (lifetime)" },
   { key: "email_reminders", label: "Email Reminders", icon: Mail, description: "Maximum emails (monthly)" },
 ] as const;

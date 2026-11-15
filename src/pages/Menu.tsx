@@ -5,7 +5,6 @@ import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { useQuota } from "@/hooks/useQuota";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -51,7 +50,6 @@ import { ComboPackageManager } from "@/components/menu/ComboPackageManager";
 import { MenuQRCodes } from "@/components/menu/MenuQRCodes";
 import { MenuItemImageUploader } from "@/components/menu/MenuItemImageUploader";
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
-import { QuotaInfoCard } from "@/components/quota/QuotaInfoCard";
 import { CopyMenuToBranchDialog } from "@/components/menu/CopyMenuToBranchDialog";
 import { Copy } from "lucide-react";
 import { useBranchPrices, applyBranchPrices } from "@/hooks/useBranchPrices";
@@ -114,7 +112,6 @@ function MenuScreen() {
 
 
   const { format: formatCurrency } = useCurrency();
-  const { usage, quotaLimits } = useQuota();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<string>("master");
   const [isAddOpen, setIsAddOpen] = useState(false);
@@ -637,9 +634,6 @@ function MenuScreen() {
   return (
     <>
       <div className="container mx-auto max-w-7xl py-5 md:py-7 space-y-5 md:space-y-6">
-        {/* Quota Info */}
-        <QuotaInfoCard quotaType="menu_items" className="mb-4" />
-        
         {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 fade-slide-in mb-6 min-h-[56px]">
           <div className="min-w-[240px] flex-1"><h1 className="font-display text-2xl md:text-3xl font-semibold tracking-tight">{t("app.menu.title")}</h1>
