@@ -121,15 +121,17 @@ export default function Billing() {
 
   // Back from Moyasar (?payment=<id>): the server checks the payment with Moyasar and applies it.
   useEffect(() => {
-    const paymentId = searchParams.get("payment");
-    if (!paymentId) return;
+    // Our ?payment=<id>, or Moyasar's own ?invoice_id=… (it replaces the return URL's query).
+    const paymentId = searchParams.get("payment") ?? undefined;
+    const invoiceId = searchParams.get("invoice_id") ?? undefined;
+    if (!paymentId && !invoiceId) return;
     let stopped = false;
     let tries = 0;
     const toastId = toast.loading("Confirming your payment…");
-    const clear = () => setSearchParams((p) => { p.delete("payment"); return p; }, { replace: true });
+    const clear = () => setSearchParams((p) => { ["payment", "id", "status", "message", "invoice_id"].forEach((k) => p.delete(k)); return p; }, { replace: true });
     const tick = async () => {
       try {
-        const status = await subscriptionPaymentStatus(paymentId);
+        const status = await subscriptionPaymentStatus({ paymentId, invoiceId });
         if (stopped) return;
         if (status === "paid") {
           toast.success("Payment received. Thank you!", { id: toastId });

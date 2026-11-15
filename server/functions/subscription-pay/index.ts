@@ -24,7 +24,8 @@ const Body = z.union([
   z.object({ action: z.literal("quote"), plan_name: z.string().min(1).max(40), period: z.enum(["month", "year"]) }),
   z.object({ action: z.literal("start"), kind: z.literal("plan"), plan_name: z.string().min(1).max(40), period: z.enum(["month", "year"]) }),
   z.object({ action: z.literal("start"), kind: z.literal("addon"), addon_id: z.string().uuid() }),
-  z.object({ action: z.literal("status"), payment_id: z.string().uuid() }),
+  // payment_id from our return URL, or invoice_id: Moyasar replaces the return URL's query string.
+  z.object({ action: z.literal("status"), payment_id: z.string().uuid().optional(), invoice_id: z.string().uuid().optional() }),
 ]);
 
 /** A reused pending payment page stays payable this long (Moyasar pages last 30 minutes). */
@@ -109,8 +110,10 @@ serve(async (req) => {
     }
 
     if (body.action === "status") {
-      const { data: row } = await admin.from("subscription_payments").select("*")
-        .eq("id", body.payment_id).eq("tenant_id", tenant.id).maybeSingle();
+      if (!body.payment_id && !body.invoice_id) return json({ error: "Missing payment reference" }, 400);
+      let q = admin.from("subscription_payments").select("*").eq("tenant_id", tenant.id);
+      q = body.payment_id ? q.eq("id", body.payment_id) : q.eq("moyasar_invoice_id", body.invoice_id!);
+      const { data: row } = await q.maybeSingle();
       if (!row) return json({ error: "Payment not found" }, 404);
       const status = await settleSubscriptionPayment(row as SubscriptionPaymentRow);
       return json({ status });

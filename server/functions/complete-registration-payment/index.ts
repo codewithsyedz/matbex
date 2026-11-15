@@ -23,8 +23,9 @@ serve(async (req) => {
   try {
     logStep("Function started");
 
-    const { session_id, payment_id } = await req.json();
-    if (!session_id && !payment_id) {
+    // invoice_id: Moyasar replaces the return URL's query string with its own (id, status, invoice_id).
+    const { session_id, payment_id, invoice_id } = await req.json();
+    if (!session_id && !payment_id && !invoice_id) {
       throw new Error("Missing payment reference");
     }
 
@@ -37,10 +38,11 @@ serve(async (req) => {
     let applicationId: string | undefined;
     // Moyasar (Matbex's account): the payment must be confirmed by Moyasar itself.
     let moyasarPayment: { id: string; months: number; plan_id: string | null } | null = null;
-    if (payment_id) {
-      if (typeof payment_id !== "string" || !/^[0-9a-f-]{36}$/i.test(payment_id)) throw new Error("Invalid payment reference");
+    if (payment_id || invoice_id) {
+      const ref = String(payment_id ?? invoice_id);
+      if (!/^[0-9a-f-]{36}$/i.test(ref)) throw new Error("Invalid payment reference");
       const { data: row } = await dbAdmin.from("subscription_payments").select("*")
-        .eq("id", payment_id).eq("kind", "registration").maybeSingle();
+        .eq(payment_id ? "id" : "moyasar_invoice_id", ref).eq("kind", "registration").maybeSingle();
       if (!row) throw new Error("Payment not found");
       const status = await settleSubscriptionPayment(row as SubscriptionPaymentRow);
       if (status !== "paid") {

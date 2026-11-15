@@ -38,5 +38,5 @@ export async function payForAddon(addonId: string) {
   window.location.assign(r.pay_url);
 }
 
-export const subscriptionPaymentStatus = (paymentId: string) =>
-  call<{ status: string }>({ action: "status", payment_id: paymentId }).then((r) => r.status);
+export const subscriptionPaymentStatus = (ref: { paymentId?: string; invoiceId?: string }) =>
+  call<{ status: string }>({ action: "status", payment_id: ref.paymentId, invoice_id: ref.invoiceId }).then((r) => r.status);
