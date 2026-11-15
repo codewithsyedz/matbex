@@ -186,7 +186,7 @@ serve(async (req) => {
       .update({ status: "failed", metadata: { ...(intentRow.metadata ?? {}), error: msg } })
       .eq("id", intentRow.id);
     return new Response(JSON.stringify({ error: msg, intent_id: intentRow.id }), {
-      status: 502,
+      status: 424,
       headers: { ...cors, "Content-Type": "application/json" },
     });
   }

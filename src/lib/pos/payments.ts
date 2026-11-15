@@ -3,6 +3,13 @@
 
 import { db } from "@/integrations/db/client";
 
+/** The server's own message for a failed function call (e.g. "Moyasar is not set up..."). */
+async function functionError(error: { message: string; context?: unknown }): Promise<Error> {
+  const ctx = error.context as Response | undefined;
+  const body = ctx && typeof ctx.clone === "function" ? await ctx.clone().json().catch(() => null) : null;
+  return new Error(body?.error || body?.message || error.message);
+}
+
 export type PaymentMethod =
   | "card" | "mada" | "apple_pay" | "visa" | "mastercard" | "stc_pay" | "cash" | "external_card";
 
@@ -61,7 +68,7 @@ async function chargeViaGateway(input: ChargeOrderInput): Promise<ChargeOrderRes
       metadata: input.metadata,
     },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw await functionError(error);
   return {
     status: data.status === "captured" ? "captured" : "pending",
     intentId: data.intent_id,
@@ -83,7 +90,7 @@ export async function confirmPayment(intentId: string): Promise<"captured" | "fa
   const { data, error } = await db.functions.invoke("payments-confirm", {
     body: { intent_id: intentId },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw await functionError(error);
   if (data.status === "captured") return "captured";
   if (data.status === "failed" || data.status === "expired" || data.status === "canceled") return "failed";
   return "pending";

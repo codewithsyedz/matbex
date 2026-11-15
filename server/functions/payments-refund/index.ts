@@ -65,7 +65,7 @@ serve(async (req) => {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     return new Response(JSON.stringify({ error: msg }), {
-      status: 502, headers: { ...cors, "Content-Type": "application/json" },
+      status: 424, headers: { ...cors, "Content-Type": "application/json" },
     });
   }
 

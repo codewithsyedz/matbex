@@ -43,7 +43,7 @@ serve(async (req) => {
     result = await adapter.verifyPayment(intent.gateway_intent_id ?? "", creds);
   } catch (err) {
     return new Response(JSON.stringify({ error: err instanceof Error ? err.message : String(err) }), {
-      status: 502, headers: { ...cors, "Content-Type": "application/json" },
+      status: 424, headers: { ...cors, "Content-Type": "application/json" },
     });
   }
   const status = await applyVerifiedStatus(intent as IntentRow, result, auth.userId);
