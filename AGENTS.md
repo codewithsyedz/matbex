@@ -10,7 +10,7 @@
 - AI calls go through server/functions/_runtime/ai.ts (Anthropic). Email goes through server/src/email/send.ts (Resend). Twilio via _shared/twilio.ts.
 
 # Architecture rules
-- Subscription checkout and success verification use server-validated owner membership and allowlisted Stripe prices; only paid, active, tenant-bound subscriptions activate existing trials, independently of application registration.
+- Matbex's own billing (plans, add-ons, paid-plan registrations) goes through Matbex's Moyasar account (MATBEX_MOYASAR_SECRET_KEY, never a MOYASAR_* key): each period is paid up front via subscription-pay, priced server-side from plans/addons and active branches; the account changes only in apply_subscription_payment after Moyasar confirms. tenants.current_period_end is the paid-until date for billing_provider = 'moyasar'; stripe-webhook leaves those accounts alone. Restaurant payments (POS, online orders) use each restaurant's own Moyasar key and never fall back to server keys.
 
 - Apply Starter plan route restrictions only inside TenantRoute; LazyRoute renders public/auth/payment pages without plan checks so upgrades and account recovery stay accessible.
 

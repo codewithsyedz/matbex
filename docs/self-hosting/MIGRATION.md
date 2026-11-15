@@ -75,6 +75,19 @@ syntax-checked only), and nothing has run against production data yet — do the
 Everything is in `.env.example`. Generate secrets with `npm --prefix server run keys`.
 `VITE_API_KEY` is the **anon** key (public, role `anon`) — never put `SERVICE_ROLE_KEY` in a `VITE_` variable.
 
+### Matbex billing (Moyasar instead of Stripe)
+
+* `MATBEX_MOYASAR_SECRET_KEY`: Matbex's own Moyasar secret key (`sk_live_…`), set with
+  `pbpaste | ssh <server> "bash ~/set-env.sh MATBEX_MOYASAR_SECRET_KEY"`. Without it, Billing shows
+  "Online payment for Matbex subscriptions is not set up yet". Restaurants' keys live per restaurant
+  in Settings → Payments; never put a restaurant key in the environment.
+* Existing Stripe customers: migration `move_stripe_customers_to_moyasar` moves accounts with a
+  known paid-until date; their Stripe subscriptions must be set to **cancel at period end** in the
+  Stripe dashboard. Accounts with a Stripe customer but no paid-until date (Smoke Grill) stay on
+  Stripe until an admin sets `current_period_end` and `billing_provider = 'moyasar'`.
+* `subscription-renewals` runs daily at 09:00 (reminders 7/3/1 days, past due after the date);
+  keep it `null` in `JOB_SCHEDULES_JSON` on staging.
+
 ## 5. Production cutover runbook
 
 Do a full dry run on a staging server with a copy of production first; time each step.
