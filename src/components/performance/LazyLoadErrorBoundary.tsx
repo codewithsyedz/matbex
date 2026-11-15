@@ -2,6 +2,7 @@ import { Component, ReactNode } from "react";
 import { Button } from "@/components/ui/button";
 import { RefreshCw } from "lucide-react";
 import { reportClientError } from "@/lib/errorReporter";
+import { reloadToLatestVersion } from "@/lib/pwa/registerAppServiceWorker";
 
 interface Props {
   children: ReactNode;
@@ -35,7 +36,7 @@ function markAutoReloaded() {
 
 /**
  * Error boundary specifically for handling dynamic import failures.
- * These can occur when Vite's HMR cache becomes stale.
+ * These happen after a deploy: the old build's chunks are gone, so reload into the new version.
  */
 export class LazyLoadErrorBoundary extends Component<Props, State> {
   constructor(props: Props) {
@@ -76,7 +77,7 @@ export class LazyLoadErrorBoundary extends Component<Props, State> {
     console.warn("Dynamic import failed, reloading page...", error);
     markAutoReloaded();
     setTimeout(() => {
-      window.location.reload();
+      void reloadToLatestVersion();
     }, 100);
   }
 
@@ -88,7 +89,7 @@ export class LazyLoadErrorBoundary extends Component<Props, State> {
     } catch {
       /* ignore */
     }
-    window.location.reload();
+    void reloadToLatestVersion();
   };
 
   render() {
