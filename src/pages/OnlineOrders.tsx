@@ -1,3 +1,4 @@
+import { useQueryClient } from "@tanstack/react-query";
 import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -7,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { CardRefundButton } from "@/components/payments/CardRefundButton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { ShoppingBag, Phone, MapPin, Clock, Truck, Settings as SettingsIcon, ExternalLink, Copy } from "lucide-react";
 import { toast } from "sonner";
@@ -27,6 +29,7 @@ const NEXT_STATUS: Record<OnlineOrderStatus, { label: string; next: OnlineOrderS
 
 export default function OnlineOrders() {
   const { restaurant } = useAuth();
+  const qc = useQueryClient();
   const { orders, updateStatus } = useOnlineOrders(restaurant?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const { data: detail } = useOnlineOrderDetail(selectedId ?? undefined);
@@ -59,8 +62,10 @@ export default function OnlineOrders() {
   };
 
   const cancel = (o: OnlineOrder) => {
-    if (!confirm("Cancel this order?")) return;
+    const paidOnline = o.payment_method === "online" && o.payment_status === "paid";
+    if (!confirm(paidOnline ? "Cancel this order? It was paid online: refund the customer from the order details." : "Cancel this order?")) return;
     updateStatus.mutate({ id: o.id, status: "cancelled" });
+    if (paidOnline) setSelectedId(o.id);
   };
 
   const renderCard = (o: OnlineOrder) => {
@@ -195,6 +200,14 @@ export default function OnlineOrders() {
                   )}
                   <div className="flex justify-between font-semibold"><span>Total</span><span>{fmt(detail.order.total)}</span></div>
                 </div>
+                {detail.order.payment_method === "online" && detail.order.payment_status !== "pending" && (
+                  <div className="border-t pt-3 flex items-center justify-between gap-2">
+                    <span className="text-sm text-muted-foreground">
+                      {detail.order.payment_status === "refunded" ? "Refunded to card" : "Paid online"}
+                    </span>
+                    <CardRefundButton orderId={detail.order.id} onRefunded={() => { void qc.invalidateQueries({ queryKey: ["online-order", detail.order.id] }); void qc.invalidateQueries({ queryKey: ["online-orders"] }); }} />
+                  </div>
+                )}
               </div>
             </ScrollArea>
           )}

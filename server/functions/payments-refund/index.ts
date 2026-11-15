@@ -94,6 +94,16 @@ serve(async (req) => {
       })
       .eq("id", intent_id)
       .eq("tenant_id", intent.tenant_id);
+
+    // A fully refunded online order shows as refunded (scoped to the intent's business).
+    if (intent.order_id && alreadyRefunded + Number(amount) >= Number(intent.amount) - 0.005) {
+      const { data: rs } = await svc.from("restaurants").select("id").eq("tenant_id", intent.tenant_id);
+      const ids = (rs ?? []).map((r: { id: string }) => r.id);
+      if (ids.length) {
+        await svc.from("online_orders").update({ payment_status: "refunded" })
+          .eq("id", intent.order_id).eq("payment_method", "online").in("restaurant_id", ids);
+      }
+    }
   }
 
   return new Response(JSON.stringify({ status: result.status }), {

@@ -965,8 +965,8 @@ export default function Sales() {
 
   // Sales are never deleted: the server voids them (negative mirror sale, stock back, refund
   // from an open shift's drawer). POST /api/v1/pos/sales/:id/void
-  const handleDeleteSale = async (transactionId: string, reason: string) => {
-    if (!restaurant?.id) return;
+  const handleDeleteSale = async (transactionId: string, reason: string): Promise<boolean> => {
+    if (!restaurant?.id) return false;
     try {
       await voidSale(transactionId, { restaurantId: restaurant.id, reason });
 
@@ -974,9 +974,11 @@ export default function Sales() {
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["sales-count"] });
       queryClient.invalidateQueries({ queryKey: ["sales-all-stats"] });
+      return true;
     } catch (error: any) {
       console.error("Error deleting sale:", error);
       toast({ title: t("common.error"), description: error.message, variant: "destructive" });
+      return false;
     }
   };
 
@@ -2009,6 +2011,7 @@ export default function Sales() {
                                 )}
                                 <VoidSaleDialog
                                   receipt={transaction.receipt_number}
+                                  saleId={transaction.payment_method === "card" ? transaction.id : null}
                                   onConfirm={(reason) => handleDeleteSale(transaction.id, reason)}
                                 >
                                   <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title={t("app.sales.delete.confirm")}>
