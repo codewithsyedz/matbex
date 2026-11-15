@@ -8,6 +8,7 @@ import { buildCorsHeaders, corsPreflight } from "../_shared/cors.ts";
 import { createClient } from "@matbex/client";
 import { getAdapter, loadCredentials, loadTenantCredentials } from "../_shared/payments/registry.ts";
 import { applyVerifiedStatus, type IntentRow } from "../_shared/payments/settle.ts";
+import { settleSubscriptionPayment, type SubscriptionPaymentRow } from "../_shared/billing/platformMoyasar.ts";
 import type { PaymentGateway } from "../_shared/payments/types.ts";
 
 const SUPPORTED: PaymentGateway[] = [
@@ -70,6 +71,24 @@ serve(async (req) => {
       .eq("gateway", gateway)
       .eq("gateway_intent_id", evt.gatewayIntentId)
       .maybeSingle();
+
+    // Not a restaurant's payment: maybe a Matbex subscription payment (Matbex's own account).
+    if (!intent && gateway === "moyasar") {
+      const { data: sub } = await db.from("subscription_payments").select("*")
+        .eq("moyasar_invoice_id", evt.gatewayIntentId).maybeSingle();
+      if (sub) {
+        try {
+          await settleSubscriptionPayment(sub as SubscriptionPaymentRow);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          await db.from("payment_webhook_events").update({ error: msg })
+            .eq("gateway", gateway).eq("event_id", evt.eventId);
+          return new Response(JSON.stringify({ error: msg }), {
+            status: 500, headers: { ...cors, "Content-Type": "application/json" },
+          });
+        }
+      }
+    }
 
     if (intent) {
       try {

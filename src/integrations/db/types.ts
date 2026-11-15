@@ -17240,6 +17240,110 @@ export type Database = {
             },
           ]
       }
+      subscription_payments: {
+        Row: {
+          addon_id: string | null
+          addon_items: Json
+          amount: number
+          application_id: string | null
+          branches: number
+          created_at: string
+          created_by: string | null
+          currency: string
+          id: string
+          kind: string
+          mode: string
+          months: number
+          moyasar_invoice_id: string | null
+          moyasar_payment_id: string | null
+          paid_at: string | null
+          pay_url: string | null
+          period_end: string | null
+          period_start: string | null
+          plan_id: string | null
+          status: string
+          tenant_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          addon_id?: string | null
+          addon_items?: Json
+          amount: number
+          application_id?: string | null
+          branches?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          kind: string
+          mode: string
+          months?: number
+          moyasar_invoice_id?: string | null
+          moyasar_payment_id?: string | null
+          paid_at?: string | null
+          pay_url?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          plan_id?: string | null
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          addon_id?: string | null
+          addon_items?: Json
+          amount?: number
+          application_id?: string | null
+          branches?: number
+          created_at?: string
+          created_by?: string | null
+          currency?: string
+          id?: string
+          kind?: string
+          mode?: string
+          months?: number
+          moyasar_invoice_id?: string | null
+          moyasar_payment_id?: string | null
+          paid_at?: string | null
+          pay_url?: string | null
+          period_end?: string | null
+          period_start?: string | null
+          plan_id?: string | null
+          status?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "subscription_payments_addon_id_fkey"
+              columns: ["addon_id"]
+              isOneToOne: false
+              referencedRelation: "addons"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "subscription_payments_application_id_fkey"
+              columns: ["application_id"]
+              isOneToOne: false
+              referencedRelation: "tenant_applications"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "subscription_payments_plan_id_fkey"
+              columns: ["plan_id"]
+              isOneToOne: false
+              referencedRelation: "plans"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "subscription_payments_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       superadmin_audit_events: {
         Row: {
           action_type: Database["public"]["Enums"]["superadmin_action_type"]
@@ -18321,6 +18425,7 @@ export type Database = {
           admin_pin_set_by: string | null
           allow_exports: boolean
           allow_real_payments: boolean
+          billing_provider: string
           created_at: string
           current_period_end: string | null
           data_region: string
@@ -18347,6 +18452,7 @@ export type Database = {
           admin_pin_set_by?: string | null
           allow_exports?: boolean
           allow_real_payments?: boolean
+          billing_provider?: string
           created_at?: string
           current_period_end?: string | null
           data_region?: string
@@ -18373,6 +18479,7 @@ export type Database = {
           admin_pin_set_by?: string | null
           allow_exports?: boolean
           allow_real_payments?: boolean
+          billing_provider?: string
           created_at?: string
           current_period_end?: string | null
           data_region?: string
@@ -20446,6 +20553,7 @@ export type Database = {
           admin_pin_set_by: string | null
           allow_exports: boolean
           allow_real_payments: boolean
+          billing_provider: string
           created_at: string
           current_period_end: string | null
           data_region: string
@@ -20576,6 +20684,11 @@ export type Database = {
       apply_payroll_deduction_allocation:
         | {
         Args: { p_payroll_id: unknown }
+        Returns: Json
+      }
+      apply_subscription_payment:
+        | {
+        Args: { p_payment_id?: unknown }
         Returns: Json
       }
       apply_vat_posting_correction:

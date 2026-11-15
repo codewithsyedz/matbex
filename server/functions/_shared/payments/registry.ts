@@ -51,7 +51,9 @@ export async function loadTenantCredentials(
   tenantId: string,
   gateway: PaymentGateway,
 ): Promise<GatewayCredentials> {
-  const envCreds = loadCredentials(gateway);
+  // Moyasar is always the restaurant's own account: never fall back to keys in the server's
+  // environment (Matbex's own account uses MATBEX_MOYASAR_SECRET_KEY, see billing/platformMoyasar).
+  const envCreds = gateway === "moyasar" ? {} : loadCredentials(gateway);
   try {
     const db = createClient(
       env("API_URL")!,

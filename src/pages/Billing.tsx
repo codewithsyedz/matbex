@@ -7,7 +7,11 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
-import { Check, Crown, Zap, Building2, Loader2, ExternalLink } from "lucide-react";
+import { Check, Crown, Zap, Building2, Loader2, RefreshCw } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { PlanCheckoutDialog } from "@/components/billing/PlanCheckoutDialog";
+import { subscriptionPaymentStatus } from "@/lib/billing/subscriptionPay";
 import { cn } from "@/lib/utils";
 import { Navigate, useSearchParams } from "react-router-dom";
 import { TrialCountdownCard } from "@/components/billing/TrialCountdownCard";
@@ -60,9 +64,19 @@ export default function Billing() {
   const { tenant, plan: currentPlan, refreshProfile, isOwner, loading: authLoading } = useAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
-  const [upgrading, setUpgrading] = useState<string | null>(null);
-  const [openingPortal, setOpeningPortal] = useState(false);
-  const [searchParams] = useSearchParams();
+  const [checkoutPlan, setCheckoutPlan] = useState<string | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const billing = useQuery({
+    queryKey: ["tenant-billing", tenant?.id],
+    enabled: !!tenant?.id,
+    queryFn: async () => {
+      const { data, error } = await db.from("tenants").select("current_period_end, billing_provider").eq("id", tenant!.id).single();
+      if (error) throw error;
+      return data;
+    },
+  });
+  const paidUntil = billing.data?.current_period_end ? new Date(billing.data.current_period_end) : null;
+  const paidExpired = !!paidUntil && paidUntil.getTime() < Date.now();
 
   useEffect(() => {
     if (searchParams.get("canceled") === "true") toast.info("Checkout was canceled");
@@ -93,50 +107,52 @@ export default function Billing() {
     fetchPlans();
   }, []);
 
-  const handleUpgrade = async (plan: Plan) => {
+  const handleUpgrade = (plan: Plan) => {
     if (!tenant || !isOwner) {
       toast.error("Only tenant owners can change the subscription plan");
       return;
     }
-
-    setUpgrading(plan.id);
-    try {
-      const { data, error } = await db.functions.invoke("create-checkout", {
-        body: { planName: plan.name },
-      });
-
-      if (error) throw error;
-      if (data?.url) {
-        window.location.assign(data.url);
-      } else {
-        throw new Error("No checkout URL returned");
-      }
-    } catch (error) {
-      console.error("Error creating checkout:", error);
-      toast.error("Failed to start checkout");
-    } finally {
-      setUpgrading(null);
+    if (plan.name.toLowerCase() === "enterprise" && currentPlan?.name?.toLowerCase() !== "enterprise") {
+      toast.info("Enterprise is set up with our team. Contact sales and we will move your account over.");
+      return;
     }
+    setCheckoutPlan(plan.name.toLowerCase());
   };
 
-  const handleManageSubscription = async () => {
-    setOpeningPortal(true);
-    try {
-      const { data, error } = await db.functions.invoke("customer-portal");
-
-      if (error) throw error;
-      if (data?.url) {
-        window.open(data.url, "_blank");
-      } else {
-        throw new Error("No portal URL returned");
+  // Back from Moyasar (?payment=<id>): the server checks the payment with Moyasar and applies it.
+  useEffect(() => {
+    const paymentId = searchParams.get("payment");
+    if (!paymentId) return;
+    let stopped = false;
+    let tries = 0;
+    const toastId = toast.loading("Confirming your payment…");
+    const clear = () => setSearchParams((p) => { p.delete("payment"); return p; }, { replace: true });
+    const tick = async () => {
+      try {
+        const status = await subscriptionPaymentStatus(paymentId);
+        if (stopped) return;
+        if (status === "paid") {
+          toast.success("Payment received. Thank you!", { id: toastId });
+          await refreshProfile();
+          void billing.refetch();
+          clear();
+          return;
+        }
+        if (status !== "pending") {
+          toast.error("The payment did not go through. You can try again.", { id: toastId });
+          clear();
+          return;
+        }
+      } catch (e) {
+        if (tries >= 5) { toast.error(e instanceof Error ? e.message : "Could not confirm the payment", { id: toastId }); return; }
       }
-    } catch (error) {
-      console.error("Error opening customer portal:", error);
-      toast.error("Failed to open subscription management");
-    } finally {
-      setOpeningPortal(false);
-    }
-  };
+      if (!stopped && ++tries < 8) setTimeout(tick, 3000);
+      else if (!stopped) toast.info("Payment still processing; this page updates once it is confirmed.", { id: toastId });
+    };
+    void tick();
+    return () => { stopped = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const isCurrentPlan = (planId: string) => currentPlan?.id === planId;
   const isPaidPlan = tenant?.status === "active";
@@ -145,6 +161,7 @@ export default function Billing() {
 
   return (
     <>
+      <PlanCheckoutDialog planName={checkoutPlan} open={!!checkoutPlan} onOpenChange={(o) => { if (!o) setCheckoutPlan(null); }} />
       <div className="container mx-auto max-w-7xl py-5 md:py-7 space-y-5 md:space-y-6">
         {/* Header */}
         <div>
@@ -185,19 +202,14 @@ export default function Billing() {
                 {tenant?.status === "trial" && (
                   <Badge variant="secondary">{t("billing.trial")}</Badge>
                 )}
-                {isPaidPlan && (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleManageSubscription}
-                    disabled={openingPortal}
-                  >
-                    {openingPortal ? (
-                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    ) : (
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                    )}
-                    {t("billing.manageSubscription")}
+                {paidUntil && (
+                  <span className={cn("text-sm", paidExpired ? "text-destructive" : "text-muted-foreground")}>
+                    {paidExpired ? "Expired" : "Paid until"} {format(paidUntil, "d MMM yyyy")}
+                  </span>
+                )}
+                {isPaidPlan && currentPlan && Number(plans.find((p) => p.id === currentPlan.id)?.price ?? 0) > 0 && (
+                  <Button variant="outline" size="sm" onClick={() => setCheckoutPlan(currentPlan.name.toLowerCase())}>
+                    <RefreshCw className="h-4 w-4 mr-2" /> Renew
                   </Button>
                 )}
               </div>
@@ -286,23 +298,18 @@ export default function Billing() {
                         <Button
                           className="w-full"
                           variant={isCurrent ? "outline" : "default"}
-                          disabled={(isCurrent && !isTrial) || upgrading !== null || !isOwner}
+                          disabled={!isOwner}
                           onClick={() => handleUpgrade(plan)}
                         >
-                          {upgrading === plan.id ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Processing...
-                            </>
-                          ) : isCurrent && isTrial ? (
-                            "Activate Starter"
-                          ) : isCurrent ? (
-                            "Current Plan"
-                          ) : isUpgrade ? (
-                            "Upgrade"
-                          ) : (
-                            "Downgrade"
-                          )}
+                          {isCurrent && isTrial
+                            ? `Activate ${plan.name === "pro" ? "Growth" : plan.name.charAt(0).toUpperCase() + plan.name.slice(1)}`
+                            : isCurrent
+                              ? "Renew"
+                              : plan.name.toLowerCase() === "enterprise"
+                                ? "Contact sales"
+                                : isUpgrade
+                                  ? "Upgrade"
+                                  : "Downgrade"}
                         </Button>
                       </CardContent>
                     </Card>
