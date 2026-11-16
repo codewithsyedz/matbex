@@ -56,7 +56,7 @@ async function translateJSON(payload: unknown): Promise<unknown> {
     content = await completeText({
       system: "You are a precise JSON-in/JSON-out Arabic translator. Reply with JSON only.",
       prompt,
-      maxTokens: 8192,
+      maxTokens: 32000,
     });
   } catch (e) {
     if ((e as { status?: number }).status === 429) throw new Error("RATE_LIMITED");

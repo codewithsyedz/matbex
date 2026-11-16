@@ -2,8 +2,8 @@ import { serve } from "../_runtime/serve.ts";
 import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { env } from "../_runtime/env.ts";
 import { createClient } from "@matbex/client";
-import { generateObject, NoObjectGeneratedError } from "ai";
-import { AI_MODEL, aiConfigured, anthropicModel } from "../_runtime/ai.ts";
+import Anthropic from "@anthropic-ai/sdk";
+import { AI_MODEL, AiOutputError, aiConfigured, generateJson } from "../_runtime/ai.ts";
 import { z } from "zod";
 import { buildCorsHeaders, corsPreflight } from "../_shared/cors.ts";
 import { requireUser, userHasTenantRole } from "../_shared/auth.ts";
@@ -19,6 +19,19 @@ const SuggestionSchema = z.object({
   confidence: z.number(),
   rationale: z.string(),
 });
+
+/** The same shape for structured outputs, so the model always answers with exactly these fields. */
+const SUGGESTION_JSON_SCHEMA = {
+  type: "object",
+  properties: {
+    account_id: { type: "string", description: "id of the chosen account, copied from the catalogue" },
+    classification: { type: "string" },
+    confidence: { type: "number", description: "0 to 1" },
+    rationale: { type: "string", description: "under 240 characters" },
+  },
+  required: ["account_id", "classification", "confidence", "rationale"],
+  additionalProperties: false,
+};
 
 type AuditInput = {
   tenant_id: string;
@@ -46,29 +59,30 @@ function json(cors: Record<string, string>, payload: unknown, status = 200, runI
 }
 
 function errorDetails(error: unknown): { status: number; message: string; retryAfter: number | null } {
-  const value = error as { statusCode?: number; message?: string; responseBody?: string; responseHeaders?: Record<string, string> };
-  const status = Number(value?.statusCode) || 500;
-  let message = value?.message || "AI journal generation failed";
-  if (value?.responseBody) {
-    try {
-      const parsed = JSON.parse(value.responseBody);
-      message = parsed?.error?.message || parsed?.message || message;
-    } catch { /* retain SDK message */ }
+  if (error instanceof AiOutputError) return { status: 422, message: error.message, retryAfter: null };
+  if (error instanceof Anthropic.APIError) {
+    const body = error.error as { error?: { message?: string } } | undefined;
+    const retry = Number(error.headers?.get?.("retry-after"));
+    return {
+      status: Number(error.status) || 502,
+      message: body?.error?.message || error.message || "AI journal generation failed",
+      retryAfter: Number.isFinite(retry) && retry > 0 ? retry : null,
+    };
   }
-  const retry = Number(value?.responseHeaders?.["retry-after"]);
-  return { status, message, retryAfter: Number.isFinite(retry) && retry > 0 ? retry : null };
+  return { status: 500, message: error instanceof Error ? error.message : "AI journal generation failed", retryAfter: null };
 }
 
 async function generateSuggestion(_key: string, initialRunId: string | undefined, prompt: string) {
-  // Claude via the AI SDK; the run id is local and only used to correlate retries/audit rows.
+  // Claude with structured outputs; the run id is local and only used to correlate retries/audit rows.
   const runId = initialRunId ?? crypto.randomUUID();
-  const { object } = await generateObject({
-    model: anthropicModel(MODEL),
-    schema: SuggestionSchema,
+  const output = await generateJson({
     prompt,
-    maxRetries: 0,
+    schema: SUGGESTION_JSON_SCHEMA,
+    parse: (v) => SuggestionSchema.parse(v),
+    effort: "medium",
+    maxTokens: 8000,
   });
-  return { output: object, runId };
+  return { output, runId };
 }
 
 serve(async (req) => {
@@ -228,7 +242,7 @@ serve(async (req) => {
       const text = await error.text();
       return new Response(text, { status: error.status, headers: { ...cors, "Content-Type": "application/json" } });
     }
-    const message = NoObjectGeneratedError.isInstance(error)
+    const message = error instanceof AiOutputError
       ? "AI could not produce a valid account classification"
       : error instanceof Error ? error.message : "AI journal posting failed";
     if (admin && auditContext) {

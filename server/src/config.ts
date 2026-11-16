@@ -67,7 +67,7 @@ const schema = z.object({
   REDIS_KEY_PREFIX: z.string().default("matbex:"),
 
   ANTHROPIC_API_KEY: z.string().optional(),
-  ANTHROPIC_MODEL: z.string().default("claude-sonnet-4-5"),
+  ANTHROPIC_MODEL: z.string().default("claude-sonnet-5-5"),
 });
 
 export type Config = z.infer<typeof schema>;
