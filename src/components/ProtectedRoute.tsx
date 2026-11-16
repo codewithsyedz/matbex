@@ -2,6 +2,7 @@ import { Navigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSuperAdmin } from "@/contexts/SuperAdminContext";
 import { TenantSuspendedScreen } from "@/components/TenantSuspendedScreen";
+import { Button } from "@/components/ui/button";
 import { MatbexLogoLoader } from "@/components/brand/MatbexLogo";
 import { Capacitor } from "@capacitor/core";
 import { logRouteGuard } from "@/lib/routeGuardLog";
@@ -42,7 +43,7 @@ const ACCOUNTANT_ALLOWED_ROUTES = [
 ];
 
 export function ProtectedRoute({ children, requireOnboarding = true }: ProtectedRouteProps) {
-  const { user, loading, tenant, roles, hasRole, isManager, isOwner } = useAuth();
+  const { user, loading, tenant, roles, hasRole, isManager, isOwner, userDataStatus, retryUserData } = useAuth();
   const { isSuperAdmin, loading: superAdminLoading, isImpersonating } = useSuperAdmin();
   const location = useLocation();
 
@@ -120,19 +121,37 @@ export function ProtectedRoute({ children, requireOnboarding = true }: Protected
     return <TenantSuspendedScreen />;
   }
 
+  // The profile/roles read failed (API restarting, network) and nothing is cached: say so and
+  // offer a retry rather than mistaking the error for "new user, needs onboarding".
+  if (contextsSettled && userDataStatus === "failed" && !tenant && roles.length === 0) {
+    track("wait", "user-data-failed");
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="text-center space-y-4 max-w-sm">
+          <MatbexLogoLoader size={48} />
+          <p className="text-sm text-muted-foreground">We couldn't load your workspace. Check your connection and try again.</p>
+          <Button onClick={() => void retryUserData()}>Try again</Button>
+        </div>
+      </div>
+    );
+  }
+
   // Check if user needs to complete onboarding (skip for SuperAdmins impersonating)
   // Native APK is POS-only: skip the tenant onboarding wizard entirely.
+  // Only after a successful read showed no business and no role, and keep the page they asked
+  // for so onboarding can send them back to it.
   if (
     requireOnboarding &&
     !isImpersonating &&
     !Capacitor.isNativePlatform() &&
     contextsSettled &&
+    userDataStatus === "loaded" &&
     !tenant &&
     roles.length === 0 &&
     location.pathname !== "/onboarding"
   ) {
     track("redirect", "onboarding-required", "/onboarding");
-    return <Navigate to="/onboarding" replace />;
+    return <Navigate to="/onboarding" replace state={{ from: location }} />;
   }
 
   // Cashier role restriction: only allow access to shifts and record-sale

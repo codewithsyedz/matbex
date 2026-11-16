@@ -66,6 +66,13 @@ interface AuthContextType {
   plan: Plan | null;
   featureFlags: Record<string, boolean>;
   loading: boolean;
+  /**
+   * Whether the signed-in user's profile and roles were last read successfully. "failed" means the
+   * reads errored (API restarting, network): the previous state is kept, and an empty tenant/roles
+   * must NOT be taken to mean "new user, needs onboarding".
+   */
+  userDataStatus: "pending" | "loaded" | "failed";
+  retryUserData: () => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -121,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [plan, setPlan] = useState<Plan | null>(hydratedSnapshot?.plan ?? null);
   const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>(hydratedSnapshot?.featureFlags ?? {});
   const [loading, setLoading] = useState(!hydratedSnapshot?.session?.user);
+  const [userDataStatus, setUserDataStatus] = useState<"pending" | "loaded" | "failed">("pending");
   const [impersonatedTenantId, setImpersonatedTenantId] = useState<string | null>(null);
   const [impersonatedRole, setImpersonatedRole] = useState<ImpersonatableRole | null>(() => {
     if (typeof window === "undefined") return null;
@@ -279,18 +287,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserData = useCallback(async (userId: string) => {
     try {
-      // Fetch profile
-      const { data: profileData } = await db
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
-
-      // Fetch tenant roles
-      const { data: rolesDataRaw } = await db
-        .from("user_tenant_roles")
-        .select("*")
-        .eq("user_id", userId);
+      // Profile and roles decide everything else (tenant, onboarding). A failed read is retried a
+      // couple of times and then reported as "failed" without touching the state we already have:
+      // treating an error as "no roles" sent existing users to /onboarding and then /dashboard.
+      let profileData: Profile | null = null;
+      let rolesDataRaw: unknown[] | null = null;
+      for (let attempt = 0; ; attempt++) {
+        const [p, r] = await Promise.all([
+          db.from("profiles").select("*").eq("id", userId).maybeSingle(),
+          db.from("user_tenant_roles").select("*").eq("user_id", userId),
+        ]);
+        if (!p.error && !r.error) {
+          profileData = p.data as Profile | null;
+          rolesDataRaw = r.data as unknown[] | null;
+          break;
+        }
+        if (attempt >= 2) {
+          console.warn("Could not load the user's profile/roles:", p.error ?? r.error);
+          setUserDataStatus("failed");
+          return;
+        }
+        await new Promise((res) => setTimeout(res, attempt === 0 ? 800 : 2500));
+      }
 
       let rolesData = (rolesDataRaw as UserTenantRole[]) || [];
       let effectiveProfile = profileData;
@@ -333,6 +351,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setProfile(effectiveProfile);
       setRoles(rolesData);
+      setUserDataStatus("loaded");
 
       // Check for impersonation first - but only if user is a SuperAdmin
       const storedImpersonation = sessionStorage.getItem("impersonatedTenant");
@@ -830,6 +849,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         plan,
         featureFlags,
         loading,
+        userDataStatus,
+        retryUserData: async () => { if (user) { setUserDataStatus("pending"); await fetchUserData(user.id); } },
         signUp,
         signIn,
         signOut,

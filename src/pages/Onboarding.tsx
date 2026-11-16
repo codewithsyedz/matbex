@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { useNavigate } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,7 @@ export default function Onboarding() {
   const { t } = useTranslation();
   const { user, refreshProfile, tenant, restaurants, loading: authLoading } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
 
   const [currentStep, setCurrentStep] = useState(1);
   const [loading, setLoading] = useState(false);
@@ -95,11 +96,14 @@ export default function Onboarding() {
       return;
     }
     
-    // If user already has an active restaurant, skip onboarding
+    // If user already has an active restaurant, skip onboarding and go back to the page they
+    // were opening (ProtectedRoute passes it), else the dashboard.
     if (tenant && restaurants.length > 0) {
-      navigate("/dashboard", { replace: true });
+      const from = (location.state as { from?: { pathname?: string; search?: string } } | null)?.from;
+      const back = from?.pathname && from.pathname !== "/onboarding" ? `${from.pathname}${from.search ?? ""}` : "/dashboard";
+      navigate(back, { replace: true });
     }
-  }, [user, tenant, restaurants, navigate, authLoading, setupDone]);
+  }, [user, tenant, restaurants, navigate, authLoading, setupDone, location.state]);
 
   // Show loading while auth is being checked
   if (authLoading || (!setupDone && user && tenant && restaurants.length > 0)) {
