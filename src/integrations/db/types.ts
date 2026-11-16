@@ -4809,36 +4809,55 @@ export type Database = {
       }
       delivery_platform_locations: {
         Row: {
+          branch_id: string | null
           created_at: string
+          external_account_id: string | null
           external_location_id: string
           id: string
           is_active: boolean
+          location_name: string | null
           provider: string
+          registered_at: string | null
           restaurant_id: string
           tenant_id: string
           updated_at: string
         }
         Insert: {
+          branch_id?: string | null
           created_at?: string
+          external_account_id?: string | null
           external_location_id: string
           id?: string
           is_active?: boolean
+          location_name?: string | null
           provider: string
+          registered_at?: string | null
           restaurant_id: string
           tenant_id: string
           updated_at?: string
         }
         Update: {
+          branch_id?: string | null
           created_at?: string
+          external_account_id?: string | null
           external_location_id?: string
           id?: string
           is_active?: boolean
+          location_name?: string | null
           provider?: string
+          registered_at?: string | null
           restaurant_id?: string
           tenant_id?: string
           updated_at?: string
         }
         Relationships: [
+            {
+              foreignKeyName: "delivery_platform_locations_branch_id_fkey"
+              columns: ["branch_id"]
+              isOneToOne: false
+              referencedRelation: "branches"
+              referencedColumns: ["id"]
+            },
             {
               foreignKeyName: "delivery_platform_locations_restaurant_id_fkey"
               columns: ["restaurant_id"]
@@ -4851,6 +4870,69 @@ export type Database = {
               columns: ["tenant_id"]
               isOneToOne: false
               referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
+      delivery_status_outbox: {
+        Row: {
+          attempts: number
+          created_at: string
+          external_order_id: string
+          id: string
+          last_error: string | null
+          next_attempt_at: string
+          online_order_id: string
+          provider: string
+          reason: string | null
+          receipt_id: string | null
+          restaurant_id: string
+          sent_at: string | null
+          status_code: number
+        }
+        Insert: {
+          attempts?: number
+          created_at?: string
+          external_order_id: string
+          id?: string
+          last_error?: string | null
+          next_attempt_at?: string
+          online_order_id: string
+          provider: string
+          reason?: string | null
+          receipt_id?: string | null
+          restaurant_id: string
+          sent_at?: string | null
+          status_code: number
+        }
+        Update: {
+          attempts?: number
+          created_at?: string
+          external_order_id?: string
+          id?: string
+          last_error?: string | null
+          next_attempt_at?: string
+          online_order_id?: string
+          provider?: string
+          reason?: string | null
+          receipt_id?: string | null
+          restaurant_id?: string
+          sent_at?: string | null
+          status_code?: number
+        }
+        Relationships: [
+            {
+              foreignKeyName: "delivery_status_outbox_online_order_id_fkey"
+              columns: ["online_order_id"]
+              isOneToOne: false
+              referencedRelation: "online_orders"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "delivery_status_outbox_restaurant_id_fkey"
+              columns: ["restaurant_id"]
+              isOneToOne: false
+              referencedRelation: "restaurants"
               referencedColumns: ["id"]
             },
           ]
@@ -21778,6 +21860,11 @@ export type Database = {
         | {
         Args: { _template_key?: unknown }
         Returns: undefined
+      }
+      ingest_deliverect_order:
+        | {
+        Args: { p_restaurant_id: unknown }
+        Returns: Json
       }
       inspect_zatca_audit_break:
         | {

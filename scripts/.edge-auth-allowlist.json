@@ -131,5 +131,9 @@
   "online-order-pay": {
     "reason": "Guest checkout of an online order: amount is the order's server-priced total, paid status only from Moyasar's own API with the restaurant's key.",
     "added_at": "2026-11-15"
+  },
+  "deliverect": {
+    "reason": "Deliverect webhooks (register, orders, products, store status); every request must carry Deliverect's HMAC-SHA256 over the raw body (verifyDeliverectSignature).",
+    "added_at": "2026-11-16"
   }
 }

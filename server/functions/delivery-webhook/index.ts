@@ -8,7 +8,8 @@ import { env } from "../_runtime/env.ts";
 //   provider ∈ deliverect | otter | jahez | hungerstation | keeta | toyou | mrsool | careem | talabat
 //
 // Each provider's shared secret is stored under <PROVIDER>_WEBHOOK_SECRET
-// (e.g. DELIVERECT_WEBHOOK_SECRET, OTTER_WEBHOOK_SECRET).
+// (e.g. DELIVERECT_WEBHOOK_SECRET, OTTER_WEBHOOK_SECRET); without it orders are refused.
+// Deliverect's full two-way POS integration is the separate function `deliverect`.
 
 import { createClient } from "@matbex/client";
 import { buildCorsHeaders } from "../_shared/cors.ts";
@@ -167,6 +168,7 @@ function timingSafeEqual(a: string, b: string): boolean {
 /** Extract a hex HMAC from common header variants (strips prefixes like "sha256="). */
 function extractSignature(req: Request): string | null {
   const candidates = [
+    "x-server-authorization-hmac-sha256",
     "x-deliverect-signature",
     "x-otter-signature",
     "x-webhook-signature",
@@ -204,25 +206,27 @@ serve(async (req) => {
   const rawBody = await req.text();
   const secret = env(`${provider.toUpperCase()}_WEBHOOK_SECRET`);
 
-  let signatureValid: boolean | null = null;
-  if (secret) {
-    const received = extractSignature(req);
-    if (!received) {
-      return new Response(JSON.stringify({ error: "Missing signature header" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const expected = await hmacSha256Hex(secret, rawBody);
-    signatureValid = timingSafeEqual(received, expected);
-    if (!signatureValid) {
-      return new Response(JSON.stringify({ error: "Invalid signature" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-  } else {
-    console.warn(`[delivery-webhook] ${provider}: no shared secret configured — accepting without HMAC verification`);
+  // Every order must be signed: without the provider's shared secret the endpoint refuses orders
+  // (it used to accept anything, so anyone could inject orders).
+  if (!secret) {
+    console.warn(`[delivery-webhook] ${provider}: ${provider.toUpperCase()}_WEBHOOK_SECRET is not set — refusing unsigned order`);
+    return new Response(JSON.stringify({ error: "Webhook not configured" }), {
+      status: 503, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
   }
-
+  const received = extractSignature(req);
+  if (!received) {
+    return new Response(JSON.stringify({ error: "Missing signature header" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+  const expected = await hmacSha256Hex(secret, rawBody);
+  const signatureValid = timingSafeEqual(received, expected);
+  if (!signatureValid) {
+    return new Response(JSON.stringify({ error: "Invalid signature" }), {
+      status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
   let payload: any;
   try {
     payload = JSON.parse(rawBody);

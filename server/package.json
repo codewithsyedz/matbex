@@ -15,7 +15,7 @@
     "migrate:from-supabase": "node scripts/migrate-from-supabase.mjs",
     "import:auth": "node scripts/migrate-from-supabase.mjs --steps auth",
     "smoke": "tsx --env-file-if-exists=../.env scripts/smoke-test.ts",
-    "test": "tsx --test functions/pos-sync/eventSchema_test.ts functions/terminal-api/versionGuard_test.ts functions/_shared/payments/moyasar_test.ts functions/_shared/billing/subscriptionQuote_test.ts functions/_shared/ai/invoiceScan_test.ts",
+    "test": "tsx --test functions/pos-sync/eventSchema_test.ts functions/terminal-api/versionGuard_test.ts functions/_shared/payments/moyasar_test.ts functions/_shared/billing/subscriptionQuote_test.ts functions/_shared/ai/invoiceScan_test.ts functions/_shared/deliverect_test.ts",
     "typecheck:functions": "tsc --noEmit -p tsconfig.functions.json",
     "dev:worker": "tsx watch --clear-screen=false --import ./src/otel.ts --env-file-if-exists=../.env src/worker.ts",
     "start:worker": "node --env-file-if-exists=../.env --import ./dist/otel.mjs dist/worker.mjs",

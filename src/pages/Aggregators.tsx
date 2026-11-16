@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Copy, Loader2 } from "lucide-react";
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
+import { DeliverectCard } from "@/components/aggregators/DeliverectCard";
 
 type Aggregator = "hungerstation" | "jahez" | "mrsool" | "talabat";
 
@@ -112,9 +113,10 @@ export default function Aggregators() {
       <div>
         <h1 className="font-display text-2xl md:text-3xl font-semibold tracking-tight">Delivery Aggregators</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Connect HungerStation, Jahez, Mrsool, and Talabat. Orders land in your unified queue.
+          Connect HungerStation, Jahez, Keeta and others through Deliverect, or a single app directly. Orders land in your unified queue.
         </p>
       </div>
+      <DeliverectCard />
       {AGGREGATORS.map((a) => {
         const row = creds[a.id];
         if (!row) return null;

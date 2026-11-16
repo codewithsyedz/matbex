@@ -10,6 +10,8 @@
     "complete-registration-payment",
     "create-registration-checkout",
     "create-tenant-user",
+    "deliverect",
+    "deliverect-status-sync",
     "delivery-webhook",
     "generate-invoice-pdf",
     "get-exchange-rates",

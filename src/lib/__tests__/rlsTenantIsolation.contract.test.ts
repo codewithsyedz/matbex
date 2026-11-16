@@ -57,6 +57,7 @@ const TENANT_PRIVATE_TABLES = [
   "day_end_adjustments",
   "delivery_orders",
   "delivery_platform_locations",
+  "delivery_status_outbox",
   "demo_funnel_events",
   "device_licenses",
   "device_seat_reclaim_audit",
