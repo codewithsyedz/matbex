@@ -1,4 +1,5 @@
 import { serve } from "../_runtime/serve.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { env } from "../_runtime/env.ts";
 import { createClient } from "@matbex/client";
 import { corsHeaders } from "../_runtime/cors.ts";
@@ -26,11 +27,8 @@ serve(async (req) => {
       env("API_URL")!,
       env("SERVICE_ROLE_KEY")!,
     );
-    const { data: saRow } = await adminCheck
-      .from("superadmin_users")
-      .select("id")
-      .eq("user_id", userData.user.id)
-      .maybeSingle();
+    void adminCheck;
+    const saRow = await isSuperAdminSession(req, userData.user.id);
     if (!saRow) {
       return new Response(JSON.stringify({ ok: false, message: "SuperAdmin only" }), {
         status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },

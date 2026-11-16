@@ -5,6 +5,7 @@ import { createClient } from "@matbex/client";
 import { Resend } from "resend";
 import { requireSuperAdmin } from "../_shared/superadmin.ts";
 import { openPaymentPage, type SubscriptionPaymentRow } from "../_shared/billing/platformMoyasar.ts";
+import { MATBEX_VAT_RATE, withVat } from "../_shared/billing/subscriptionQuote.ts";
 
 /** The emailed payment link stays payable this long. */
 const REGISTRATION_LINK_DAYS = 7;
@@ -211,6 +212,7 @@ serve(async (req) => {
       });
     }
     const siteUrl = env('SITE_URL') || 'https://matbex.com';
+    const priced = withVat(planPrice);
     const { data: payRow, error: payErr } = await dbAdmin.from("subscription_payments").insert({
       application_id: application.id,
       kind: "registration",
@@ -218,7 +220,10 @@ serve(async (req) => {
       plan_id: application.plan_id,
       months: 1,
       branches: 1,
-      amount: planPrice,
+      subtotal: priced.subtotal,
+      vat_rate: MATBEX_VAT_RATE,
+      vat_amount: priced.vat,
+      amount: priced.total,
       created_by: requester.id,
     }).select("*").single();
     if (payErr || !payRow) throw new Error(payErr?.message ?? "Could not create the payment");
@@ -254,7 +259,7 @@ serve(async (req) => {
         application.full_name, 
         application.company_name, 
         application.plans?.name || 'Pro',
-        application.plans?.price || 0,
+        priced.total,
         paymentUrl
       ),
     });
@@ -339,7 +344,7 @@ function generateApprovalEmail(
       
       <div class="plan-box">
         <p class="plan-name">${planName} Plan</p>
-        <p class="plan-price">﷼${planPrice}<span>/month</span></p>
+        <p class="plan-price">﷼${planPrice}<span> first month, incl. 15% VAT</span></p>
       </div>
       
       <div class="notice">

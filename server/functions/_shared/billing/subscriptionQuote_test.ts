@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import { deepStrictEqual as eq, throws } from "node:assert/strict";
-import { quoteAddon, quotePlan, addonRenewalAmount } from "./subscriptionQuote.ts";
+import { quoteAddon, quotePlan, addonRenewalAmount, withVat } from "./subscriptionQuote.ts";
 
 const now = new Date("2026-11-15T12:00:00Z");
 const inDays = (d: number) => new Date(now.getTime() + d * 24 * 3600 * 1000);
@@ -45,4 +45,10 @@ test("add-on mid-period costs the days left, at least 1 SAR", () => {
   eq(quoteAddon({ plan: starter, status: "active", periodEnd: inDays(1) }, 9, now), 1);
   throws(() => quoteAddon({ plan: { name: "trial", price: 0 }, status: "trial", periodEnd: inDays(10) }, 15, now), /Choose a plan/);
   eq(addonRenewalAmount(12, "year"), 120);
+});
+
+test("15% VAT is added on top of the published price", () => {
+  eq(withVat(349), { subtotal: 349, vat: 52.35, total: 401.35 });
+  eq(withVat(3490), { subtotal: 3490, vat: 523.5, total: 4013.5 });
+  eq(withVat(4.33), { subtotal: 4.33, vat: 0.65, total: 4.98 });
 });

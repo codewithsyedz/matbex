@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
@@ -90,9 +91,7 @@ const handler = async (req: Request): Promise<Response> => {
     // ============================================
     
     // Check if caller is SuperAdmin
-    const { data: isSuperAdmin } = await dbAdmin.rpc('is_superadmin', { 
-      _user_id: caller.id 
-    });
+    const isSuperAdmin = await isSuperAdminSession(req, caller.id);
 
     if (invited_by_superadmin) {
       // SuperAdmin invite requires SuperAdmin role

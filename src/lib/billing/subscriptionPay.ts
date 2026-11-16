@@ -10,6 +10,9 @@ export interface PlanQuote {
   branches: number;
   plan_amount: number;
   addons: { addon_id: string; name: string; amount: number }[];
+  subtotal: number;
+  vat: number;
+  vat_rate: number;
   total: number;
   current_period_end: string | null;
 }

@@ -1,4 +1,5 @@
 import { serve } from "../_runtime/serve.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { env } from "../_runtime/env.ts";
 import { createClient } from "@matbex/client";
 import { corsHeaders } from "../_runtime/cors.ts";
@@ -82,11 +83,7 @@ serve(async (req) => {
       .maybeSingle();
 
     if (!membership) {
-      const { data: sa } = await db
-        .from("superadmin_users")
-        .select("id")
-        .eq("user_id", userData.user.id)
-        .maybeSingle();
+      const sa = await isSuperAdminSession(req, userData.user.id);
       if (!sa) {
         return new Response(JSON.stringify({ error: "Forbidden" }), {
           status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },

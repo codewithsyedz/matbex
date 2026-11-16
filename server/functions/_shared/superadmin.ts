@@ -43,6 +43,11 @@ export async function requireSuperAdmin(req: Request): Promise<SuperAdminCaller>
   const userId = claimsData.claims.sub as string;
   const email = (claimsData.claims.email as string | undefined) ?? null;
 
+  // SuperAdmin rights need a session that passed two-factor (aal2), as is_superadmin() requires.
+  if (claimsData.claims.aal !== "aal2") {
+    throw new Response(JSON.stringify({ error: "Two-factor verification required for SuperAdmin access", code: "mfa_required" }), { status: 403 });
+  }
+
   // 1) JWT-embedded claim (fast path)
   const appMeta = (claimsData.claims.app_metadata ?? {}) as Record<string, unknown>;
   if (appMeta.is_superadmin === true) {
@@ -59,6 +64,28 @@ export async function requireSuperAdmin(req: Request): Promise<SuperAdminCaller>
     throw new Response(JSON.stringify({ error: "Requires SuperAdmin privileges" }), { status: 403 });
   }
   return { userId, email, source: "db" };
+}
+
+/** The two-factor level of the request's (already verified) access token: "aal1" or "aal2". */
+export function requestAal(req: Request): string {
+  const token = (req.headers.get("Authorization") ?? "").replace(/^Bearer\s+/i, "");
+  try {
+    const part = token.split(".")[1] ?? "";
+    const json = JSON.parse(Buffer.from(part.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8"));
+    return typeof json.aal === "string" ? json.aal : "aal1";
+  } catch {
+    return "aal1";
+  }
+}
+
+/**
+ * SuperAdmin rights for this request: the user is a superadmin AND the session passed two-factor.
+ * Use this instead of reading superadmin_users / is_superadmin with the service client, which
+ * cannot see the session's two-factor level. Call only after the token was verified.
+ */
+export async function isSuperAdminSession(req: Request, userId: string): Promise<boolean> {
+  if (requestAal(req) !== "aal2") return false;
+  return dbIsSuperAdmin(userId);
 }
 
 async function dbIsSuperAdmin(userId: string): Promise<boolean> {

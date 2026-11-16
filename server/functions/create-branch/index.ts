@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
 
@@ -99,8 +100,7 @@ serve(async (req) => {
   }
 
   // --- 4. Authorize: SuperAdmin OR owner/manager of this restaurant ---
-  const { data: superFlag } = await admin.rpc("is_superadmin", { _user_id: userId });
-  let authorized = superFlag === true;
+  let authorized = await isSuperAdminSession(req, userId);
 
   if (!authorized) {
     const { data: ownerFlag } = await admin.rpc("has_role", {

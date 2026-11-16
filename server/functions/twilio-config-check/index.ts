@@ -1,4 +1,5 @@
 import { twilioConfigured, twilioRequest } from "../_shared/twilio.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { env } from "../_runtime/env.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
@@ -23,25 +24,21 @@ async function authUser(req: Request) {
   return data.user;
 }
 
-async function isOwner(userId: string): Promise<boolean> {
+async function isOwner(userId: string, req: Request): Promise<boolean> {
   const apiUrl = env("API_URL")!;
   const serviceKey = env("SERVICE_ROLE_KEY")!;
   const sb = createClient(apiUrl, serviceKey);
-  const [{ data: tenantRoleRows }, { data: superAdminRow }] = await Promise.all([
+  const [{ data: tenantRoleRows }, superAdminRow] = await Promise.all([
     sb
       .from("user_tenant_roles")
       .select("role")
       .eq("user_id", userId)
       .eq("role", "owner")
       .limit(1),
-    sb
-      .from("superadmin_users")
-      .select("id")
-      .eq("user_id", userId)
-      .maybeSingle(),
+    isSuperAdminSession(req, userId),
   ]);
 
-  return (tenantRoleRows?.length ?? 0) > 0 || !!superAdminRow;
+  return (tenantRoleRows?.length ?? 0) > 0 || superAdminRow;
 }
 
 serve(async (req: Request) => {
@@ -56,7 +53,7 @@ serve(async (req: Request) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-    if (!(await isOwner(user.id))) {
+    if (!(await isOwner(user.id, req))) {
       return new Response(JSON.stringify({ error: "Forbidden" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },

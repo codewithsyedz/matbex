@@ -16,7 +16,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { paymentOwner } from "../_shared/subscriptionPayment.ts";
 import { billedQuantity } from "../_shared/branchBillingPlan.ts";
 import {
-  addonRenewalAmount, quoteAddon, quotePlan, round2, type AccountState, type Period,
+  addonRenewalAmount, quoteAddon, quotePlan, round2, withVat, MATBEX_VAT_RATE, type AccountState, type Period,
 } from "../_shared/billing/subscriptionQuote.ts";
 import { openPaymentPage, settleSubscriptionPayment, type SubscriptionPaymentRow } from "../_shared/billing/platformMoyasar.ts";
 
@@ -81,8 +81,8 @@ serve(async (req) => {
     const branches = await branchCount();
     const q = quotePlan(account, { name: target.name, price: Number(target.price) }, period, branches);
     const addons = q.mode === "upgrade" ? [] : await renewalAddons(period);
-    const total = round2(q.amount + addons.reduce((s, a) => s + a.amount, 0));
-    return { plan: target, branches, quote: q, addons, total };
+    const priced = withVat(q.amount + addons.reduce((s, a) => s + a.amount, 0));
+    return { plan: target, branches, quote: q, addons, ...priced };
   };
 
   const returnUrl = (paymentId: string) => {
@@ -104,7 +104,7 @@ serve(async (req) => {
       const r = await planQuote(body.plan_name, body.period);
       return json({
         mode: r.quote.mode, months: r.quote.months, days_left: r.quote.daysLeft, branches: r.branches,
-        plan_amount: r.quote.amount, addons: r.addons, total: r.total,
+        plan_amount: r.quote.amount, addons: r.addons, subtotal: r.subtotal, vat: r.vat, vat_rate: MATBEX_VAT_RATE, total: r.total,
         current_period_end: account.periodEnd?.toISOString() ?? null,
       });
     }
@@ -126,7 +126,8 @@ serve(async (req) => {
       const r = await planQuote(body.plan_name, body.period);
       insert = {
         kind: "plan", mode: r.quote.mode, plan_id: r.plan.id, months: r.quote.months, branches: r.branches,
-        amount: r.total, addon_items: r.addons.map((a) => ({ addon_id: a.addon_id, amount: a.amount })),
+        subtotal: r.subtotal, vat_rate: MATBEX_VAT_RATE, vat_amount: r.vat, amount: r.total,
+        addon_items: r.addons.map((a) => ({ addon_id: a.addon_id, amount: a.amount })),
       };
       const label = r.plan.name === "pro" ? "Growth" : r.plan.name[0].toUpperCase() + r.plan.name.slice(1);
       description = r.quote.mode === "upgrade"
@@ -140,7 +141,8 @@ serve(async (req) => {
       if (owned?.status === "active" && (!owned.expires_at || new Date(owned.expires_at) > new Date())) {
         return json({ error: "You already have this add-on" }, 409);
       }
-      insert = { kind: "addon", mode: "addon", addon_id: addon.id, amount: quoteAddon(account, Number(addon.price)) };
+      const priced = withVat(quoteAddon(account, Number(addon.price)));
+      insert = { kind: "addon", mode: "addon", addon_id: addon.id, subtotal: priced.subtotal, vat_rate: MATBEX_VAT_RATE, vat_amount: priced.vat, amount: priced.total };
       description = `Matbex add-on: ${addon.name}`;
     }
 

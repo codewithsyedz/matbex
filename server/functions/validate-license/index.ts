@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { serve } from "../_runtime/serve.ts";
 import Stripe from "stripe";
 import { createClient } from "@matbex/client";
@@ -63,11 +64,7 @@ serve(async (req) => {
       .maybeSingle();
     if (!roleRow) {
       // SuperAdmins can validate any tenant (impersonation / platform ops)
-      const { data: superAdmin } = await db
-        .from("superadmin_users")
-        .select("id")
-        .eq("user_id", user.id)
-        .maybeSingle();
+      const superAdmin = await isSuperAdminSession(req, user.id);
       if (!superAdmin) return json({ error: "Not a tenant member" }, 403, corsHeaders);
     }
 

@@ -1,4 +1,5 @@
 import { env } from "../_runtime/env.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { fromAddress } from "../_shared/sender.ts";
 import { serve } from "../_runtime/serve.ts";
 import { createClient } from "@matbex/client";
@@ -81,12 +82,8 @@ serve(async (req) => {
     }
 
     // Verify caller is SuperAdmin OR has owner/manager role
-    const [{ data: superRow }, { data: roles }] = await Promise.all([
-      db
-        .from("superadmin_users")
-        .select("user_id")
-        .eq("user_id", userData.user.id)
-        .maybeSingle(),
+    const [superRow, { data: roles }] = await Promise.all([
+      isSuperAdminSession(req, userData.user.id),
       db
         .from("user_roles")
         .select("role")

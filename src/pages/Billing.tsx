@@ -11,6 +11,7 @@ import { Check, Crown, Zap, Building2, Loader2, RefreshCw } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { PlanCheckoutDialog } from "@/components/billing/PlanCheckoutDialog";
+import { SubscriptionPaymentHistory } from "@/components/billing/SubscriptionPaymentHistory";
 import { subscriptionPaymentStatus } from "@/lib/billing/subscriptionPay";
 import { cn } from "@/lib/utils";
 import { Navigate, useSearchParams } from "react-router-dom";
@@ -176,6 +177,8 @@ export default function Billing() {
         </div>
 
         <TrialCountdownCard />
+
+        <SubscriptionPaymentHistory />
 
         {/* Current Plan */}
         <Card className="border-border/40">

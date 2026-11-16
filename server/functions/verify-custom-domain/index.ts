@@ -1,4 +1,5 @@
 import { serve } from "../_runtime/serve.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { env } from "../_runtime/env.ts";
 import { resolveDns } from "../_runtime/dns.ts";
 import { createClient } from "@matbex/client";
@@ -181,12 +182,7 @@ serve(async (req) => {
 
     let isSuperAdmin = false;
     if (!membership) {
-      const { data: saRow } = await db
-        .from("superadmin_users")
-        .select("id")
-        .eq("user_id", userData.user.id)
-        .maybeSingle();
-      isSuperAdmin = !!saRow;
+      isSuperAdmin = await isSuperAdminSession(req, userData.user.id);
     }
 
     if (!membership && !isSuperAdmin) {

@@ -1,4 +1,5 @@
 import { serve } from "../_runtime/serve.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { env } from "../_runtime/env.ts";
 import { createClient } from "@matbex/client";
 
@@ -58,7 +59,7 @@ async function assertSuperadminFromAuthHeader(req: Request): Promise<string> {
   const { data: userRes, error } = await db.auth.getUser(jwt);
   if (error || !userRes?.user) throw new Error("Invalid auth token");
   const uid = userRes.user.id;
-  const { data: ok } = await db.rpc("is_superadmin", { _user_id: uid });
+  const ok = await isSuperAdminSession(req, uid);
   if (!ok) throw new Error("Forbidden");
   return uid;
 }

@@ -1,4 +1,5 @@
 import { serve } from "../_runtime/serve.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { env } from "../_runtime/env.ts";
 // Bulk-translates CMS page + block content from English to Arabic using
 // Claude (Anthropic API) and writes results into the `translations.ar`
@@ -87,9 +88,7 @@ serve(async (req) => {
       });
     }
     const admin = createClient(API_URL, SERVICE_ROLE);
-    const { data: isSuperAdmin } = await admin.rpc("has_role", {
-      _user_id: userRes.user.id, _role: "superadmin",
-    });
+    const isSuperAdmin = await isSuperAdminSession(req, userRes.user.id);
     const { data: isOwner } = await admin.rpc("has_role", {
       _user_id: userRes.user.id, _role: "owner",
     });

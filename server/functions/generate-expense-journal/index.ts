@@ -1,4 +1,5 @@
 import { serve } from "../_runtime/serve.ts";
+import { isSuperAdminSession } from "../_shared/superadmin.ts";
 import { env } from "../_runtime/env.ts";
 import { createClient } from "@matbex/client";
 import { generateObject, NoObjectGeneratedError } from "ai";
@@ -105,7 +106,7 @@ serve(async (req) => {
     };
 
     const isFinance = await userHasTenantRole(admin, auth.userId, expense.tenant_id, ["owner", "manager", "accountant"]);
-    const { data: isSuperadmin } = await admin.rpc("is_superadmin", { _user_id: auth.userId });
+    const isSuperadmin = await isSuperAdminSession(req, auth.userId);
     const { data: canAccess } = await auth.userClient.rpc("can_access_restaurant", { _restaurant_id: expense.restaurant_id });
     if ((!isFinance && !isSuperadmin) || canAccess !== true) return json(cors, { error: "Finance role and restaurant access are required" }, 403);
     if (!previewOnly && expense.approval_status !== "approved") return json(cors, { error: "Only approved expenses can be posted" }, 409);

@@ -17383,6 +17383,8 @@ export type Database = {
           created_by: string | null
           currency: string
           id: string
+          invoice_number: string | null
+          invoiced_at: string | null
           kind: string
           mode: string
           months: number
@@ -17394,8 +17396,11 @@ export type Database = {
           period_start: string | null
           plan_id: string | null
           status: string
+          subtotal: number | null
           tenant_id: string | null
           updated_at: string
+          vat_amount: number | null
+          vat_rate: number
         }
         Insert: {
           addon_id?: string | null
@@ -17407,6 +17412,8 @@ export type Database = {
           created_by?: string | null
           currency?: string
           id?: string
+          invoice_number?: string | null
+          invoiced_at?: string | null
           kind: string
           mode: string
           months?: number
@@ -17418,8 +17425,11 @@ export type Database = {
           period_start?: string | null
           plan_id?: string | null
           status?: string
+          subtotal?: number | null
           tenant_id?: string | null
           updated_at?: string
+          vat_amount?: number | null
+          vat_rate?: number
         }
         Update: {
           addon_id?: string | null
@@ -17431,6 +17441,8 @@ export type Database = {
           created_by?: string | null
           currency?: string
           id?: string
+          invoice_number?: string | null
+          invoiced_at?: string | null
           kind?: string
           mode?: string
           months?: number
@@ -17442,8 +17454,11 @@ export type Database = {
           period_start?: string | null
           plan_id?: string | null
           status?: string
+          subtotal?: number | null
           tenant_id?: string | null
           updated_at?: string
+          vat_amount?: number | null
+          vat_rate?: number
         }
         Relationships: [
             {
@@ -22767,6 +22782,11 @@ export type Database = {
       suggest_vat_posting_correction:
         | {
         Args: { p_batch_id: string }
+        Returns: Json
+      }
+      superadmin_mfa_status:
+        | {
+        Args: never
         Returns: Json
       }
       sweep_stale_impersonation_sessions:

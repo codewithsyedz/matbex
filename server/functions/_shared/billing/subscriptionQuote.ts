@@ -32,6 +32,14 @@ export interface PlanQuote {
 }
 
 export const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/** Saudi VAT on Matbex's own sales: published prices exclude it. */
+export const MATBEX_VAT_RATE = 0.15;
+export function withVat(subtotal: number) {
+  const net = round2(subtotal);
+  const vat = round2(net * MATBEX_VAT_RATE);
+  return { subtotal: net, vat, total: round2(net + vat) };
+}
 export const periodMonths = (p: Period) => (p === "year" ? 12 : 1);
 export const periodFactor = (p: Period) => (p === "year" ? 10 : 1);
 

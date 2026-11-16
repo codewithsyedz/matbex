@@ -87,7 +87,13 @@ export function PlanCheckoutDialog({ planName, open, onOpenChange }: { planName:
                   <span>Add-on: {a.name}</span><span className="tabular-nums">{sar(a.amount)}</span>
                 </div>
               ))}
-              <div className="flex justify-between border-t pt-1 font-semibold">
+              <div className="flex justify-between border-t pt-1 text-muted-foreground">
+                <span>Subtotal</span><span className="tabular-nums">{sar(quote.subtotal)}</span>
+              </div>
+              <div className="flex justify-between text-muted-foreground">
+                <span>VAT {Math.round(quote.vat_rate * 100)}%</span><span className="tabular-nums">{sar(quote.vat)}</span>
+              </div>
+              <div className="flex justify-between font-semibold">
                 <span>Total</span><span className="tabular-nums">{sar(quote.total)}</span>
               </div>
               <p className="pt-1 text-xs text-muted-foreground">
