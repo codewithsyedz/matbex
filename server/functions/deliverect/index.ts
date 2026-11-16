@@ -11,7 +11,7 @@ import { env } from "../_runtime/env.ts";
 
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { serviceClient } from "../_shared/payments/settle.ts";
-import { buildDeliverectMenu, verifyDeliverectSignature, type MenuItemRow } from "../_shared/deliverect.ts";
+import { aggregatorsAllowed, buildDeliverectMenu, verifyDeliverectSignature, type MenuItemRow } from "../_shared/deliverect.ts";
 
 serve(async (req) => {
   const cors = buildCorsHeaders(req);
@@ -46,6 +46,7 @@ serve(async (req) => {
       ? await db.from("restaurants").select("tenant_id").eq("id", branch.restaurant_id).maybeSingle()
       : { data: null };
     if (!branch || !rest?.tenant_id) return json({ error: "Unknown Matbex branch id" }, 404);
+    if (!(await aggregatorsAllowed(db, rest.tenant_id))) return json({ error: "Delivery aggregators need the Matbex Enterprise plan" }, 403);
     if (!body.locationId) return json({ error: "locationId is required" }, 400);
     const { error } = await db.from("delivery_platform_locations").upsert({
       provider: "deliverect",
@@ -74,6 +75,7 @@ serve(async (req) => {
   if (route === "orders") {
     const mapping = await mappingFor(body.location);
     if (!mapping) return json({ error: "This Deliverect location is not linked to Matbex" }, 404);
+    if (!(await aggregatorsAllowed(db, mapping.tenant_id))) return json({ error: "Delivery aggregators need the Matbex Enterprise plan" }, 403);
     const { data, error } = await db.rpc("ingest_deliverect_order", { p_restaurant_id: mapping.restaurant_id, p_order: body });
     if (error) return json({ error: error.message }, 500);
     return json({ result: "OK", ...(data as Record<string, unknown>) });

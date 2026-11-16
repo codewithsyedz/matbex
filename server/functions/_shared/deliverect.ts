@@ -15,6 +15,28 @@ export const deliverectEnv = () => (env("DELIVERECT_ENV") === "production" ? "pr
 export const deliverectBase = () =>
   deliverectEnv() === "production" ? "https://api.deliverect.com" : "https://api.staging.deliverect.com";
 
+// ---- entitlement --------------------------------------------------------------------------
+
+const PLAN_RANK: Record<string, number> = { trial: 0, free: 1, pro: 2, enterprise: 3 };
+
+/**
+ * Delivery Aggregators is an Enterprise feature (feature_flags 'aggregators_enabled', min_plan);
+ * same resolution as the app's useFeatureFlag: disabled list wins, rollout list overrides the plan.
+ */
+// deno-lint-ignore no-explicit-any
+export async function aggregatorsAllowed(db: any, tenantId: string): Promise<boolean> {
+  const [{ data: flag }, { data: t }] = await Promise.all([
+    db.from("feature_flags").select("enabled, min_plan, rollout_tenant_ids, disabled_tenant_ids").eq("key", "aggregators_enabled").maybeSingle(),
+    db.from("tenants").select("plans:plan_id(name)").eq("id", tenantId).maybeSingle(),
+  ]);
+  if (!flag) return false;
+  if ((flag.disabled_tenant_ids ?? []).includes(tenantId)) return false;
+  if ((flag.rollout_tenant_ids ?? []).includes(tenantId)) return true;
+  const plan = String(t?.plans?.name ?? "").toLowerCase();
+  const meets = !flag.min_plan || (PLAN_RANK[plan] ?? -1) >= (PLAN_RANK[String(flag.min_plan).toLowerCase()] ?? 0);
+  return !!flag.enabled && meets;
+}
+
 // ---- webhook signatures ------------------------------------------------------------------
 
 async function hmacHex(secret: string, body: string): Promise<string> {

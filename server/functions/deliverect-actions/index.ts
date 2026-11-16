@@ -11,7 +11,7 @@ import { buildCorsHeaders } from "../_shared/cors.ts";
 import { requireUser, userHasTenantRole } from "../_shared/auth.ts";
 import { serviceClient } from "../_shared/payments/settle.ts";
 import { env } from "../_runtime/env.ts";
-import { buildDeliverectMenu, deliverectPost, type MenuItemRow } from "../_shared/deliverect.ts";
+import { aggregatorsAllowed, buildDeliverectMenu, deliverectPost, type MenuItemRow } from "../_shared/deliverect.ts";
 
 const Body = z.union([
   z.object({ action: z.literal("send_menu"), location_id: z.string().min(1).max(100) }),
@@ -44,6 +44,7 @@ serve(async (req) => {
   if (!(await userHasTenantRole(auth.db, auth.userId, mapping.tenant_id, ["owner", "manager"]))) {
     return json({ error: "Owners and managers only" }, 403);
   }
+  if (!(await aggregatorsAllowed(db, mapping.tenant_id))) return json({ error: "Delivery aggregators need the Matbex Enterprise plan" }, 403);
 
   try {
     if (body.action === "send_menu") {

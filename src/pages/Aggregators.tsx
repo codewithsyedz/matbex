@@ -97,7 +97,13 @@ export default function Aggregators() {
   }
 
   if (!aggregatorsEnabled) {
-    return <LockedFeatureScreen featureName="Delivery Aggregators" />;
+    return (
+      <LockedFeatureScreen
+        featureName="Delivery Aggregators"
+        requiredPlan="Enterprise"
+        description="Delivery Aggregators (Jahez, HungerStation, Keeta and more through Deliverect) is part of the Enterprise plan. Contact sales to move your account over."
+      />
+    );
   }
 
   if (loading) {
