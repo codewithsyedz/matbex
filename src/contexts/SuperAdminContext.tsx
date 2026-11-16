@@ -87,18 +87,19 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const { data, error } = await db
-          .from("superadmin_users")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
+        // Whether this is a SuperAdmin *account*, before two-factor: superadmin_users is only
+        // readable from an aal2 session, so reading it here would mistake a SuperAdmin who has
+        // not entered their code yet for a new user (and send them to onboarding instead of
+        // the admin portal's two-factor screen). The database still requires aal2 for any
+        // SuperAdmin data.
+        const { data, error } = await (db.rpc as any)("superadmin_mfa_status");
 
         if (error) {
           console.error("Error checking superadmin status:", error);
           // Keep the JWT-claim value if we already had one; otherwise fail closed.
           if (typeof claim !== "boolean") setIsSuperAdmin(false);
         } else {
-          setIsSuperAdmin(!!data);
+          setIsSuperAdmin(!!(data as { is_superadmin_account?: boolean } | null)?.is_superadmin_account);
         }
       } catch (err) {
         console.error("Error checking superadmin:", err);
