@@ -135,6 +135,7 @@ export function useCardSettlementClearing({ branchId }: Args = {}) {
 
   const invalidate = () => {
     qc.invalidateQueries({ queryKey: ["card-settlement-deposits"] });
+    qc.invalidateQueries({ queryKey: ["moyasar-payouts"] });
     qc.invalidateQueries({ queryKey: ["card-clearing-balance"] });
     qc.invalidateQueries({ queryKey: ["trial-balance"] });
   };
