@@ -190,14 +190,22 @@ Do a full dry run on a staging server with a copy of production first; time each
    12 Jan 2026 (18,950, from before the takeover: one, Hameed's, has its period start typed as
    12 Dec 2026), and 16 for 16-31 Aug (13,086.67, paid 1 Sept). They are posted from Staff → Payroll
    Journal, or left out if they were paid outside the business.
-7c. **Billing settings** in production's `.env`: `STRIPE_PRICE_GROWTH` (the 349 SAR/month Growth price) and
-   `BRANCH_BILLING_ENABLED=true`, so `sync-branch-billing` (hourly) sets each Starter/Growth subscription's
-   quantity to the business's active branches (at least 1, prorated by Stripe; each change in `audit_logs`,
-   action `branch_billing_quantity`). Run it once by hand first without the flag and read its report.
-   Never set the flag on staging: it holds real Stripe customer ids.
+   **Past VAT quarters were filed and paid outside Matbex** (account holder, 2026-11-16). Nothing in Matbex
+   records those payments, so 2200 VAT Payable still shows them as owed (64,174.77 SAR on the production
+   copy, Smoke Grill). For each quarter already paid (Smoke Grill: Q2 2026 from 16 April, Q3 2026) the
+   accountant opens Accounting → VAT Return, chooses the quarter and uses **Record payment** with the date,
+   the amount actually paid, the bank account and the SADAD number (DR 2200 / CR bank). The ledger's figures
+   for those quarters (Q2: output 8,739.93; Q3: output 31,880.53, input 10,446.55, net 21,433.98) are not
+   final while sales days are unposted (about 13,400 and 19,700 SAR of VAT); once the days are posted, any
+   difference between the return as filed and the ledger is a VAT return adjustment, not a second payment.
+   Earlier periods (Matam ilhan, December 2025 - January 2026) likewise, if VAT was paid for them.
+7c. **Billing settings:** Matbex's own billing is Moyasar (see "Matbex billing" above); `STRIPE_PRICE_GROWTH`
+   and `BRANCH_BILLING_ENABLED` are no longer needed (price per branch is worked out at each Moyasar payment).
 8. **Switch:** point DNS / `VITE_API_URL`, rebuild the web app and Android APK (`vars.VITE_API_URL`/`VITE_API_KEY`
-    in GitHub), update webhook URLs at Stripe, Checkout.com, Hala, Twilio and delivery platforms to
-    `https://<API_DOMAIN>/functions/v1/<name>`.
+    in GitHub), update webhook URLs at Checkout.com, Hala, Twilio and delivery platforms to
+    `https://<API_DOMAIN>/functions/v1/<name>` (Deliverect: the register URL in the partner integration
+    settings is `https://<API_DOMAIN>/functions/v1/deliverect/register`; Moyasar needs nothing: each payment
+    carries its own notification URL).
 9. Keep the old project read-only for a rollback window (e.g. 14 days), then decommission.
 
 ### Staging
