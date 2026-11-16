@@ -23,7 +23,7 @@ export function LockedFeatureScreen({ featureName, description, featureKey, requ
             <Lock className="h-8 w-8 text-muted-foreground" />
           </div>
           <CardTitle className="text-base font-medium flex items-center justify-center gap-2">
-            {featureName} is a {requiredPlan} feature
+            {featureName} is {/^[AEIOU]/i.test(requiredPlan) ? "an" : "a"} {requiredPlan} feature
             {featureKey && (
               <FeatureReadinessIndicator featureKey={featureKey} />
             )}
