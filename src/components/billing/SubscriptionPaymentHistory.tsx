@@ -50,7 +50,7 @@ th:last-child,td:last-child{text-align:right}.tot td{border:0;padding:4px 8px}.g
 .warn{background:#fdf3d7;padding:8px;border-radius:6px;font-size:13px;margin-top:12px}@media print{.noprint{display:none}}</style></head><body>
 <div class="grid"><div><h1>Tax Invoice · فاتورة ضريبية</h1><p class="muted">${esc(inv.invoice_number)} · ${esc(format(new Date(inv.issued_at), "d MMM yyyy, HH:mm"))}</p></div>
 <img src="${qr}" alt="ZATCA QR" width="120" height="120"></div>
-${inv.seller_incomplete ? '<p class="warn">Seller details are incomplete on the server (legal name, VAT number or address).</p>' : ""}
+${inv.seller_incomplete ? '<p class="warn">Seller details are incomplete (legal name, VAT number or address).</p>' : ""}
 <div class="grid"><div><b>Seller</b><br>${esc(inv.seller.name)}<br>${inv.seller.vat_number ? `VAT ${esc(inv.seller.vat_number)}<br>` : ""}${inv.seller.cr_number ? `CR ${esc(inv.seller.cr_number)}<br>` : ""}${esc(inv.seller.address)}</div>
 <div><b>Buyer</b><br>${esc(inv.buyer.name)}<br>${inv.buyer.vat_number ? `VAT ${esc(inv.buyer.vat_number)}` : ""}</div></div>
 <table><thead><tr><th>Description</th><th>Amount (SAR, excl. VAT)</th></tr></thead><tbody>

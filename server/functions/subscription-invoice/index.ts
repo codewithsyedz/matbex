@@ -2,8 +2,9 @@ import { serve } from "../_runtime/serve.ts";
 import { env } from "../_runtime/env.ts";
 // Tax invoice for one of Matbex's own subscription payments (owners of the paying business).
 // POST { payment_id } -> invoice data the Billing page renders and prints (with the ZATCA QR).
-// Seller details come from server settings: MATBEX_LEGAL_NAME, MATBEX_VAT_NUMBER,
-// MATBEX_CR_NUMBER, MATBEX_ADDRESS; `seller_incomplete` says when any is missing.
+// Seller details come from platform_settings "matbex_seller" (SuperAdmin → Settings), with the
+// MATBEX_LEGAL_NAME / _VAT_NUMBER / _CR_NUMBER / _ADDRESS server settings as fallback;
+// `seller_incomplete` says when the name, VAT number or address is missing.
 
 import { createClient } from "@matbex/client";
 import { buildCorsHeaders } from "../_shared/cors.ts";
@@ -63,11 +64,16 @@ serve(async (req) => {
     ...items.map((i) => ({ description: `Add-on: ${addonNames[i.addon_id] ?? "Add-on"}`, amount: Number(i.amount) })),
   ];
 
+  // SuperAdmin → Settings → Subscription invoice details; server settings fill any gap.
+  const { data: ps } = await admin.from("platform_settings").select("value").eq("key", "matbex_seller").maybeSingle();
+  const saved = (ps?.value ?? {}) as Record<string, string | undefined>;
+  const pick = (k: string, envName: string) => (saved[k]?.trim() || env(envName) || null);
+  const legalName = pick("legal_name", "MATBEX_LEGAL_NAME");
   const seller = {
-    name: env("MATBEX_LEGAL_NAME") ?? "Matbex",
-    vat_number: env("MATBEX_VAT_NUMBER") ?? null,
-    cr_number: env("MATBEX_CR_NUMBER") ?? null,
-    address: env("MATBEX_ADDRESS") ?? null,
+    name: legalName ?? "Matbex",
+    vat_number: pick("vat_number", "MATBEX_VAT_NUMBER"),
+    cr_number: pick("cr_number", "MATBEX_CR_NUMBER"),
+    address: pick("address", "MATBEX_ADDRESS"),
   };
   return json({
     invoice_number: p.invoice_number,
@@ -75,7 +81,7 @@ serve(async (req) => {
     period_start: p.period_start,
     period_end: p.period_end,
     seller,
-    seller_incomplete: !env("MATBEX_LEGAL_NAME") || !seller.vat_number || !seller.address,
+    seller_incomplete: !legalName || !seller.vat_number || !seller.address,
     buyer: { name: t?.name ?? "", vat_number: buyerVat },
     lines,
     subtotal,
