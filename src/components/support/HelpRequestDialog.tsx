@@ -110,16 +110,3 @@ export function HelpRequestDialog({ open, onOpenChange }: { open: boolean; onOpe
     </Dialog>
   );
 }
-
-/** Header button that opens the help form. */
-export function HelpButton() {
-  const [open, setOpen] = useState(false);
-  return (
-    <>
-      <Button variant="ghost" size="icon" className="h-9 w-9" aria-label="Help and support" title="Help and support" onClick={() => setOpen(true)}>
-        <LifeBuoy className="h-[18px] w-[18px]" />
-      </Button>
-      <HelpRequestDialog open={open} onOpenChange={setOpen} />
-    </>
-  );
-}

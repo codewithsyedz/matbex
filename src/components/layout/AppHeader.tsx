@@ -1,5 +1,5 @@
 import { useAuth } from "@/contexts/AuthContext";
-import { HelpButton } from "@/components/support/HelpRequestDialog";
+import { HelpButton } from "@/components/support/HelpButton";
 import { planLabel } from "@/lib/billing/planLabel";
 import { useRoleGuard } from "@/hooks/useRoleGuard";
 import { RestaurantSwitcher } from "./RestaurantSwitcher";
