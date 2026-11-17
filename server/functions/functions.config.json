@@ -39,6 +39,7 @@
     "terminal-api",
     "track-login-attempt",
     "track-session",
+    "trial-nurture",
     "twilio-status-webhook",
     "verify-registration-payment",
     "zoho-oauth-exchange"

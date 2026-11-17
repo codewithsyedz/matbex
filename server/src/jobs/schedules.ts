@@ -32,6 +32,8 @@ export const DEFAULT_FUNCTION_SCHEDULES: Record<string, string | null> = {
   "accountant-pending-alerts": "0 9 * * *",
   // Moyasar-billed subscriptions: renewal reminders (7/3/1 days) and past due after the paid-until date.
   "subscription-renewals": "0 9 * * *",
+  // Trial setup emails on trial days 1, 7 and 12 (owners of businesses still on trial).
+  "trial-nurture": "0 10 * * *",
   // Order status changes to Deliverect (delivery_status_outbox), retried until accepted.
   "deliverect-status-sync": "* * * * *",
   // Present but not scheduled by default — enable via JOB_SCHEDULES_JSON if you used them:

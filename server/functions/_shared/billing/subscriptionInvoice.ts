@@ -56,13 +56,10 @@ export async function buildSubscriptionInvoice(db: Db, paymentId: string, tenant
   if (!p?.invoice_number || !p.tenant_id) return null;
 
   const { data: t } = await db.from("tenants").select("name").eq("id", p.tenant_id).single();
-  const { data: rests } = await db.from("restaurants").select("id").eq("tenant_id", p.tenant_id);
-  let buyerVat: string | null = null;
-  if (rests?.length) {
-    const { data: z } = await db.from("zatca_settings").select("vat_registration_number")
-      .in("restaurant_id", rests.map((r: { id: string }) => r.id)).not("vat_registration_number", "is", null).limit(1);
-    buyerVat = z?.[0]?.vat_registration_number ?? null;
-  }
+  // The buyer's VAT number is in its ZATCA settings (one row per business).
+  const { data: z } = await db.from("zatca_settings").select("vat_registration_number")
+    .eq("tenant_id", p.tenant_id).not("vat_registration_number", "is", null).limit(1);
+  const buyerVat: string | null = z?.[0]?.vat_registration_number ?? null;
 
   // Lines (excluding VAT): the plan or add-on, then add-ons renewed with the plan.
   const items = (p.addon_items ?? []) as { addon_id: string; amount: number }[];

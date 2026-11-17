@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { differenceInCalendarDays, format } from "date-fns";
-import { CalendarClock, FileText, Landmark, Loader2, Mail, Printer, Undo2 } from "lucide-react";
+import { CalendarClock, CheckCircle2, Circle, FileText, Hourglass, Landmark, Loader2, Mail, Printer, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -37,6 +37,8 @@ interface Overview {
   payments: Payment[]; refunds: Refund[];
   totals: { paid: number; refunded: number };
   moyasar_ready: boolean;
+  setup: { key: string; title: string; done: boolean }[];
+  trial_emails: { at: string; status: string; to: string; day: number | null }[];
 }
 
 const PLAN: Record<string, string> = { starter: "Starter", pro: "Growth", enterprise: "Enterprise", trial: "Trial" };
@@ -71,6 +73,7 @@ export function TenantBillingManager({ tenantId }: { tenantId: string }) {
   const refresh = () => qc.invalidateQueries({ queryKey: key });
 
   const [extendOpen, setExtendOpen] = useState(false);
+  const [trialOpen, setTrialOpen] = useState(false);
   const [offlineOpen, setOfflineOpen] = useState(false);
   const [refundOf, setRefundOf] = useState<Payment | null>(null);
 
@@ -134,6 +137,8 @@ export function TenantBillingManager({ tenantId }: { tenantId: string }) {
           </div>
         </CardContent>
       </Card>
+
+      <TrialCard overview={o} onExtend={() => setTrialOpen(true)} />
 
       <Card className="border-border/40">
         <CardHeader>
@@ -211,6 +216,7 @@ export function TenantBillingManager({ tenantId }: { tenantId: string }) {
         </CardContent>
       </Card>
 
+      <TrialDialog open={trialOpen} onOpenChange={setTrialOpen} tenantId={tenantId} current={t.trial_ends_at} onDone={refresh} />
       <ExtendDialog open={extendOpen} onOpenChange={setExtendOpen} tenantId={tenantId} current={t.current_period_end} onDone={refresh} />
       <OfflineDialog open={offlineOpen} onOpenChange={setOfflineOpen} overview={o} onDone={refresh} />
       <RefundDialog payment={refundOf} onClose={() => setRefundOf(null)} tenantId={tenantId} moyasarReady={o.moyasar_ready} onDone={refresh} />
@@ -220,6 +226,91 @@ export function TenantBillingManager({ tenantId }: { tenantId: string }) {
 
 function Stat({ label, value }: { label: string; value: React.ReactNode }) {
   return <div><p className="text-muted-foreground">{label}</p><div className="font-medium">{value}</div></div>;
+}
+
+function TrialCard({ overview: o, onExtend }: { overview: Overview; onExtend: () => void }) {
+  const t = o.tenant;
+  const onTrial = t.status === "trial" || t.status === "expired";
+  const done = o.setup.filter((s) => s.done).length;
+  const left = t.trial_ends_at ? differenceInCalendarDays(new Date(t.trial_ends_at), new Date()) : null;
+  return (
+    <Card className="border-border/40">
+      <CardHeader className="flex flex-row flex-wrap items-start justify-between gap-2 space-y-0">
+        <div>
+          <CardTitle className="text-base font-medium">Trial and setup</CardTitle>
+          <CardDescription>
+            {onTrial && t.trial_ends_at
+              ? (left! >= 0 ? `Trial ends ${day(t.trial_ends_at)} (${left} days left).` : `Trial ended ${day(t.trial_ends_at)}.`)
+              : "Setup steps from the first-week checklist."}
+            {" "}{done} of {o.setup.length} setup steps done.
+          </CardDescription>
+        </div>
+        {onTrial && <Button size="sm" variant="outline" onClick={onExtend}><Hourglass className="h-4 w-4 mr-1" />Extend trial</Button>}
+      </CardHeader>
+      <CardContent className="grid gap-4 text-sm md:grid-cols-2">
+        <ul className="space-y-1.5">
+          {o.setup.map((s) => (
+            <li key={s.key} className="flex items-center gap-2">
+              {s.done ? <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" /> : <Circle className="h-4 w-4 shrink-0 text-muted-foreground" />}
+              <span className={s.done ? "" : "text-muted-foreground"}>{s.title}</span>
+            </li>
+          ))}
+        </ul>
+        <div>
+          <p className="mb-1.5 text-xs font-medium text-muted-foreground">Trial emails (days 1, 7 and 12)</p>
+          {o.trial_emails.length === 0 ? <p className="text-muted-foreground">None sent yet.</p> : (
+            <ul className="space-y-1">
+              {o.trial_emails.map((m, i) => (
+                <li key={i} className="flex flex-wrap justify-between gap-2">
+                  <span>Day {m.day ?? "?"} · {m.to}</span>
+                  <span className="text-muted-foreground">{day(m.at)} · {m.status}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+function TrialDialog({ open, onOpenChange, tenantId, current, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; tenantId: string; current: string | null; onDone: () => void }) {
+  const [date, setDate] = useState("");
+  const [reason, setReason] = useState("");
+  useEffect(() => {
+    if (!open) return;
+    // Default: 7 more days from the later of today and the current end.
+    const base = Math.max(Date.now(), current ? new Date(current).getTime() : 0);
+    setDate(new Date(base + 7 * 24 * 3600 * 1000).toISOString().slice(0, 10));
+    setReason("");
+  }, [open, current]);
+  const save = useMutation({
+    mutationFn: () => call({ action: "extend_trial", tenant_id: tenantId, trial_ends_at: new Date(`${date}T23:59:59+03:00`).toISOString(), reason }),
+    onSuccess: () => { toast.success("Trial extended"); onOpenChange(false); onDone(); },
+    onError: (e: Error) => toast.error(e.message),
+  });
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Extend trial</DialogTitle>
+          <DialogDescription>
+            The business keeps trial access until the end of this day (Riyadh time). A trial that already ended goes back to the
+            Trial plan. The change and its reason are audited.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="space-y-1"><Label htmlFor="tr-date">Trial ends on</Label><Input id="tr-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} /></div>
+          <div className="space-y-1"><Label htmlFor="tr-reason">Reason</Label><Textarea id="tr-reason" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. waiting for their POS hardware" /></div>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => save.mutate()} disabled={!date || reason.trim().length < 3 || save.isPending}>
+            {save.isPending && <Loader2 className="h-4 w-4 mr-1 animate-spin" />}Extend trial
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }
 
 function ExtendDialog({ open, onOpenChange, tenantId, current, onDone }: { open: boolean; onOpenChange: (o: boolean) => void; tenantId: string; current: string | null; onDone: () => void }) {

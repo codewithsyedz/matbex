@@ -8556,6 +8556,39 @@ export type Database = {
             },
           ]
       }
+      job_runs: {
+        Row: {
+          finished_at: string
+          http_status: number | null
+          id: number
+          job: string
+          kind: string
+          started_at: string
+          status: string
+          summary: string | null
+        }
+        Insert: {
+          finished_at?: string
+          http_status?: number | null
+          id?: number
+          job: string
+          kind: string
+          started_at: string
+          status: string
+          summary?: string | null
+        }
+        Update: {
+          finished_at?: string
+          http_status?: number | null
+          id?: number
+          job?: string
+          kind?: string
+          started_at?: string
+          status?: string
+          summary?: string | null
+        }
+        Relationships: []
+      }
       journal_entry_batches: {
         Row: {
           approval_status: string
@@ -20798,10 +20831,51 @@ export type Database = {
         Args: { p_closure_id: unknown }
         Returns: string
       }
+      admin_cron_jobs:
+        | {
+        Args: never
+        Returns: {
+          jobid: number
+          jobname: string
+          schedule: string
+          active: boolean
+          target_function: string
+          command: string
+        }[]
+      }
+      admin_cron_last_runs:
+        | {
+        Args: never
+        Returns: {
+          jobid: number
+          status: string
+          return_message: string
+          start_time: string
+          end_time: string
+        }[]
+      }
       admin_force_rename_subdomain:
         | {
         Args: { _tenant_id?: unknown }
         Returns: string
+      }
+      admin_job_run_stats:
+        | {
+        Args: never
+        Returns: {
+          job: string
+          kind: string
+          last_started_at: string
+          last_status: string
+          last_http_status: number
+          last_summary: string
+          last_duration_ms: number
+          last_success_at: string
+          last_failure_at: string
+          last_failure_summary: string
+          runs_24h: number
+          failures_24h: number
+        }[]
       }
       admin_list_custom_domains:
         | {

@@ -10,6 +10,7 @@
  *     unless a cron.job row already triggers that function.
  *
  * Only one API instance runs jobs at a time (Postgres advisory lock).
+ * Every run is recorded in public.job_runs (14 days) for the SuperAdmin job status page.
  */
 import { httpQueueDeliveries, jobRuns, statusClass } from "../lib/metrics.js";
 import { Cron } from "croner";
@@ -24,6 +25,19 @@ const LEADER_LOCK = 727_001;
 const FN_URL = /\/functions\/v1\/([a-z0-9-]+)/i;
 
 let log: FastifyBaseLogger;
+/** Record one run in public.job_runs; never fails the job itself. */
+async function recordRun(job: string, kind: "function" | "sql" | "queued", started: Date, ok: boolean, httpStatus: number | null, summary: string | null) {
+  await sql`
+    insert into public.job_runs (job, kind, started_at, status, http_status, summary)
+    values (${job}, ${kind}, ${started}, ${ok ? "succeeded" : "failed"}, ${httpStatus}, ${summary ? summary.slice(0, 1000) : null})`
+    .catch((err) => log.warn({ err: err?.message, job }, "could not record job run"));
+}
+
+async function pruneRuns() {
+  await sql`delete from public.job_runs where started_at < now() - interval '14 days'`
+    .catch((err) => log.warn({ err: err?.message }, "could not prune job runs"));
+}
+
 const sqlJobs = new Map<number, { cron: Cron; schedule: string; command: string }>();
 const fnJobs: Cron[] = [];
 
@@ -43,6 +57,8 @@ export async function startJobs(logger: FastifyBaseLogger) {
     await reloadSqlJobs();
     setInterval(() => void reloadSqlJobs().catch((err) => log.error({ err }, "reload cron.job failed")), 60_000).unref();
     await scheduleFunctionDefaults();
+    void pruneRuns();
+    setInterval(() => void pruneRuns(), 6 * 3600_000).unref();
     await sql.listen("net_http_request", () => void drainHttpQueue());
     setInterval(() => void drainHttpQueue(), 10_000).unref();
     void drainHttpQueue();
@@ -93,6 +109,8 @@ async function runSqlJob(jobid: number, name: string | null, command: string) {
     log.error({ job: name ?? jobid, err: message }, "cron job failed");
   }
   jobRuns.inc({ job: name ?? `job-${jobid}`, kind: "sql", result: status });
+  // SQL that only queues a function call is recorded when the call runs (kind "queued").
+  if (!FN_URL.test(command)) await recordRun(name ?? `cron-${jobid}`, "sql", started, status === "succeeded", null, message || null);
   await sql`
     insert into cron.job_run_details (jobid, status, return_message, start_time, end_time)
     values (${jobid}, ${status}, ${message}, ${started}, now())`.catch(() => undefined);
@@ -108,16 +126,20 @@ async function scheduleFunctionDefaults() {
     if (!expr || coveredByDb.has(fn)) continue;
     fnJobs.push(
       new Cron(expr, { timezone: JOBS_TIMEZONE, protect: true }, async () => {
+        const started = new Date();
         try {
           const res = await invokeFunction(fn, {
             headers: { "content-type": "application/json", "x-cron-secret": process.env.CRON_SECRET! },
             body: JSON.stringify({ source: "cron" }),
           });
+          const text = await res.text().catch(() => "");
           jobRuns.inc({ job: fn, kind: "function", result: res.ok ? "succeeded" : "failed" });
-          if (!res.ok) log.warn({ fn, status: res.status, body: (await res.text()).slice(0, 300) }, "scheduled function returned error");
-        } catch (err) {
+          if (!res.ok) log.warn({ fn, status: res.status, body: text.slice(0, 300) }, "scheduled function returned error");
+          await recordRun(fn, "function", started, res.ok, res.status, text);
+        } catch (err: any) {
           jobRuns.inc({ job: fn, kind: "function", result: "failed" });
           log.error({ err, fn }, "scheduled function failed");
+          await recordRun(fn, "function", started, false, null, err?.message ?? String(err));
         }
       }),
     );
@@ -148,8 +170,10 @@ async function sendQueued(r: { id: number; method: string; url: string; headers:
   const headers = { ...(r.headers ?? {}) } as Record<string, string>;
   let status = 0;
   let error: string | null = null;
+  const fn = FN_URL.exec(r.url)?.[1];
+  const started = new Date();
+  let reply: string | null = null;
   try {
-    const fn = FN_URL.exec(r.url)?.[1];
     if (fn) {
       // Legacy jobs authenticated with the hosted project's keys — use ours.
       headers["x-cron-secret"] = process.env.CRON_SECRET!;
@@ -157,6 +181,7 @@ async function sendQueued(r: { id: number; method: string; url: string; headers:
       delete headers["apikey"];
       const res = await invokeFunction(fn, { method: r.method, headers, body });
       status = res.status;
+      reply = await res.text().catch(() => null);
     } else {
       const res = await fetch(r.url, { method: r.method, headers, body, signal: AbortSignal.timeout(Math.max(r.timeout_ms, 30_000)) });
       status = res.status;
@@ -165,6 +190,7 @@ async function sendQueued(r: { id: number; method: string; url: string; headers:
     error = err?.message ?? String(err);
   }
   httpQueueDeliveries.inc({ status: error ? "error" : statusClass(status) });
+  if (fn) await recordRun(fn, "queued", started, !error && status >= 200 && status < 300, status || null, error ?? reply);
   await sql`update net.http_request_queue set status_code = ${status}, error = ${error} where id = ${r.id}`;
 }
 

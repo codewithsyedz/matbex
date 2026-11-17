@@ -4,6 +4,7 @@ import { env } from "../_runtime/env.ts";
 // POST { action, tenant_id, ... }:
 //   overview         plan, paid-until date, provider, every payment with its refunds
 //   extend           move the paid-until date (reason required)
+//   extend_trial     give a business on trial (or whose trial ended) more trial days
 //   record_offline   a bank transfer or other offline payment: priced from the plan (or a set
 //                    amount), applied through apply_subscription_payment like an online payment,
 //                    so it gets a tax invoice and moves the paid-until date; the invoice is emailed
@@ -21,12 +22,14 @@ import { billedQuantity } from "../_shared/branchBillingPlan.ts";
 import { moyasarAdapter } from "../_shared/payments/moyasar.ts";
 import { platformCredentials } from "../_shared/billing/platformMoyasar.ts";
 import { buildCreditNote, buildSubscriptionInvoice, emailCreditNote, emailSubscriptionInvoice } from "../_shared/billing/subscriptionInvoice.ts";
+import { setupProgress } from "../_shared/onboarding/setupProgress.ts";
 import { MATBEX_VAT_RATE, periodFactor, periodMonths, round2, withVat } from "../_shared/billing/subscriptionQuote.ts";
 
 const Tenant = { tenant_id: z.string().uuid() };
 const Body = z.union([
   z.object({ action: z.literal("overview"), ...Tenant }),
   z.object({ action: z.literal("extend"), ...Tenant, period_end: z.string().datetime({ offset: true }), reason: z.string().trim().min(3).max(300) }),
+  z.object({ action: z.literal("extend_trial"), ...Tenant, trial_ends_at: z.string().datetime({ offset: true }), reason: z.string().trim().min(3).max(300) }),
   z.object({
     action: z.literal("record_offline"), ...Tenant,
     plan_id: z.string().uuid(),
@@ -93,7 +96,7 @@ serve(async (req) => {
 
   try {
     if (body.action === "overview") {
-      const [{ data: payments }, { data: refunds }, { data: plans }, branches] = await Promise.all([
+      const [{ data: payments }, { data: refunds }, { data: plans }, branches, setup, { data: trialMails }] = await Promise.all([
         db.from("subscription_payments")
           .select("id, kind, mode, method, status, amount, subtotal, vat_amount, refunded_amount, months, branches, invoice_number, moyasar_invoice_id, moyasar_payment_id, reference, note, period_start, period_end, paid_at, created_at, plans:plan_id(name), addons:addon_id(name)")
           .eq("tenant_id", tenant.id).order("created_at", { ascending: false }).limit(100),
@@ -101,6 +104,9 @@ serve(async (req) => {
           .eq("tenant_id", tenant.id).order("created_at", { ascending: false }),
         db.from("plans").select("id, name, price").eq("is_active", true).order("price"),
         branchCount(),
+        setupProgress(db, tenant.id),
+        db.from("email_send_log").select("created_at, status, recipient_email, metadata")
+          .eq("template_name", "trial-nurture").eq("metadata->>tenant_id", tenant.id).order("created_at", { ascending: false }).limit(20),
       ]);
       const paid = (payments ?? []).filter((p: { status: string }) => p.status === "paid");
       return json({
@@ -119,6 +125,9 @@ serve(async (req) => {
           refunded: round2(paid.reduce((s: number, p: { refunded_amount: number }) => s + Number(p.refunded_amount ?? 0), 0)),
         },
         moyasar_ready: !!env("MATBEX_MOYASAR_SECRET_KEY"),
+        setup,
+        // deno-lint-ignore no-explicit-any
+        trial_emails: (trialMails ?? []).map((m: any) => ({ at: m.created_at, status: m.status, to: m.recipient_email, day: m.metadata?.day ?? null })),
       });
     }
 
@@ -133,6 +142,24 @@ serve(async (req) => {
       await audit("BILLING_PERIOD_CHANGED", `Paid-until date ${before ? String(before).slice(0, 10) : "none"} → ${end.toISOString().slice(0, 10)}: ${body.reason}`,
         { before, after: end.toISOString(), reason: body.reason, status_before: tenant.status, status_after: patch.status ?? tenant.status });
       return json({ ok: true, current_period_end: end.toISOString(), status: patch.status ?? tenant.status });
+    }
+
+    if (body.action === "extend_trial") {
+      if (!["trial", "expired"].includes(String(tenant.status))) {
+        return json({ error: "Only a business on trial, or whose trial has ended, can get more trial days" }, 400);
+      }
+      const end = new Date(body.trial_ends_at);
+      if (end.getTime() <= Date.now()) return json({ error: "Choose a date in the future" }, 400);
+      if (end.getTime() > Date.now() + 90 * 24 * 3600 * 1000) return json({ error: "A trial can run at most 90 days from today" }, 400);
+      const patch: Record<string, unknown> = { trial_ends_at: end.toISOString(), status: "trial", updated_at: new Date().toISOString() };
+      // An ended trial was moved to the Free plan (expire_trials): put it back on the Trial plan.
+      const { data: trialPlan } = await db.from("plans").select("id").eq("name", "trial").maybeSingle();
+      if (tenant.status === "expired" && trialPlan) patch.plan_id = trialPlan.id;
+      const { error } = await db.from("tenants").update(patch).eq("id", tenant.id);
+      if (error) throw new Error(error.message);
+      await audit("TRIAL_EXTENDED", `Trial ${tenant.trial_ends_at ? String(tenant.trial_ends_at).slice(0, 10) : "none"} → ${end.toISOString().slice(0, 10)}: ${body.reason}`,
+        { before: tenant.trial_ends_at, after: end.toISOString(), status_before: tenant.status, plan_restored: !!patch.plan_id, reason: body.reason });
+      return json({ ok: true, trial_ends_at: end.toISOString(), status: "trial" });
     }
 
     if (body.action === "record_offline") {

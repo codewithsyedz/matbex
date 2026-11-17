@@ -247,6 +247,7 @@ const AdminTenants = lazy(() => import("@/pages/admin/AdminTenants"));
 const AdminTenantDetails = lazy(() => import("@/pages/admin/AdminTenantDetails"));
 const AdminPlans = lazy(() => import("@/pages/admin/AdminPlans"));
 const AdminRevenue = lazy(() => import("@/pages/admin/AdminRevenue"));
+const AdminJobs = lazy(() => import("@/pages/admin/AdminJobs"));
 const AdminWebhooks = lazy(() => import("@/pages/admin/AdminWebhooks"));
 const AdminAuditLogs = lazy(() => import("@/pages/admin/AdminAuditLogs"));
 const AdminResidencyAudit = lazy(() => import("@/pages/admin/AdminResidencyAudit"));
@@ -562,6 +563,11 @@ export function AnimatedRoutes() {
         <Route path="/admin/custom-domains" element={
           <ProtectedAdminRoute>
             <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminCustomDomains /></Suspense></LazyLoadErrorBoundary>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/jobs" element={
+          <ProtectedAdminRoute>
+            <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminJobs /></Suspense></LazyLoadErrorBoundary>
           </ProtectedAdminRoute>
         } />
         <Route path="/admin/revenue" element={

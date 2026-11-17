@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Building2, LayoutDashboard, Settings, LogOut, Webhook, ScrollText, ShieldAlert, ShieldCheck, MessageSquare, BarChart3, CreditCard, FileText, ClipboardList, Flag, KeyRound, Laptop, Globe, Globe2, BookOpen, Search, Package, DollarSign, Coins, ChevronDown, Maximize2, Minimize2, Activity, Inbox, Mail, AlertTriangle, TrendingUp } from "lucide-react";
+import { Building2, LayoutDashboard, Settings, LogOut, Webhook, ScrollText, ShieldAlert, ShieldCheck, MessageSquare, BarChart3, CreditCard, FileText, ClipboardList, Flag, KeyRound, Laptop, Globe, Globe2, BookOpen, Search, Package, DollarSign, Coins, ChevronDown, Maximize2, Minimize2, Activity, Inbox, Mail, AlertTriangle, TrendingUp, Timer } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -89,6 +89,7 @@ export const adminNavGroups = [
   {
     label: "System",
     items: [
+      { title: "Scheduled Jobs", icon: Timer, path: "/admin/jobs" },
       { title: "Webhooks", icon: Webhook, path: "/admin/webhooks" },
       { title: "Edge Function Health", icon: Activity, path: "/admin/edge-health" },
       { title: "Sync Health", icon: Activity, path: "/admin/sync-health" },
