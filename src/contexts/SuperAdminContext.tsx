@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
+import { endSupportAccess } from "@/lib/admin/supportAccess";
 import { db } from "@/integrations/db/client";
 import { User } from "@matbex/client";
 import { readSessionHydration, writeSessionHydration } from "@/lib/sessionHydration";
@@ -153,6 +154,8 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
   };
 
   const stopImpersonation = () => {
+    // Close the logged support-access visit that "View as Tenant" opened.
+    endSupportAccess();
     setImpersonatedTenant(null);
     sessionStorage.removeItem("impersonatedTenant");
     // Dispatch custom event so AuthContext updates without polling

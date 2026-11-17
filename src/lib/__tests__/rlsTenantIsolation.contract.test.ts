@@ -106,6 +106,8 @@ const TENANT_PRIVATE_TABLES = [
   "stock_movements",
   "subscription_payments",
   "subscription_refunds",
+  "support_access_log",
+  "support_requests",
   "team_invitation_events",
   "team_invitations",
   "tenant_activity_logs",

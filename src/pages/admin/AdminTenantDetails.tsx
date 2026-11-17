@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ViewAsTenantDialog } from "@/components/admin/ViewAsTenantDialog";
 import { planLabel } from "@/lib/billing/planLabel";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +16,6 @@ import {
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
 import { db } from "@/integrations/db/client";
-import { useSuperAdmin } from "@/contexts/SuperAdminContext";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -103,7 +103,7 @@ interface Tenant {
 export default function AdminTenantDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { startImpersonation } = useSuperAdmin();
+  const [viewAsOpen, setViewAsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [resendingCreds, setResendingCreds] = useState(false);
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -285,6 +285,7 @@ export default function AdminTenantDetails() {
 
   return (
     <div className="space-y-6">
+        <ViewAsTenantDialog tenant={{ id: tenant.id, name: tenant.name }} open={viewAsOpen} onOpenChange={setViewAsOpen} />
         {/* Header */}
         <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/admin/tenants")}>
@@ -307,10 +308,7 @@ export default function AdminTenantDetails() {
             <Button
               variant="outline"
               size="sm"
-              onClick={async () => {
-                await startImpersonation(tenant.id);
-                navigate("/dashboard");
-              }}
+              onClick={() => setViewAsOpen(true)}
             >
               <Eye className="h-4 w-4 mr-2" />
               View as Tenant

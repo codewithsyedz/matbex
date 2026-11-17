@@ -122,6 +122,7 @@ const Inventory = lazy(() => import("@/pages/Inventory"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const Team = lazy(() => import("@/pages/Team"));
+const Support = lazy(() => import("@/pages/Support"));
 const Staff = lazy(() => import("@/pages/Staff"));
 const FinesHistory = lazy(() => import("@/pages/FinesHistory"));
 const SalaryCalendar = lazy(() => import("@/pages/SalaryCalendar"));
@@ -250,6 +251,7 @@ const AdminRevenue = lazy(() => import("@/pages/admin/AdminRevenue"));
 const AdminJobs = lazy(() => import("@/pages/admin/AdminJobs"));
 const AdminAnnouncements = lazy(() => import("@/pages/admin/AdminAnnouncements"));
 const AdminCustomerHealth = lazy(() => import("@/pages/admin/AdminCustomerHealth"));
+const AdminSupport = lazy(() => import("@/pages/admin/AdminSupport"));
 const AdminWebhooks = lazy(() => import("@/pages/admin/AdminWebhooks"));
 const AdminAuditLogs = lazy(() => import("@/pages/admin/AdminAuditLogs"));
 const AdminResidencyAudit = lazy(() => import("@/pages/admin/AdminResidencyAudit"));
@@ -570,6 +572,11 @@ export function AnimatedRoutes() {
         <Route path="/admin/announcements" element={
           <ProtectedAdminRoute>
             <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminAnnouncements /></Suspense></LazyLoadErrorBoundary>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/support" element={
+          <ProtectedAdminRoute>
+            <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminSupport /></Suspense></LazyLoadErrorBoundary>
           </ProtectedAdminRoute>
         } />
         <Route path="/admin/health" element={
@@ -1062,6 +1069,9 @@ export function AnimatedRoutes() {
         } />
         <Route path="/team" element={
           <TenantRoute Component={Team} />
+        } />
+        <Route path="/support" element={
+          <TenantRoute Component={Support} />
         } />
         <Route path="/staff" element={
           <TenantRoute Component={Staff} />

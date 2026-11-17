@@ -1,4 +1,5 @@
 import { Coins, RefreshCw, User, Shield, Database, Target, UtensilsCrossed, Monitor, Printer, Bell, Palette, Languages, ClipboardCheck, ScanLine, Building2, CreditCard, Rocket, Calculator } from "lucide-react";
+import { SupportAccessCard } from "@/components/settings/SupportAccessCard";
 import {
   Select,
   SelectContent,
@@ -339,6 +340,7 @@ export default function Settings() {
             <WorkspaceCodeCard />
             <ImpersonationAnalyticsCard />
             <ImpersonationHistoryCard />
+            <SupportAccessCard />
           </TabsContent>
 
           {/* Notifications Tab - Owners only */}

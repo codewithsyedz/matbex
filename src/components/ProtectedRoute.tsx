@@ -13,10 +13,11 @@ interface ProtectedRouteProps {
 }
 
 // Routes cashiers are allowed to access
-const CASHIER_ALLOWED_ROUTES = ["/shifts", "/record-sale", "/chat", "/online-orders", "/order-manager"];
+const CASHIER_ALLOWED_ROUTES = ["/shifts", "/record-sale", "/chat", "/online-orders", "/order-manager", "/support"];
 
 // Routes accountants are allowed to access (finance & read-only operations)
 const ACCOUNTANT_ALLOWED_ROUTES = [
+  "/support",
   "/dashboard",
   "/finance-dashboard",
   "/accounting",

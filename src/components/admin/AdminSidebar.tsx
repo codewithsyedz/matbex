@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Building2, LayoutDashboard, Settings, LogOut, Webhook, ScrollText, ShieldAlert, ShieldCheck, MessageSquare, BarChart3, CreditCard, FileText, ClipboardList, Flag, KeyRound, Laptop, Globe, Globe2, BookOpen, Search, Package, DollarSign, Coins, ChevronDown, Maximize2, Minimize2, Activity, Inbox, Mail, AlertTriangle, TrendingUp, Timer, HeartPulse, Megaphone } from "lucide-react";
+import { Building2, LayoutDashboard, Settings, LogOut, Webhook, ScrollText, ShieldAlert, ShieldCheck, MessageSquare, BarChart3, CreditCard, FileText, ClipboardList, Flag, KeyRound, Laptop, Globe, Globe2, BookOpen, Search, Package, DollarSign, Coins, ChevronDown, Maximize2, Minimize2, Activity, Inbox, Mail, AlertTriangle, TrendingUp, Timer, HeartPulse, Megaphone, LifeBuoy } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import {
@@ -31,6 +31,7 @@ export const adminNavGroups = [
     items: [
       { title: "Applications", icon: ClipboardList, path: "/admin/applications" },
       { title: "Tenants", icon: Building2, path: "/admin/tenants" },
+      { title: "Support", icon: LifeBuoy, path: "/admin/support" },
       { title: "Customer Health", icon: HeartPulse, path: "/admin/health" },
       { title: "Tenant Costs", icon: DollarSign, path: "/admin/tenant-costs" },
     ],

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { ViewAsTenantDialog } from "@/components/admin/ViewAsTenantDialog";
 import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
@@ -42,7 +43,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { db } from "@/integrations/db/client";
-import { useSuperAdmin } from "@/contexts/SuperAdminContext";
 import { useSuperAdminAudit } from "@/hooks/useSuperAdminAudit";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -102,7 +102,6 @@ const FEATURE_FLAGS = [
 
 export default function AdminTenants() {
   const navigate = useNavigate();
-  const { startImpersonation } = useSuperAdmin();
   const { logTenantRename } = useSuperAdminAudit();
   const { tenant: activeTenant, refreshProfile } = useAuth();
   const qc = useQueryClient();
@@ -557,10 +556,9 @@ export default function AdminTenants() {
     );
   };
 
-  const handleViewAsTenant = async (tenant: Tenant) => {
-    await startImpersonation(tenant.id);
-    navigate("/dashboard");
-  };
+  // View as Tenant asks for a reason first (recorded; the business's owners can see it).
+  const [viewAs, setViewAs] = useState<{ id: string; name: string } | null>(null);
+  const handleViewAsTenant = (tenant: Tenant) => setViewAs({ id: tenant.id, name: tenant.name });
 
   const getPlanBadge = (plan: Plan | null | undefined) => {
     if (!plan) return <span className="text-muted-foreground text-xs">No plan</span>;
@@ -586,6 +584,7 @@ export default function AdminTenants() {
 
   return (
     <>
+      <ViewAsTenantDialog tenant={viewAs} open={!!viewAs} onOpenChange={(o) => { if (!o) setViewAs(null); }} />
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">

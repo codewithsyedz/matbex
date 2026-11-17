@@ -17955,6 +17955,181 @@ export type Database = {
             },
           ]
       }
+      support_access_log: {
+        Row: {
+          actor_name: string | null
+          actor_user_id: string
+          ended_at: string | null
+          id: string
+          reason: string
+          request_id: string | null
+          started_at: string
+          tenant_id: string
+        }
+        Insert: {
+          actor_name?: string | null
+          actor_user_id: string
+          ended_at?: string | null
+          id?: string
+          reason: string
+          request_id?: string | null
+          started_at?: string
+          tenant_id: string
+        }
+        Update: {
+          actor_name?: string | null
+          actor_user_id?: string
+          ended_at?: string | null
+          id?: string
+          reason?: string
+          request_id?: string | null
+          started_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "support_access_log_request_id_fkey"
+              columns: ["request_id"]
+              isOneToOne: false
+              referencedRelation: "support_requests"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "support_access_log_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
+      support_messages: {
+        Row: {
+          author_id: string | null
+          author_kind: string
+          author_name: string | null
+          body: string
+          created_at: string
+          id: string
+          internal: boolean
+          request_id: string
+        }
+        Insert: {
+          author_id?: string | null
+          author_kind: string
+          author_name?: string | null
+          body: string
+          created_at?: string
+          id?: string
+          internal?: boolean
+          request_id: string
+        }
+        Update: {
+          author_id?: string | null
+          author_kind?: string
+          author_name?: string | null
+          body?: string
+          created_at?: string
+          id?: string
+          internal?: boolean
+          request_id?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "support_messages_request_id_fkey"
+              columns: ["request_id"]
+              isOneToOne: false
+              referencedRelation: "support_requests"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
+      support_requests: {
+        Row: {
+          app_version: string | null
+          assigned_to: string | null
+          branch_id: string | null
+          category: string
+          created_at: string
+          id: string
+          last_message_at: string
+          last_message_by: string
+          number: number
+          page_path: string | null
+          page_title: string | null
+          priority: string
+          recent_errors: Json
+          resolved_at: string | null
+          status: string
+          subject: string
+          tenant_id: string
+          updated_at: string
+          user_agent: string | null
+          user_email: string | null
+          user_id: string
+          user_name: string | null
+          viewport: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          assigned_to?: string | null
+          branch_id?: string | null
+          category?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          last_message_by?: string
+          number?: number
+          page_path?: string | null
+          page_title?: string | null
+          priority?: string
+          recent_errors?: Json
+          resolved_at?: string | null
+          status?: string
+          subject: string
+          tenant_id: string
+          updated_at?: string
+          user_agent?: string | null
+          user_email?: string | null
+          user_id: string
+          user_name?: string | null
+          viewport?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          assigned_to?: string | null
+          branch_id?: string | null
+          category?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          last_message_by?: string
+          number?: number
+          page_path?: string | null
+          page_title?: string | null
+          priority?: string
+          recent_errors?: Json
+          resolved_at?: string | null
+          status?: string
+          subject?: string
+          tenant_id?: string
+          updated_at?: string
+          user_agent?: string | null
+          user_email?: string | null
+          user_id?: string
+          user_name?: string | null
+          viewport?: string | null
+        }
+        Relationships: [
+            {
+              foreignKeyName: "support_requests_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       suppressed_emails: {
         Row: {
           created_at: string

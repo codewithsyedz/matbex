@@ -1,4 +1,6 @@
 import { useAuth } from "@/contexts/AuthContext";
+import { HelpButton } from "@/components/support/HelpRequestDialog";
+import { planLabel } from "@/lib/billing/planLabel";
 import { useRoleGuard } from "@/hooks/useRoleGuard";
 import { RestaurantSwitcher } from "./RestaurantSwitcher";
 import { BranchSwitcher } from "./BranchSwitcher";
@@ -47,8 +49,8 @@ export function AppHeader() {
           <div className="hidden md:flex items-center gap-2 text-sm text-muted-foreground">
             <span>{tenant.name}</span>
             {plan && (
-              <Badge variant="secondary" className="text-xs capitalize">
-                {plan.name}
+              <Badge variant="secondary" className="text-xs">
+                {planLabel(plan.name)}
               </Badge>
             )}
             {isDemo && <DemoBadge />}
@@ -67,6 +69,7 @@ export function AppHeader() {
         {!isCashierOnly && <LanguageSelector />}
         {!isCashierOnly && <RegionSelector />}
         <ThemeToggle />
+        <HelpButton />
         {hasRole("owner") && <NotificationCenter />}
       </div>
     </header>
