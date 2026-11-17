@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useFeatureCatalog } from "@/hooks/useFeatureCatalog";
 import {
   Dialog,
   DialogContent,
@@ -26,22 +27,6 @@ import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
 import type { Addon, AddonBillingType } from "@/hooks/useAddons";
 
-const FEATURE_FLAGS = [
-  "daily_profit",
-  "accounting",
-  "inventory",
-  "payroll",
-  "chat",
-  "cogs",
-  "menu",
-  "shifts",
-  "advance_pay",
-  "api_access",
-  "multi_location",
-  "email_reports",
-  "advanced_reports",
-  "web_builder",
-];
 
 const QUOTA_KEYS = ["users", "image_uploads", "email_reminders"];
 
@@ -53,6 +38,8 @@ interface Props {
 }
 
 export function AddonFormDialog({ open, onOpenChange, addon, onSaved }: Props) {
+  // The shared feature catalogue (platform_features).
+  const FEATURE_FLAGS = useFeatureCatalog().map((f) => f.key);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useFeatureCatalog } from "@/hooks/useFeatureCatalog";
 import { ViewAsTenantDialog } from "@/components/admin/ViewAsTenantDialog";
 import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { useNavigate } from "react-router-dom";
@@ -85,22 +86,10 @@ interface Tenant {
   features?: TenantFeature[];
 }
 
-const FEATURE_FLAGS = [
-  { key: "daily_profit", label: "Daily Profit", description: "Daily profit calculations and reports" },
-  { key: "accounting", label: "Accounting Module", description: "Chart of accounts, journal entries, and period close" },
-  { key: "inventory", label: "Inventory Module", description: "Stock tracking and purchase management" },
-  { key: "payroll", label: "Payroll Module", description: "Labor cost tracking and payroll management" },
-  { key: "chat", label: "Team Chat", description: "Real-time team messaging and channels" },
-  { key: "cogs", label: "COGS Tracking", description: "Cost of goods sold analysis and reporting" },
-  { key: "menu", label: "Menu Management", description: "Menu items, recipes, and pricing" },
-  { key: "advance_pay", label: "Advance Pay", description: "Employee advance payment feature" },
-  { key: "api_access", label: "API Access", description: "REST API access for integrations" },
-  { key: "multi_location", label: "Multi-Location", description: "Multiple restaurant locations" },
-  { key: "email_reports", label: "Email Reports", description: "Automated email report delivery" },
-  { key: "advanced_reports", label: "Advanced Reports", description: "Advanced analytics and reporting" },
-];
 
 export default function AdminTenants() {
+  // The shared feature catalogue (platform_features).
+  const FEATURE_FLAGS = useFeatureCatalog();
   const navigate = useNavigate();
   const { logTenantRename } = useSuperAdminAudit();
   const { tenant: activeTenant, refreshProfile } = useAuth();

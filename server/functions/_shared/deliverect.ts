@@ -10,6 +10,7 @@
 //                               Deliverect when partner access is granted)
 
 import { env } from "../_runtime/env.ts";
+import { hasFeature } from "./entitlements.ts";
 
 export const deliverectEnv = () => (env("DELIVERECT_ENV") === "production" ? "production" : "staging");
 export const deliverectBase = () =>
@@ -17,24 +18,14 @@ export const deliverectBase = () =>
 
 // ---- entitlement --------------------------------------------------------------------------
 
-const PLAN_RANK: Record<string, number> = { trial: 0, free: 1, pro: 2, enterprise: 3 };
-
 /**
  * Delivery Aggregators is an Enterprise feature (feature_flags 'aggregators_enabled', min_plan);
  * same resolution as the app's useFeatureFlag: disabled list wins, rollout list overrides the plan.
  */
 // deno-lint-ignore no-explicit-any
 export async function aggregatorsAllowed(db: any, tenantId: string): Promise<boolean> {
-  const [{ data: flag }, { data: t }] = await Promise.all([
-    db.from("feature_flags").select("enabled, min_plan, rollout_tenant_ids, disabled_tenant_ids").eq("key", "aggregators_enabled").maybeSingle(),
-    db.from("tenants").select("plans:plan_id(name)").eq("id", tenantId).maybeSingle(),
-  ]);
-  if (!flag) return false;
-  if ((flag.disabled_tenant_ids ?? []).includes(tenantId)) return false;
-  if ((flag.rollout_tenant_ids ?? []).includes(tenantId)) return true;
-  const plan = String(t?.plans?.name ?? "").toLowerCase();
-  const meets = !flag.min_plan || (PLAN_RANK[plan] ?? -1) >= (PLAN_RANK[String(flag.min_plan).toLowerCase()] ?? 0);
-  return !!flag.enabled && meets;
+  // The delivery-apps rollout flag (aggregators_enabled: Enterprise) from the shared entitlement map.
+  return hasFeature(db, tenantId, "aggregators_enabled");
 }
 
 // ---- webhook signatures ------------------------------------------------------------------

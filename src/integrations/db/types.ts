@@ -12071,6 +12071,30 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_features: {
+        Row: {
+          category: string
+          description: string | null
+          key: string
+          label: string
+          sort_order: number
+        }
+        Insert: {
+          category: string
+          description?: string | null
+          key: string
+          label: string
+          sort_order?: number
+        }
+        Update: {
+          category?: string
+          description?: string | null
+          key?: string
+          label?: string
+          sort_order?: number
+        }
+        Relationships: []
+      }
       platform_settings: {
         Row: {
           created_at: string
@@ -22507,6 +22531,11 @@ export type Database = {
         Args: { _restaurant_id: unknown }
         Returns: string
       }
+      plan_rank:
+        | {
+        Args: { _plan: string }
+        Returns: number
+      }
       pos_ack_diagnostics:
         | {
         Args: { _branch_id: unknown }
@@ -23246,6 +23275,16 @@ export type Database = {
       tenant_admin_pin_is_set:
         | {
         Args: never
+        Returns: boolean
+      }
+      tenant_entitlements:
+        | {
+        Args: { _tenant_id: string }
+        Returns: Json
+      }
+      tenant_has_feature:
+        | {
+        Args: { _tenant_id: unknown }
         Returns: boolean
       }
       tenant_has_role:

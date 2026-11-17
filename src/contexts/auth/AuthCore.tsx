@@ -248,36 +248,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setPlan(planData);
 
-      // Get tenant-specific feature overrides
-      const { data: tenantFeatures } = await db
-        .from("tenant_features")
-        .select("*")
-        .eq("tenant_id", tenantId);
-
-      // Merge plan defaults with tenant overrides
-      const planFlags = (planData?.default_feature_flags && typeof planData.default_feature_flags === 'object' && !Array.isArray(planData.default_feature_flags))
-        ? planData.default_feature_flags as Record<string, boolean>
-        : {};
-      const flags: Record<string, boolean> = { ...planFlags };
-      tenantFeatures?.forEach((tf: { feature_key: string; enabled: boolean }) => {
-        flags[tf.feature_key] = tf.enabled;
-      });
-
-      // Merge in features unlocked by active addons
-      const { data: activeAddons } = await db
-        .from("tenant_addons" as any)
-        .select("addon:addons(included_features)")
-        .eq("tenant_id", tenantId)
-        .eq("status", "active");
-      activeAddons?.forEach((row: any) => {
-        const feats = row?.addon?.included_features;
-        if (Array.isArray(feats)) {
-          feats.forEach((key: string) => {
-            if (typeof key === "string") flags[key] = true;
-          });
-        }
-      });
-
+      // What this business can use, computed once in the database (tenant_entitlements: plan,
+      // active add-ons, SuperAdmin overrides and rollout flags) — the same map the server checks.
+      const { data: ent, error: entError } = await db.rpc("tenant_entitlements", { _tenant_id: tenantId });
+      const features = (!entError && ent && typeof ent === "object" ? (ent as { features?: Record<string, { enabled?: boolean }> }).features : null) ?? {};
+      const flags: Record<string, boolean> = {};
+      for (const [key, v] of Object.entries(features)) flags[key] = v?.enabled === true;
+      if (entError) {
+        // Could not compute (network/API restart): fall back to the plan's own features rather
+        // than switching every module off.
+        const planFlags = planData?.default_feature_flags;
+        if (planFlags && typeof planFlags === "object" && !Array.isArray(planFlags)) Object.assign(flags, planFlags as Record<string, boolean>);
+      }
       setFeatureFlags(flags);
     } else {
       setPlan(null);

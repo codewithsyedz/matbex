@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TenantEntitlementsCard } from "@/components/admin/TenantEntitlementsCard";
 import { ViewAsTenantDialog } from "@/components/admin/ViewAsTenantDialog";
 import { planLabel } from "@/lib/billing/planLabel";
 import { useParams, useNavigate } from "react-router-dom";
@@ -604,7 +605,8 @@ export default function AdminTenantDetails() {
             <TenantChatSettings tenantId={tenant.id} />
           </TabsContent>
 
-          <TabsContent value="modules">
+          <TabsContent value="modules" className="space-y-4">
+            <TenantEntitlementsCard tenantId={tenant.id} />
             <TenantFeatureToggles tenantId={tenant.id} planId={tenant.plan_id} />
           </TabsContent>
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useFeatureCatalog } from "@/hooks/useFeatureCatalog";
 import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -16,21 +17,6 @@ interface Plan {
   default_feature_flags: Record<string, boolean>;
 }
 
-const FEATURE_FLAGS = [
-  { key: "daily_profit", label: "Daily Profit", description: "Daily profit calculations and reports" },
-  { key: "accounting", label: "Accounting Module", description: "Chart of accounts, journal entries, and period close" },
-  { key: "inventory", label: "Inventory Module", description: "Stock tracking and purchase management" },
-  { key: "payroll", label: "Payroll Module", description: "Labor cost tracking and payroll management" },
-  { key: "chat", label: "Team Chat", description: "Real-time team messaging and channels" },
-  { key: "cogs", label: "COGS Tracking", description: "Cost of goods sold analysis and reporting" },
-  { key: "menu", label: "Menu Management", description: "Menu items, recipes, and pricing" },
-  { key: "shifts", label: "Shifts & Cash Drawer", description: "Cashier shifts, drawer reconciliation, and cash events" },
-  { key: "advance_pay", label: "Advance Pay", description: "Employee advance payment feature" },
-  { key: "api_access", label: "API Access", description: "REST API access for integrations" },
-  { key: "multi_location", label: "Multi-Location", description: "Multiple restaurant locations" },
-  { key: "email_reports", label: "Email Reports", description: "Automated email report delivery" },
-  { key: "advanced_reports", label: "Advanced Reports", description: "Advanced analytics and reporting" },
-];
 
 const PLAN_ICONS: Record<string, React.ReactNode> = {
   free: <Building2 className="h-5 w-5" />,
@@ -39,6 +25,8 @@ const PLAN_ICONS: Record<string, React.ReactNode> = {
 };
 
 export function PlanFeaturesManager() {
+  // The shared feature catalogue (platform_features).
+  const FEATURE_FLAGS = useFeatureCatalog();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
