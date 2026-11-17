@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -173,7 +174,7 @@ export function CreateTenantDialog({ plans, onCreated }: CreateTenantDialogProps
               <SelectContent>
                 {plans.map((plan) => (
                   <SelectItem key={plan.id} value={plan.id}>
-                    {plan.name} - ${plan.price}/mo
+                    {planLabel(plan.name)} - {sarPrice(plan.price)}/mo
                   </SelectItem>
                 ))}
               </SelectContent>

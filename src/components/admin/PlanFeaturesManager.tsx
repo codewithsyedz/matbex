@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
@@ -157,8 +158,8 @@ export function PlanFeaturesManager() {
                     {PLAN_ICONS[plan.name.toLowerCase()]}
                   </div>
                   <div>
-                    <CardTitle className="text-base font-medium capitalize">{plan.name}</CardTitle>
-                    <CardDescription>${plan.price}/month</CardDescription>
+                    <CardTitle className="text-base font-medium">{planLabel(plan.name)}</CardTitle>
+                    <CardDescription>{sarPrice(plan.price)} per branch / month</CardDescription>
                   </div>
                 </div>
                 {hasChanges(plan.id) && (

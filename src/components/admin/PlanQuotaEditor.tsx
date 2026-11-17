@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,9 +103,9 @@ export function PlanQuotaEditor({ plan, onSaved }: PlanQuotaEditorProps) {
   return (
     <Card className="border-border/40">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base font-medium capitalize">{plan.name} Plan Quotas</CardTitle>
+        <CardTitle className="text-base font-medium">{planLabel(plan.name)} plan quotas</CardTitle>
         <CardDescription>
-          ${plan.price}/month - Set usage limits for this plan
+          {sarPrice(plan.price)} per branch / month · usage limits for this plan
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

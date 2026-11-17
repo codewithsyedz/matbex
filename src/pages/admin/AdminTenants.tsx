@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { CreateTenantDialog } from "@/components/admin/CreateTenantDialog";
@@ -571,8 +572,8 @@ export default function AdminTenants() {
     };
 
     return (
-      <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${colors[plan.name.toLowerCase()] || colors.free}`}>
-        {plan.name}
+      <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[plan.name.toLowerCase()] || colors.free}`}>
+        {planLabel(plan.name)}
       </span>
     );
   };
@@ -602,14 +603,14 @@ export default function AdminTenants() {
                 <CardTitle className="text-lg font-medium">All Tenants</CardTitle>
                 <CardDescription>{tenants.length} total tenants</CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                <div className="relative w-full sm:w-auto">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search tenants..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 w-64"
+                    className="pl-8 w-full sm:w-64"
                   />
                 </div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -877,9 +878,9 @@ export default function AdminTenants() {
                   {plans.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       <span className="flex items-center gap-2">
-                        {plan.name}
+                        {planLabel(plan.name)}
                         <span className="text-muted-foreground text-xs">
-                          ${plan.price}/mo
+                          {sarPrice(plan.price)}/mo
                         </span>
                       </span>
                     </SelectItem>
@@ -898,7 +899,7 @@ export default function AdminTenants() {
               </p>
               <div className="space-y-3">
                 {FEATURE_FLAGS.map((flag) => (
-                  <div key={flag.key} className="flex items-center justify-between">
+                  <div key={flag.key} className="flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-0.5">
                       <Label className="text-sm font-medium">{flag.label}</Label>
                       <p className="text-xs text-muted-foreground">{flag.description}</p>

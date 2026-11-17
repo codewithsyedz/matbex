@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { Building2, LayoutDashboard, Settings, LogOut, Webhook, ScrollText, ShieldAlert, ShieldCheck, MessageSquare, BarChart3, CreditCard, FileText, ClipboardList, Flag, KeyRound, Laptop, Globe, Globe2, BookOpen, Search, Package, DollarSign, Coins, ChevronDown, Maximize2, Minimize2, Activity, Inbox, Mail, AlertTriangle } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
@@ -19,7 +19,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import { Button } from "@/components/ui/button";
 import { MatbexLogo } from "@/components/brand/MatbexLogo";
 
-const navGroups = [
+export const adminNavGroups = [
   {
     label: "Overview",
     items: [
@@ -103,153 +103,114 @@ export function AdminSidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const { signOut, profile } = useAuth();
-  const { state } = useSidebar();
-  const collapsed = state === "collapsed";
+  const { isMobile, setOpenMobile } = useSidebar();
 
   const activeGroupLabel = useMemo(() => {
-    return navGroups.find((g) => g.items.some((i) => i.path === location.pathname))?.label ?? null;
+    const path = location.pathname.startsWith("/admin/tenants/") ? "/admin/tenants" : location.pathname;
+    return adminNavGroups.find((g) => g.items.some((i) => i.path === path))?.label ?? null;
   }, [location.pathname]);
 
-  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() => {
-    const initial: Record<string, boolean> = {};
-    navGroups.forEach((g) => {
-      initial[g.label] = g.label === activeGroupLabel || g.label === "Overview";
-    });
-    return initial;
-  });
+  const [openGroups, setOpenGroups] = useState<Record<string, boolean>>(() =>
+    Object.fromEntries(adminNavGroups.map((g) => [g.label, g.label === activeGroupLabel || g.label === "Overview"])),
+  );
+  // Opening a page from elsewhere (a link, the back button) opens its group too.
+  useEffect(() => {
+    if (activeGroupLabel) setOpenGroups((prev) => (prev[activeGroupLabel] ? prev : { ...prev, [activeGroupLabel]: true }));
+  }, [activeGroupLabel]);
 
-  const toggleGroup = (label: string) => {
-    setOpenGroups((prev) => ({ ...prev, [label]: !prev[label] }));
+  const setAll = (open: boolean) => setOpenGroups(Object.fromEntries(adminNavGroups.map((g) => [g.label, open])));
+  const allExpanded = adminNavGroups.every((g) => openGroups[g.label]);
+  const allCollapsed = adminNavGroups.every((g) => !openGroups[g.label]);
+
+  const go = (path: string) => {
+    navigate(path);
+    if (isMobile) setOpenMobile(false);
   };
-
-  const expandAll = () => {
-    const allOpen: Record<string, boolean> = {};
-    navGroups.forEach((g) => {
-      allOpen[g.label] = true;
-    });
-    setOpenGroups(allOpen);
-  };
-
-  const collapseAll = () => {
-    const allClosed: Record<string, boolean> = {};
-    navGroups.forEach((g) => {
-      allClosed[g.label] = false;
-    });
-    setOpenGroups(allClosed);
-  };
-
-  const allExpanded = navGroups.every((g) => openGroups[g.label]);
-  const allCollapsed = navGroups.every((g) => !openGroups[g.label]);
 
   const handleSignOut = async () => {
     await signOut();
     navigate("/auth");
   };
 
+  const name = profile?.full_name || "SuperAdmin";
+
   return (
-    <Sidebar className="border-r border-border/40">
-      <SidebarHeader className="border-b border-border/40 px-4 py-4">
+    <Sidebar className="border-e border-border/60">
+      <SidebarHeader className="gap-3 border-b border-border/60 px-4 py-4">
         <div className="flex items-center gap-3">
           <MatbexLogo size="sm" showWordmark={false} animate={false} />
-          <div className="flex flex-col">
-            <span className="text-[15px] font-semibold text-foreground leading-[1.35]">SuperAdmin</span>
-            <span className="text-[13px] text-muted-foreground leading-[1.4]">Platform Management</span>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-semibold leading-tight text-foreground">SuperAdmin</span>
+            <span className="truncate text-xs leading-tight text-muted-foreground">Platform management</span>
           </div>
         </div>
-
-        {!collapsed && (
-          <div className="flex items-center gap-2 mt-3">
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={expandAll}
-              disabled={allExpanded}
-              className="h-7 px-2 text-[13px] text-muted-foreground hover:text-foreground leading-[1.4]"
-            >
-              <Maximize2 className="h-3 w-3 mr-1" />
-              Expand all
-            </Button>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={collapseAll}
-              disabled={allCollapsed}
-              className="h-7 px-2 text-[13px] text-muted-foreground hover:text-foreground leading-[1.4]"
-            >
-              <Minimize2 className="h-3 w-3 mr-1" />
-              Collapse all
-            </Button>
-          </div>
-        )}
-      </SidebarHeader>
-
-      <SidebarContent className="gap-0">
-        {navGroups.map((group) => (
-          <Collapsible
-            key={group.label}
-            open={openGroups[group.label] ?? false}
-            onOpenChange={() => toggleGroup(group.label)}
-          >
-            <SidebarGroup className="py-0">
-              <CollapsibleTrigger asChild>
-                <SidebarGroupLabel className="text-[13px] font-medium text-muted-foreground/80 cursor-pointer flex items-center justify-between w-full pr-2 hover:text-muted-foreground transition-colors leading-[1.4]">
-                  <span>{group.label}</span>
-                  <ChevronDown
-                    className={`h-3 w-3 transition-transform ${openGroups[group.label] ? "rotate-180" : ""}`}
-                  />
-                </SidebarGroupLabel>
-              </CollapsibleTrigger>
-              <CollapsibleContent>
-                <SidebarGroupContent>
-                  <SidebarMenu>
-                    {group.items.map((item) => {
-                      const isActive = location.pathname === item.path;
-                      return (
-                        <SidebarMenuItem key={item.path}>
-                          <SidebarMenuButton
-                            onClick={() => navigate(item.path)}
-                            isActive={isActive}
-                            className="transition-colors text-[15px] leading-[1.5]"
-                          >
-                            <item.icon className="h-4 w-4" />
-                            <span>{item.title}</span>
-                          </SidebarMenuButton>
-                        </SidebarMenuItem>
-                      );
-                    })}
-                  </SidebarMenu>
-                </SidebarGroupContent>
-              </CollapsibleContent>
-            </SidebarGroup>
-          </Collapsible>
-        ))}
-      </SidebarContent>
-
-      <SidebarFooter className="border-t border-border/40 p-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-2 px-2">
-            <div className="h-8 w-8 rounded-full bg-muted flex items-center justify-center">
-              <span className="text-[13px] font-medium text-muted-foreground leading-[1.4]">
-                {profile?.full_name?.charAt(0)?.toUpperCase() || "S"}
-              </span>
-            </div>
-            <div className="flex flex-col">
-              <span className="text-[15px] font-medium text-foreground leading-[1.35]">
-                {profile?.full_name || "SuperAdmin"}
-              </span>
-              <span className="text-[13px] text-muted-foreground leading-[1.4]">Administrator</span>
-            </div>
-          </div>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleSignOut}
-            className="w-full justify-start text-muted-foreground hover:text-foreground"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign out
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="sm" onClick={() => setAll(true)} disabled={allExpanded}
+            className="h-7 flex-1 justify-center gap-1.5 px-2 text-xs font-normal text-muted-foreground hover:text-foreground">
+            <Maximize2 className="h-3.5 w-3.5" />Expand all
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setAll(false)} disabled={allCollapsed}
+            className="h-7 flex-1 justify-center gap-1.5 px-2 text-xs font-normal text-muted-foreground hover:text-foreground">
+            <Minimize2 className="h-3.5 w-3.5" />Collapse all
           </Button>
         </div>
+      </SidebarHeader>
+
+      <SidebarContent className="gap-0 px-2 py-2">
+        {adminNavGroups.map((group) => {
+          const open = openGroups[group.label] ?? false;
+          const hasActive = group.label === activeGroupLabel;
+          return (
+            <Collapsible key={group.label} open={open} onOpenChange={() => setOpenGroups((p) => ({ ...p, [group.label]: !p[group.label] }))}>
+              <SidebarGroup className="p-0 py-0.5">
+                <CollapsibleTrigger asChild>
+                  <SidebarGroupLabel asChild>
+                    <button type="button" aria-expanded={open}
+                      className={`flex h-8 w-full items-center justify-between rounded-md px-2 text-[11px] font-semibold uppercase tracking-wider transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground ${hasActive ? "text-foreground" : "text-muted-foreground"}`}>
+                      <span>{group.label}</span>
+                      <ChevronDown className={`h-3.5 w-3.5 shrink-0 transition-transform duration-200 ${open ? "rotate-180" : ""}`} />
+                    </button>
+                  </SidebarGroupLabel>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <SidebarGroupContent className="pb-1.5 pt-0.5">
+                    <SidebarMenu className="gap-0.5">
+                      {group.items.map((item) => {
+                        const isActive = location.pathname === item.path
+                          || (item.path === "/admin/tenants" && location.pathname.startsWith("/admin/tenants/"));
+                        return (
+                          <SidebarMenuItem key={item.path}>
+                            <SidebarMenuButton onClick={() => go(item.path)} isActive={isActive} tooltip={item.title}
+                              className="h-9 gap-2.5 px-2.5 text-sm font-normal data-[active=true]:font-medium">
+                              <item.icon className="h-4 w-4 shrink-0" />
+                              <span className="truncate">{item.title}</span>
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        );
+                      })}
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </SidebarGroup>
+            </Collapsible>
+          );
+        })}
+      </SidebarContent>
+
+      <SidebarFooter className="gap-1 border-t border-border/60 p-3">
+        <div className="flex items-center gap-2.5 px-1.5 py-1">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+            {name.charAt(0).toUpperCase()}
+          </div>
+          <div className="flex min-w-0 flex-col">
+            <span className="truncate text-sm font-medium leading-tight text-foreground">{name}</span>
+            <span className="truncate text-xs leading-tight text-muted-foreground">Administrator</span>
+          </div>
+        </div>
+        <Button variant="ghost" size="sm" onClick={handleSignOut}
+          className="h-9 w-full justify-start gap-2.5 px-2.5 text-sm font-normal text-muted-foreground hover:text-foreground">
+          <LogOut className="h-4 w-4" />Sign out
+        </Button>
       </SidebarFooter>
     </Sidebar>
   );

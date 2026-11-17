@@ -97,7 +97,7 @@ export default function AdminFeatureFlags() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight flex items-center gap-2">
             <Flag className="h-6 w-6 text-primary" />
@@ -198,10 +198,10 @@ export default function AdminFeatureFlags() {
         <div className="grid gap-3">
           {flags.map((flag) => (
             <Card key={flag.id}>
-              <CardHeader className="flex flex-row items-start justify-between space-y-0 pb-3">
-                <div className="space-y-1">
-                  <CardTitle className="text-base flex items-center gap-2">
-                    <code className="text-sm bg-muted px-2 py-0.5 rounded">{flag.key}</code>
+              <CardHeader className="flex flex-col gap-3 space-y-0 pb-3 sm:flex-row sm:items-start sm:justify-between">
+                <div className="min-w-0 space-y-1">
+                  <CardTitle className="text-base flex flex-wrap items-center gap-2">
+                    <code className="text-sm bg-muted px-2 py-0.5 rounded break-all">{flag.key}</code>
                     {flag.enabled ? (
                       <Badge variant="default">Live</Badge>
                     ) : (
@@ -218,7 +218,7 @@ export default function AdminFeatureFlags() {
                     <CardDescription>{flag.description}</CardDescription>
                   )}
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex shrink-0 items-center gap-2">
                   <Select
                     value={flag.min_plan ?? "__none__"}
                     onValueChange={(v) => handleMinPlan(flag.id, v)}

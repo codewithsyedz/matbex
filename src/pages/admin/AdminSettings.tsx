@@ -68,11 +68,11 @@ export default function AdminSettings() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-muted-foreground">RLS Policies</span>
                 <Badge variant="default">Enabled</Badge>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-muted-foreground">Tenant Isolation</span>
                 <Badge variant="default">Active</Badge>
               </div>
@@ -92,11 +92,11 @@ export default function AdminSettings() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-muted-foreground">Multi-tenant</span>
                 <Badge variant="default">Configured</Badge>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-muted-foreground">Backups</span>
                 <Badge variant="secondary">Managed</Badge>
               </div>

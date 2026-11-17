@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -243,7 +244,7 @@ export default function AdminPlans() {
 
   return (
     <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
               Manage Plans
@@ -282,7 +283,7 @@ export default function AdminPlans() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="price">Price ($/month)</Label>
+                      <Label htmlFor="price">Price (SAR per branch per month, excl. VAT)</Label>
                       <Input
                         id="price"
                         type="number"
@@ -291,19 +292,6 @@ export default function AdminPlans() {
                         onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
                       />
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="stripe_price_id">Stripe Price ID</Label>
-                    <Input
-                      id="stripe_price_id"
-                      value={formData.stripe_price_id || ""}
-                      onChange={(e) => setFormData(prev => ({ ...prev, stripe_price_id: e.target.value }))}
-                      placeholder="price_..."
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Optional: Link to a Stripe price for automated billing
-                    </p>
                   </div>
 
                   <div className="flex items-center space-x-2">
@@ -408,7 +396,6 @@ export default function AdminPlans() {
                     <TableHead>Plan</TableHead>
                     <TableHead>Price</TableHead>
                     <TableHead>Features</TableHead>
-                    <TableHead>Stripe ID</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -425,25 +412,20 @@ export default function AdminPlans() {
                             <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center text-primary">
                               {getPlanIcon(plan.name)}
                             </div>
-                            <span className="font-medium capitalize">{plan.name}</span>
+                            <span className="font-medium">{planLabel(plan.name)}</span>
+                            {planLabel(plan.name).toLowerCase() !== plan.name.toLowerCase() && (
+                              <span className="text-xs text-muted-foreground">({plan.name})</span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
-                          ${plan.price}/{plan.billing_interval}
+                          <span className="tabular-nums">{sarPrice(plan.price)}</span>
+                          <span className="text-muted-foreground">/{plan.billing_interval === "monthly" ? "branch/month" : plan.billing_interval}</span>
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary">
                             {enabledFeatures} / {FEATURE_FLAGS.length}
                           </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {plan.stripe_price_id ? (
-                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                              {plan.stripe_price_id.slice(0, 20)}...
-                            </code>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant={plan.is_active ? "default" : "secondary"}>

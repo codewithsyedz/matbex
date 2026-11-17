@@ -139,7 +139,7 @@ export default function AdminSecurityDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Security Dashboard</h1>
           <p className="text-muted-foreground">Monitor security metrics across all tenants</p>
@@ -270,7 +270,7 @@ export default function AdminSecurityDashboard() {
         <TabsContent value="attempts" className="space-y-4">
           <Card>
             <CardHeader>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <CardTitle>Login Attempts</CardTitle>
                   <CardDescription>Recent login activity across all users</CardDescription>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { planLabel } from "@/lib/billing/planLabel";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -285,13 +286,13 @@ export default function AdminTenantDetails() {
   return (
     <div className="space-y-6">
         {/* Header */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/admin/tenants")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center">
+              <div className="h-10 w-10 shrink-0 rounded-md bg-muted flex items-center justify-center">
                 <Building2 className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
@@ -302,7 +303,7 @@ export default function AdminTenantDetails() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
@@ -363,14 +364,14 @@ export default function AdminTenantDetails() {
             {getStatusBadge(tenant.status)}
             {tenant.plan && (
               <Badge variant="outline" className="capitalize">
-                {tenant.plan.name}
+                {planLabel(tenant.plan.name)}
               </Badge>
             )}
           </div>
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <Card className="border-border/40">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -457,7 +458,7 @@ export default function AdminTenantDetails() {
                     </div>
                     <div>
                       <p className="text-muted-foreground">Plan</p>
-                      <p className="font-medium capitalize">{tenant.plan?.name || "No plan"}</p>
+                      <p className="font-medium">{planLabel(tenant.plan?.name)}</p>
                     </div>
                     {tenant.trial_ends_at && (
                       <div>

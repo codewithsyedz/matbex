@@ -235,7 +235,7 @@ export default function AdminWebhooks() {
 
   return (
     <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
               Webhook Notifications
@@ -244,7 +244,7 @@ export default function AdminWebhooks() {
               Configure webhooks for trial expiration and status change alerts.
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button variant="outline" onClick={handleTestWebhook}>
               <Play className="h-4 w-4 mr-2" />
               Run Check

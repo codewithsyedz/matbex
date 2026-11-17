@@ -294,10 +294,10 @@ export default function AdminApplicationQueue() {
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-sm text-muted-foreground">Pending Review</p>
                 <p className="text-2xl font-semibold text-amber-600">{pendingCount}</p>
@@ -308,7 +308,7 @@ export default function AdminApplicationQueue() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-sm text-muted-foreground">Approved</p>
                 <p className="text-2xl font-semibold text-emerald-600">
@@ -321,7 +321,7 @@ export default function AdminApplicationQueue() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-sm text-muted-foreground">Rejected</p>
                 <p className="text-2xl font-semibold text-red-600">
@@ -334,7 +334,7 @@ export default function AdminApplicationQueue() {
         </Card>
         <Card>
           <CardContent className="pt-6">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <div>
                 <p className="text-sm text-muted-foreground">Total</p>
                 <p className="text-2xl font-semibold">{applications.length}</p>
@@ -355,18 +355,18 @@ export default function AdminApplicationQueue() {
                 {filteredApplications.length} applications
               </CardDescription>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
+            <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+              <div className="relative w-full sm:w-auto">
                 <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                 <Input
                   placeholder="Search..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="pl-8 w-64"
+                  className="pl-8 w-full sm:w-64"
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger className="w-full sm:w-40">
                   <SelectValue placeholder="Status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -477,7 +477,7 @@ export default function AdminApplicationQueue() {
           {selectedApp && (
             <div className="space-y-6">
               {/* Status Badge */}
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <Badge className={statusColors[selectedApp.status] || statusColors.prospect}>
                   {selectedApp.status.replace("_", " ")}
                 </Badge>

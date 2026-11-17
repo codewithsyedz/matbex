@@ -129,7 +129,7 @@ export default function AdminTenantCosts() {
         </p>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
         <Card>
           <CardHeader className="pb-2">
             <CardDescription className="flex items-center gap-2 text-xs">
@@ -167,7 +167,7 @@ export default function AdminTenantCosts() {
 
       <Card>
         <CardHeader>
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
               <CardTitle>Per-tenant breakdown</CardTitle>
               <CardDescription>{rows.length} tenants</CardDescription>

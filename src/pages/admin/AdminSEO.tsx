@@ -185,7 +185,7 @@ function AdminSEOScreen() {
         </motion.div>
 
         {/* KPI cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
           <KpiCard
             icon={<Globe className="h-4 w-4" />}
             label="Organic Keywords"

@@ -145,7 +145,7 @@ export default function AdminPasswordReset() {
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <Label htmlFor="password">New password</Label>
                 <Button
                   type="button"

@@ -204,7 +204,7 @@ export default function AdminEnquiries() {
             How many enquiries arrive, where they come from, and how quickly they get a reply.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Tabs value={range} onValueChange={(v) => setRange(v as typeof range)}>
             <TabsList>
               {RANGES.map((r) => (
