@@ -20,24 +20,16 @@ import { config } from "../config.js";
 import { sql } from "../db.js";
 import { invokeFunction } from "../functions/host.js";
 import { DEFAULT_FUNCTION_SCHEDULES, JOBS_TIMEZONE } from "./schedules.js";
+import { pruneRuns as prune, recordRun as record, type RunKind } from "./runLog.js";
+
+const recordRun = (job: string, kind: RunKind, started: Date, ok: boolean, httpStatus: number | null, summary: string | null) =>
+  record(log, job, kind, started, ok, httpStatus, summary);
+const pruneRuns = () => prune(log);
 
 const LEADER_LOCK = 727_001;
 const FN_URL = /\/functions\/v1\/([a-z0-9-]+)/i;
 
 let log: FastifyBaseLogger;
-/** Record one run in public.job_runs; never fails the job itself. */
-async function recordRun(job: string, kind: "function" | "sql" | "queued", started: Date, ok: boolean, httpStatus: number | null, summary: string | null) {
-  await sql`
-    insert into public.job_runs (job, kind, started_at, status, http_status, summary)
-    values (${job}, ${kind}, ${started}, ${ok ? "succeeded" : "failed"}, ${httpStatus}, ${summary ? summary.slice(0, 1000) : null})`
-    .catch((err) => log.warn({ err: err?.message, job }, "could not record job run"));
-}
-
-async function pruneRuns() {
-  await sql`delete from public.job_runs where started_at < now() - interval '14 days'`
-    .catch((err) => log.warn({ err: err?.message }, "could not prune job runs"));
-}
-
 const sqlJobs = new Map<number, { cron: Cron; schedule: string; command: string }>();
 const fnJobs: Cron[] = [];
 

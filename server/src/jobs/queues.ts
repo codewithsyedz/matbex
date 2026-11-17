@@ -12,6 +12,7 @@
  *
  * The worker re-syncs schedules from cron.job every minute, so schedules created by
  * migrations or SQL (cron.schedule / cron.unschedule) are picked up without a restart.
+ * Every run is recorded in public.job_runs (runLog.ts) for the SuperAdmin job status page.
  */
 import { Queue, Worker, type Job, type ConnectionOptions } from "bullmq";
 import type { FastifyBaseLogger } from "fastify";
@@ -22,6 +23,7 @@ import { sql } from "../db.js";
 import { invokeFunction } from "../functions/host.js";
 import { httpQueueDeliveries, jobRuns, registry, statusClass } from "../lib/metrics.js";
 import { DEFAULT_FUNCTION_SCHEDULES, JOBS_TIMEZONE } from "./schedules.js";
+import { pruneRuns, recordRun } from "./runLog.js";
 
 const FN_URL = /\/functions\/v1\/([a-z0-9-]+)/i;
 const PREFIX = `${config.REDIS_KEY_PREFIX.replace(/:+$/, "")}:bull`;
@@ -121,15 +123,27 @@ async function runSchedule(job: Job<ScheduleData>) {
     await sql`
       insert into cron.job_run_details (jobid, status, return_message, start_time, end_time)
       values (${d.jobid}, ${status}, ${message}, ${started}, now())`.catch(() => undefined);
+    // SQL that only queues a function call is recorded when that call runs (kind "queued").
+    if (!FN_URL.test(row.command)) await recordRun(log, d.name ?? `cron-${d.jobid}`, "sql", started, status === "succeeded", null, message || null);
     if (status === "failed") throw new Error(message);
     return status;
   }
-  const res = await invokeFunction(d.fn, {
-    headers: { "content-type": "application/json", "x-cron-secret": process.env.CRON_SECRET! },
-    body: JSON.stringify({ source: "cron" }),
-  });
+  const started = new Date();
+  let res: Response;
+  try {
+    res = await invokeFunction(d.fn, {
+      headers: { "content-type": "application/json", "x-cron-secret": process.env.CRON_SECRET! },
+      body: JSON.stringify({ source: "cron" }),
+    });
+  } catch (err: any) {
+    jobRuns.inc({ job: d.fn, kind: "function", result: "failed" });
+    await recordRun(log, d.fn, "function", started, false, null, err?.message ?? String(err));
+    throw err;
+  }
+  const text = await res.text().catch(() => "");
   jobRuns.inc({ job: d.fn, kind: "function", result: res.ok ? "succeeded" : "failed" });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  await recordRun(log, d.fn, "function", started, res.ok, res.status, text);
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${text.slice(0, 300)}`);
   return `HTTP ${res.status}`;
 }
 
@@ -174,13 +188,17 @@ async function deliver(job: Job<HttpRow>) {
   let status = 0;
   let error: string | null = null;
   const fn = FN_URL.exec(r.url)?.[1];
+  const started = new Date();
+  let reply: string | null = null;
   try {
     if (fn) {
       // Legacy jobs authenticated with the hosted project's keys: use ours.
       headers["x-cron-secret"] = process.env.CRON_SECRET!;
       headers["authorization"] = `Bearer ${config.SERVICE_ROLE_KEY}`;
       delete headers["apikey"];
-      status = (await invokeFunction(fn, { method: r.method, headers, body })).status;
+      const res = await invokeFunction(fn, { method: r.method, headers, body });
+      status = res.status;
+      reply = await res.text().catch(() => null);
     } else {
       const res = await fetch(r.url, { method: r.method, headers, body, signal: AbortSignal.timeout(Math.max(r.timeout_ms, 30_000)) });
       status = res.status;
@@ -193,6 +211,7 @@ async function deliver(job: Job<HttpRow>) {
   if (!retryable || lastAttempt) {
     httpQueueDeliveries.inc({ status: error ? "error" : statusClass(status) });
     await sql`update net.http_request_queue set status_code = ${status}, error = ${error} where id = ${r.id}`;
+    if (fn) await recordRun(log, fn, "queued", started, !error && status >= 200 && status < 300, status || null, error ?? reply);
   }
   if (retryable) throw new Error(error ?? `HTTP ${status}`);
   return status;
@@ -232,6 +251,8 @@ export async function startQueueJobs(logger: FastifyBaseLogger) {
   void claimHttpRows(http);
 
   registerQueueMetrics([schedules, http]);
+  void pruneRuns(log);
+  timers.push(setInterval(() => void pruneRuns(log), 6 * 3600_000));
 }
 
 function registerQueueMetrics(qs: Queue[]) {
