@@ -64,7 +64,7 @@ function Summary({ text }: { text: string | null }) {
 function FeaturedJob({ j }: { j: Job }) {
   return (
     <Card className="border-border/40">
-      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-2">
+      <CardHeader className="flex flex-row items-start justify-between gap-2 space-y-0 pb-3">
         <div className="min-w-0">
           <CardTitle className="text-base font-medium">{j.label}</CardTitle>
           {j.about && <CardDescription className="mt-0.5">{j.about}</CardDescription>}
@@ -96,10 +96,10 @@ export default function AdminJobs() {
   const dq = r.deliverect_queue;
 
   return (
-    <div className="space-y-6">
+    <div className="container mx-auto max-w-7xl py-5 md:py-7 space-y-5 md:space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1>Scheduled jobs</h1>
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Scheduled jobs</h1>
           <p>Every background job, when it last ran and how it went. Refreshes every 30 seconds.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => q.refetch()} disabled={q.isFetching}>
@@ -123,7 +123,7 @@ export default function AdminJobs() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
         {featured.map((j) => <FeaturedJob key={j.key} j={j} />)}
         <Card className="border-border/40">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-3">
             <CardTitle className="text-base font-medium">Deliverect status queue</CardTitle>
             <CardDescription className="mt-0.5">Order status updates waiting to reach Deliverect</CardDescription>
           </CardHeader>
@@ -137,7 +137,7 @@ export default function AdminJobs() {
       </div>
 
       <Card className="border-border/40">
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-3">
           <CardTitle className="text-base font-medium">All jobs</CardTitle>
           <CardDescription>Problems first. Server schedules run in {r.timezone}; database cron schedules in UTC. Select a row for its last result.</CardDescription>
         </CardHeader>

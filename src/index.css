@@ -488,3 +488,10 @@
 /* Revenue dashboard series colours (checked for colour-blind separation, light and dark). */
 .admin-revenue { --rev-mrr: #176435; --rev-gain: #1d6fb8; --rev-loss: #d9711c; }
 .dark .admin-revenue { --rev-mrr: #2bc570; --rev-gain: #4a90d9; --rev-loss: #d9782a; }
+
+/* AdminLayout already gives each page its gutter and max width, so a page's own
+   "container ... max-w-7xl py-5" wrapper (the app-wide page contract) adds no second padding. */
+.admin-page > .container {
+  padding: 0;
+  max-width: none;
+}

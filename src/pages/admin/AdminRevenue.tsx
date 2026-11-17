@@ -98,10 +98,10 @@ export default function AdminRevenue() {
   const hasHistory = r.months.some((m) => m.mrr > 0 || m.cash_collected > 0);
 
   return (
-    <div className="admin-revenue space-y-6">
+    <div className="admin-revenue container mx-auto max-w-7xl py-5 md:py-7 space-y-5 md:space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1>Revenue</h1>
+          <h1 className="text-2xl md:text-3xl font-semibold tracking-tight">Revenue</h1>
           <p>What businesses pay Matbex, from payments received. Amounts exclude VAT unless marked as cash.</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => q.refetch()} disabled={q.isFetching}>
@@ -136,7 +136,7 @@ export default function AdminRevenue() {
       ) : (
         <div className="grid gap-4 lg:grid-cols-2">
           <Card className="border-border/40">
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-3">
               <CardTitle className="text-base font-medium">MRR, last 12 months</CardTitle>
               <CardDescription>Monthly recurring revenue at each month's end (this month: today).</CardDescription>
             </CardHeader>
@@ -159,7 +159,7 @@ export default function AdminRevenue() {
           </Card>
 
           <Card className="border-border/40">
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-3">
               <CardTitle className="text-base font-medium">MRR gained and lost</CardTitle>
               <CardDescription className="flex flex-wrap items-center gap-x-4 gap-y-1">
                 <span className="flex items-center gap-1.5"><span className="h-2.5 w-2.5 rounded-sm" style={{ background: "var(--rev-gain)" }} />New and upgrades</span>
@@ -190,7 +190,7 @@ export default function AdminRevenue() {
       )}
 
       <Card className="border-border/40">
-        <CardHeader className="pb-2">
+        <CardHeader className="pb-3">
           <CardTitle className="text-base font-medium">By month</CardTitle>
           <CardDescription>Newest first. Cash and refunds include VAT; net revenue excludes it.</CardDescription>
         </CardHeader>
@@ -228,7 +228,7 @@ export default function AdminRevenue() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card className="border-border/40">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-3">
             <CardTitle className="text-base font-medium">Top businesses by MRR</CardTitle>
           </CardHeader>
           <CardContent>
@@ -251,7 +251,7 @@ export default function AdminRevenue() {
         </Card>
 
         <Card className="border-border/40">
-          <CardHeader className="pb-2">
+          <CardHeader className="pb-3">
             <CardTitle className="text-base font-medium">Renewals due in 7 days</CardTitle>
             <CardDescription>Businesses whose paid period ends soon; they get reminder emails.</CardDescription>
           </CardHeader>
