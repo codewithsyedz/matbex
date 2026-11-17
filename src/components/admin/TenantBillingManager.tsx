@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { differenceInCalendarDays, format } from "date-fns";
-import { CalendarClock, Landmark, Loader2, Mail, Undo2 } from "lucide-react";
+import { CalendarClock, FileText, Landmark, Loader2, Mail, Printer, Undo2 } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -14,6 +14,12 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  printSubscriptionCreditNote,
+  printSubscriptionInvoice,
+  type SubscriptionCreditNoteDoc,
+  type SubscriptionInvoiceDoc,
+} from "@/lib/billing/subscriptionDocuments";
 
 interface Payment {
   id: string; kind: string; mode: string; method: string; status: string;
@@ -73,6 +79,25 @@ export function TenantBillingManager({ tenantId }: { tenantId: string }) {
     onSuccess: (r) => toast.success(r.sent ? `Invoice emailed to ${r.recipients.join(", ")}` : "No email was sent (no owner address, or email is off on this server)"),
     onError: (e: Error) => toast.error(e.message),
   });
+
+  const resendNote = useMutation({
+    mutationFn: (refundId: string) => call<{ sent: number; recipients: string[] }>({ action: "resend_credit_note", tenant_id: tenantId, refund_id: refundId }),
+    onSuccess: (r) => toast.success(r.sent ? `Credit note emailed to ${r.recipients.join(", ")}` : "No email was sent (no owner address, or email is off on this server)"),
+    onError: (e: Error) => toast.error(e.message),
+  });
+  const [printing, setPrinting] = useState<string | null>(null);
+  const print = async (key: string, body: Record<string, string>, kind: "invoice" | "credit") => {
+    setPrinting(key);
+    try {
+      const doc = await call<SubscriptionInvoiceDoc | SubscriptionCreditNoteDoc>({ action: "document", tenant_id: tenantId, ...body });
+      if (kind === "invoice") await printSubscriptionInvoice(doc as SubscriptionInvoiceDoc);
+      else await printSubscriptionCreditNote(doc as SubscriptionCreditNoteDoc);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not open the document");
+    } finally {
+      setPrinting(null);
+    }
+  };
 
   if (overview.isLoading) return <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />;
   if (overview.error || !overview.data) return <p className="text-sm text-destructive">{(overview.error as Error)?.message ?? "Could not load billing"}</p>;
@@ -135,8 +160,16 @@ export function TenantBillingManager({ tenantId }: { tenantId: string }) {
                         {p.period_end && p.status === "paid" && <div className="text-xs text-muted-foreground">to {day(p.period_end)}</div>}
                         {p.note && <div className="text-xs text-muted-foreground">{p.note}</div>}
                         {refundsBy(p.id).map((r) => (
-                          <div key={r.id} className="text-xs text-destructive">
-                            Refund {sar(r.amount)} · {r.credit_note_number} · {day(r.created_at)} · {r.reason}{r.ended_period ? " · period ended" : ""}
+                          <div key={r.id} className="mt-1 flex flex-wrap items-center gap-x-2 text-xs text-destructive">
+                            <span>Refund {sar(r.amount)} · {r.credit_note_number} · {day(r.created_at)} · {r.reason}{r.ended_period ? " · period ended" : ""}</span>
+                            <button type="button" className="inline-flex items-center gap-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                              disabled={printing === r.id} onClick={() => print(r.id, { refund_id: r.id }, "credit")}>
+                              <Printer className="h-3 w-3" />Credit note
+                            </button>
+                            <button type="button" className="inline-flex items-center gap-1 text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+                              disabled={resendNote.isPending} onClick={() => resendNote.mutate(r.id)}>
+                              <Mail className="h-3 w-3" />Email
+                            </button>
                           </div>
                         ))}
                       </TableCell>
@@ -155,6 +188,11 @@ export function TenantBillingManager({ tenantId }: { tenantId: string }) {
                       </TableCell>
                       <TableCell className="whitespace-nowrap">{p.invoice_number ?? "—"}</TableCell>
                       <TableCell className="whitespace-nowrap text-right">
+                        {p.status === "paid" && p.invoice_number && (
+                          <Button size="sm" variant="ghost" disabled={printing === p.id} onClick={() => print(p.id, { payment_id: p.id }, "invoice")} title="Print the invoice">
+                            {printing === p.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                          </Button>
+                        )}
                         {p.status === "paid" && p.invoice_number && (
                           <Button size="sm" variant="ghost" disabled={resend.isPending} onClick={() => resend.mutate(p.id)} title="Email the invoice to the owners">
                             <Mail className="h-4 w-4" />
@@ -318,10 +356,10 @@ function RefundDialog({ payment, onClose, tenantId, moyasarReady, onDone }: { pa
   const viaMoyasar = online && !offline;
 
   const save = useMutation({
-    mutationFn: () => call<{ credit_note_number: string }>({
+    mutationFn: () => call<{ credit_note_number: string; emailed?: number }>({
       action: "refund", tenant_id: tenantId, payment_id: payment!.id, amount: Number(amount), reason, end_period: endPeriod, offline: !viaMoyasar,
     }),
-    onSuccess: (r) => { toast.success(`Refund recorded, credit note ${r.credit_note_number}`); onClose(); onDone(); },
+    onSuccess: (r) => { toast.success(`Refund recorded, credit note ${r.credit_note_number}${r.emailed ? " emailed to the owners" : ""}`); onClose(); onDone(); },
     onError: (e: Error) => toast.error(e.message),
   });
 

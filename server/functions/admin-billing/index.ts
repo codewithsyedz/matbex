@@ -9,7 +9,8 @@ import { env } from "../_runtime/env.ts";
 //                    so it gets a tax invoice and moves the paid-until date; the invoice is emailed
 //   refund           refund at Moyasar (online payments) or record an offline refund; issues a
 //                    credit note number; can end the paid period now
-//   resend_invoice   email the tax invoice to the owners again
+//   resend_invoice   email the tax invoice to the owners again (resend_credit_note: a credit note)
+//   document         invoice (payment_id) or credit note (refund_id) data, to print
 // Every change is written to superadmin_audit_log.
 
 import { z } from "zod";
@@ -19,7 +20,7 @@ import { requireSuperAdmin } from "../_shared/superadmin.ts";
 import { billedQuantity } from "../_shared/branchBillingPlan.ts";
 import { moyasarAdapter } from "../_shared/payments/moyasar.ts";
 import { platformCredentials } from "../_shared/billing/platformMoyasar.ts";
-import { emailSubscriptionInvoice } from "../_shared/billing/subscriptionInvoice.ts";
+import { buildCreditNote, buildSubscriptionInvoice, emailCreditNote, emailSubscriptionInvoice } from "../_shared/billing/subscriptionInvoice.ts";
 import { MATBEX_VAT_RATE, periodFactor, periodMonths, round2, withVat } from "../_shared/billing/subscriptionQuote.ts";
 
 const Tenant = { tenant_id: z.string().uuid() };
@@ -48,6 +49,8 @@ const Body = z.union([
     offline: z.boolean().default(false),
   }),
   z.object({ action: z.literal("resend_invoice"), ...Tenant, payment_id: z.string().uuid() }),
+  z.object({ action: z.literal("resend_credit_note"), ...Tenant, refund_id: z.string().uuid() }),
+  z.object({ action: z.literal("document"), ...Tenant, payment_id: z.string().uuid().optional(), refund_id: z.string().uuid().optional() }),
 ]);
 
 serve(async (req) => {
@@ -186,10 +189,27 @@ serve(async (req) => {
           { payment_id: p.id, amount, moyasar_reference: moyasarRef, error: error.message });
         throw new Error(error.message);
       }
-      const r = rec as { credit_note_number: string; vat_amount: number };
+      const r = rec as { refund_id: string; credit_note_number: string; vat_amount: number };
+      const mail = await emailCreditNote(db, r.refund_id);
       await audit("BILLING_REFUND", `Refunded SAR ${amount.toFixed(2)} of ${p.invoice_number} (${atMoyasar ? "Moyasar" : "offline"}), credit note ${r.credit_note_number}: ${body.reason}`,
-        { payment_id: p.id, amount, vat_amount: r.vat_amount, credit_note_number: r.credit_note_number, moyasar_reference: moyasarRef, ended_period: body.end_period, reason: body.reason });
-      return json({ ok: true, ...r, moyasar_reference: moyasarRef });
+        { payment_id: p.id, amount, vat_amount: r.vat_amount, credit_note_number: r.credit_note_number, moyasar_reference: moyasarRef, ended_period: body.end_period, reason: body.reason, emailed_to: mail.recipients.length });
+      return json({ ok: true, ...r, moyasar_reference: moyasarRef, emailed: mail.sent });
+    }
+
+    if (body.action === "document") {
+      const doc = body.refund_id
+        ? await buildCreditNote(db, body.refund_id, tenant.id)
+        : body.payment_id ? await buildSubscriptionInvoice(db, body.payment_id, tenant.id) : null;
+      if (!doc) return json({ error: "Document not found" }, 404);
+      return json(doc);
+    }
+
+    if (body.action === "resend_credit_note") {
+      const note = await buildCreditNote(db, body.refund_id, tenant.id);
+      if (!note) return json({ error: "Credit note not found" }, 404);
+      const mail = await emailCreditNote(db, body.refund_id, { resend: true });
+      await audit("BILLING_CREDIT_NOTE_RESENT", `Resent credit note ${note.credit_note_number} to ${mail.recipients.length} owner(s)`, { refund_id: body.refund_id, sent: mail.sent });
+      return json({ ok: true, sent: mail.sent, recipients: mail.recipients });
     }
 
     // resend_invoice
