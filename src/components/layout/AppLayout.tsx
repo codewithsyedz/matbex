@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useLocation } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
+import { ActiveAnnouncements } from "./AnnouncementBanner";
 import { PageBreadcrumbs } from "./PageBreadcrumbs";
 import { NotificationReturnBanner } from "@/components/notifications/NotificationReturnBanner";
 import { CommandPalette } from "./CommandPalette";
@@ -79,6 +80,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <ImpersonationBanner />
         <RoleImpersonationBanner />
         <TrialBanner />
+        <ActiveAnnouncements />
         <AppHeader />
         <motion.main
           variants={contentVariants}

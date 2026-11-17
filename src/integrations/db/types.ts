@@ -848,6 +848,32 @@ export type Database = {
             },
           ]
       }
+      announcement_dismissals: {
+        Row: {
+          announcement_id: string
+          dismissed_at: string
+          user_id: string
+        }
+        Insert: {
+          announcement_id: string
+          dismissed_at?: string
+          user_id: string
+        }
+        Update: {
+          announcement_id?: string
+          dismissed_at?: string
+          user_id?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "announcement_dismissals_announcement_id_fkey"
+              columns: ["announcement_id"]
+              isOneToOne: false
+              referencedRelation: "platform_announcements"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       application_documents: {
         Row: {
           application_id: string
@@ -11961,6 +11987,57 @@ export type Database = {
         }
         Relationships: []
       }
+      platform_announcements: {
+        Row: {
+          audience: string
+          body: string | null
+          created_at: string
+          created_by: string | null
+          ends_at: string | null
+          id: string
+          link_label: string | null
+          link_url: string | null
+          plans: string[] | null
+          published: boolean
+          severity: string
+          starts_at: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          audience?: string
+          body?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_at?: string | null
+          id?: string
+          link_label?: string | null
+          link_url?: string | null
+          plans?: string[] | null
+          published?: boolean
+          severity?: string
+          starts_at?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          audience?: string
+          body?: string | null
+          created_at?: string
+          created_by?: string | null
+          ends_at?: string | null
+          id?: string
+          link_label?: string | null
+          link_url?: string | null
+          plans?: string[] | null
+          published?: boolean
+          severity?: string
+          starts_at?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       platform_currencies: {
         Row: {
           code: string
@@ -20826,6 +20903,20 @@ export type Database = {
           updated_at: string
         }
       }
+      active_announcements:
+        | {
+        Args: never
+        Returns: {
+          id: string
+          title: string
+          body: string
+          severity: string
+          link_url: string
+          link_label: string
+          starts_at: string
+          ends_at: string
+        }[]
+      }
       adjust_daily_overhead:
         | {
         Args: { p_closure_id: unknown }
@@ -20923,6 +21014,28 @@ export type Database = {
         | {
         Args: { _tenant_id?: unknown }
         Returns: undefined
+      }
+      admin_tenant_health:
+        | {
+        Args: never
+        Returns: {
+          tenant_id: string
+          name: string
+          status: string
+          plan: string
+          created_at: string
+          trial_ends_at: string
+          current_period_end: string
+          billing_provider: string
+          users: number
+          last_login_at: string
+          sales_7d: number
+          sales_prev_28d: number
+          revenue_30d: number
+          last_sale_at: string
+          setup_done: number
+          setup_total: number
+        }[]
       }
       admin_unsuspend_subdomain:
         | {

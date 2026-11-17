@@ -248,6 +248,8 @@ const AdminTenantDetails = lazy(() => import("@/pages/admin/AdminTenantDetails")
 const AdminPlans = lazy(() => import("@/pages/admin/AdminPlans"));
 const AdminRevenue = lazy(() => import("@/pages/admin/AdminRevenue"));
 const AdminJobs = lazy(() => import("@/pages/admin/AdminJobs"));
+const AdminAnnouncements = lazy(() => import("@/pages/admin/AdminAnnouncements"));
+const AdminCustomerHealth = lazy(() => import("@/pages/admin/AdminCustomerHealth"));
 const AdminWebhooks = lazy(() => import("@/pages/admin/AdminWebhooks"));
 const AdminAuditLogs = lazy(() => import("@/pages/admin/AdminAuditLogs"));
 const AdminResidencyAudit = lazy(() => import("@/pages/admin/AdminResidencyAudit"));
@@ -563,6 +565,16 @@ export function AnimatedRoutes() {
         <Route path="/admin/custom-domains" element={
           <ProtectedAdminRoute>
             <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminCustomDomains /></Suspense></LazyLoadErrorBoundary>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/announcements" element={
+          <ProtectedAdminRoute>
+            <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminAnnouncements /></Suspense></LazyLoadErrorBoundary>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/health" element={
+          <ProtectedAdminRoute>
+            <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminCustomerHealth /></Suspense></LazyLoadErrorBoundary>
           </ProtectedAdminRoute>
         } />
         <Route path="/admin/jobs" element={
