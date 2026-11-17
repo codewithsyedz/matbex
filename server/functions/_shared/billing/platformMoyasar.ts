@@ -5,6 +5,7 @@
 import { env } from "../../_runtime/env.ts";
 import { moyasarAdapter } from "../payments/moyasar.ts";
 import { notifyUrl, serviceClient } from "../payments/settle.ts";
+import { emailSubscriptionInvoice } from "./subscriptionInvoice.ts";
 
 export function platformCredentials() {
   const key = env("MATBEX_MOYASAR_SECRET_KEY");
@@ -56,8 +57,11 @@ export async function settleSubscriptionPayment(row: SubscriptionPaymentRow): Pr
   const raw = v.raw as { amount_halalas?: number };
   if (v.status === "captured") {
     if (raw.amount_halalas !== Math.round(Number(row.amount) * 100)) throw new Error("Moyasar reported a different amount");
-    const { error } = await db.rpc("apply_subscription_payment", { p_payment_id: row.id, p_moyasar_payment_id: v.gatewayReference ?? null });
+    const { data: applied, error } = await db.rpc("apply_subscription_payment", { p_payment_id: row.id, p_moyasar_payment_id: v.gatewayReference ?? null });
     if (error) throw new Error(error.message);
+    // The tax invoice goes to the owners once, by whichever caller applied the payment first
+    // (registrations have no business yet; complete-registration-payment sends theirs).
+    if ((applied as { applied?: boolean } | null)?.applied && row.tenant_id) await emailSubscriptionInvoice(db, row.id);
     return "paid";
   }
   const ended = v.status === "failed" ? "failed" : v.status === "expired" ? "expired" : v.status === "canceled" ? "canceled" : null;

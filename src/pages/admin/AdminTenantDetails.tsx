@@ -41,6 +41,7 @@ import { TenantUsersManager } from "@/components/admin/TenantUsersManager";
 import { TenantChatSettings } from "@/components/admin/TenantChatSettings";
 import { TenantFeatureToggles } from "@/components/admin/TenantFeatureToggles";
 import { TenantAddonsManager } from "@/components/admin/TenantAddonsManager";
+import { TenantBillingManager } from "@/components/admin/TenantBillingManager";
 import { TenantBranchesManager } from "@/components/admin/TenantBranchesManager";
 import { TenantLocationsManager } from "@/components/admin/TenantLocationsManager";
 import { TenantDataResidency } from "@/components/admin/TenantDataResidency";
@@ -428,6 +429,7 @@ export default function AdminTenantDetails() {
         <Tabs defaultValue="overview" className="space-y-4">
           <TabsList className="flex flex-wrap h-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="billing">Billing</TabsTrigger>
             <TabsTrigger value="activity">Activity Log</TabsTrigger>
             <TabsTrigger value="sessions">Sessions</TabsTrigger>
             <TabsTrigger value="exports">Exports</TabsTrigger>
@@ -605,6 +607,10 @@ export default function AdminTenantDetails() {
 
           <TabsContent value="modules">
             <TenantFeatureToggles tenantId={tenant.id} planId={tenant.plan_id} />
+          </TabsContent>
+
+          <TabsContent value="billing">
+            <TenantBillingManager tenantId={tenant.id} />
           </TabsContent>
 
           <TabsContent value="addons">

@@ -17386,15 +17386,19 @@ export type Database = {
           invoice_number: string | null
           invoiced_at: string | null
           kind: string
+          method: string
           mode: string
           months: number
           moyasar_invoice_id: string | null
           moyasar_payment_id: string | null
+          note: string | null
           paid_at: string | null
           pay_url: string | null
           period_end: string | null
           period_start: string | null
           plan_id: string | null
+          reference: string | null
+          refunded_amount: number
           status: string
           subtotal: number | null
           tenant_id: string | null
@@ -17415,15 +17419,19 @@ export type Database = {
           invoice_number?: string | null
           invoiced_at?: string | null
           kind: string
+          method?: string
           mode: string
           months?: number
           moyasar_invoice_id?: string | null
           moyasar_payment_id?: string | null
+          note?: string | null
           paid_at?: string | null
           pay_url?: string | null
           period_end?: string | null
           period_start?: string | null
           plan_id?: string | null
+          reference?: string | null
+          refunded_amount?: number
           status?: string
           subtotal?: number | null
           tenant_id?: string | null
@@ -17444,15 +17452,19 @@ export type Database = {
           invoice_number?: string | null
           invoiced_at?: string | null
           kind?: string
+          method?: string
           mode?: string
           months?: number
           moyasar_invoice_id?: string | null
           moyasar_payment_id?: string | null
+          note?: string | null
           paid_at?: string | null
           pay_url?: string | null
           period_end?: string | null
           period_start?: string | null
           plan_id?: string | null
+          reference?: string | null
+          refunded_amount?: number
           status?: string
           subtotal?: number | null
           tenant_id?: string | null
@@ -17484,6 +17496,66 @@ export type Database = {
             },
             {
               foreignKeyName: "subscription_payments_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
+      subscription_refunds: {
+        Row: {
+          amount: number
+          created_at: string
+          created_by: string | null
+          credit_note_number: string
+          ended_period: boolean
+          id: string
+          method: string
+          moyasar_reference: string | null
+          payment_id: string
+          reason: string
+          tenant_id: string | null
+          vat_amount: number
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          created_by?: string | null
+          credit_note_number?: string
+          ended_period?: boolean
+          id?: string
+          method: string
+          moyasar_reference?: string | null
+          payment_id: string
+          reason: string
+          tenant_id?: string | null
+          vat_amount?: number
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          created_by?: string | null
+          credit_note_number?: string
+          ended_period?: boolean
+          id?: string
+          method?: string
+          moyasar_reference?: string | null
+          payment_id?: string
+          reason?: string
+          tenant_id?: string | null
+          vat_amount?: number
+        }
+        Relationships: [
+            {
+              foreignKeyName: "subscription_refunds_payment_id_fkey"
+              columns: ["payment_id"]
+              isOneToOne: false
+              referencedRelation: "subscription_payments"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "subscription_refunds_tenant_id_fkey"
               columns: ["tenant_id"]
               isOneToOne: false
               referencedRelation: "tenants"
@@ -22401,6 +22473,11 @@ export type Database = {
         | {
         Args: { p_advance_id?: unknown }
         Returns: string
+      }
+      record_subscription_refund:
+        | {
+        Args: { p_payment_id: unknown }
+        Returns: Json
       }
       reimburse_project_partner:
         | {

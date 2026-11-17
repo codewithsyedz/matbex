@@ -7,6 +7,7 @@ import { Resend } from "resend";
 
 import { buildCorsHeaders } from "../_shared/cors.ts";
 import { settleSubscriptionPayment, type SubscriptionPaymentRow } from "../_shared/billing/platformMoyasar.ts";
+import { emailSubscriptionInvoice } from "../_shared/billing/subscriptionInvoice.ts";
 const logStep = (step: string, details?: unknown) => {
   const detailsStr = details ? ` - ${JSON.stringify(details)}` : '';
   console.log(`[COMPLETE-REGISTRATION-PAYMENT] ${step}${detailsStr}`);
@@ -240,6 +241,9 @@ serve(async (req) => {
         siteUrl
       ),
     });
+
+    // The first month's tax invoice (its payment now belongs to the new business).
+    if (moyasarPayment) await emailSubscriptionInvoice(dbAdmin, moyasarPayment.id, { to: [application.email] });
 
     // Update credentials_sent_at
     await dbAdmin
