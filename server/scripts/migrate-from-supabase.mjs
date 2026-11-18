@@ -18,6 +18,7 @@
  *   fixups     data fixes from migrations that ran before the data arrived: standard chart of
  *              accounts, 6999 Cash Over/Short, customer balances under the single rule (every
  *              change listed in the report; the dry run previews them from the source)
+ *   repairs    db/post-copy-repairs.sql: data changes of migrations production has not run
  *
  * Every write runs with session_replication_role = replica, so no trigger fires: the
  * on_auth_user_created trigger does not create profiles, posting/ledger triggers do not
@@ -61,7 +62,7 @@ try {
   /* no .env: rely on the environment */
 }
 
-const ALL_STEPS = ["preflight", "auth", "data", "sequences", "storage", "files", "cron", "urls", "verify", "fixups"];
+const ALL_STEPS = ["preflight", "auth", "data", "sequences", "storage", "files", "cron", "urls", "verify", "fixups", "repairs"];
 const argv = process.argv.slice(2);
 const flag = (name) => argv.includes(`--${name}`);
 const opt = (name, dflt) => {
@@ -366,6 +367,12 @@ const steps = {
     if (resumed) log(`resuming: ${resumed} tables already copied (state file ${STATE_PATH}); use --fresh to recopy`);
     if (!WRITE) return { planned: todo.length };
 
+    // Rules newer than production's data: the repairs step cleans the rows, then restores them.
+    await dst.unsafe(`
+      alter table public.cfd_sessions drop constraint if exists cfd_sessions_pair_code_min_length;
+      drop index if exists public.cfd_sessions_pair_code_key;
+      alter table public.payment_gateway_configs drop constraint if exists payment_gateway_configs_tenant_id_branch_id_gateway_key;`);
+
     // Fresh run: clear all target tables in one TRUNCATE (FKs between them are fine because they're all listed).
     let clearPerTable = resumed > 0;
     if (!resumed && todo.length) {
@@ -623,6 +630,19 @@ const steps = {
    *     balance with the single rule (20261110172707). Each change is listed in the report.
    * Dry run: previews the balance changes from the SOURCE (read-only) and writes nothing.
    */
+  // Data changes of migrations production has not run: the copy overwrote them (db/post-copy-repairs.sql).
+  async repairs() {
+    const sqlText = await readFile(resolve(here, "../../db/post-copy-repairs.sql"), "utf8");
+    const sources = [...sqlText.matchAll(/^-- repairs: (\S+)/gm)].map((m) => m[1]);
+    if (!WRITE) {
+      log(`post-copy repairs to apply: ${sources.length}`);
+      return { planned: true, migrations: sources };
+    }
+    await dst.begin((tx) => tx.unsafe(sqlText));
+    log(`post-copy repairs applied: ${sources.length}`);
+    return { applied: sources.length, migrations: sources };
+  },
+
   async fixups() {
     const reviewSql = await readFile(resolve(here, "../../docs/self-hosting/customer-balance-review.sql"), "utf8");
     if (!WRITE) {

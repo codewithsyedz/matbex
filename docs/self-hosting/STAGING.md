@@ -103,10 +103,8 @@ Refreshing staging with newer production data (done 2026-11-15 with that day's e
 1. `pg_dump -Fc` the current staging database to `~/export/` first (it holds the QA business).
 2. Steps 2-3 above with `--yes --fresh --skip files,urls`, using `~/run-move.sh` on the server (the
    step 3 container, reading the password from `~/export/.prodcopy-pw`; dry run without `--yes`).
-3. Copied rows skip the data fixes of migrations written after the previous copy: re-run their
-   top-level statements (not the whole files, which would redefine functions). For 2026-11-11 to
-   2026-11-14: 1130 / 1180 / 1015 accounts on every chart, the plans price list, CFD pair codes,
-   bill header sync, a primary branch for branchless businesses, default menu categories.
+3. The data move's `repairs` step re-applies the data changes of newer migrations
+   (`db/post-copy-repairs.sql`), so they no longer need re-running by hand.
 4. The cron step switches production's jobs back on: set the sending ones `active = false` again
    (step 4 above) before `docker compose up -d worker`.
 5. QA Test Kitchen and its 3 users are not in production: `deploy/staging-restore-qa.sh` copies them
