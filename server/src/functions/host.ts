@@ -9,6 +9,7 @@
  * present; anonymous callers get the anon key so legacy code paths behave.
  */
 import { functionDuration, functionInvocations, statusClass } from "../lib/metrics.js";
+import { CLIENT_IP_HEADER, MFA_REQUIRED, ownerMfaBlocked, publicClientIp, userClaims } from "../lib/securityGate.js";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -110,8 +111,15 @@ export async function functionRoutes(app: FastifyInstance) {
       }
     }
 
-    // Expose client IP the way edge runtimes did.
+    // Expose client IP the way edge runtimes did, plus the trusted copy our helpers read.
     if (!headers.has("x-forwarded-for")) headers.set("x-forwarded-for", req.ip);
+    headers.delete(CLIENT_IP_HEADER);
+    const clientIp = publicClientIp(req.ip);
+    if (clientIp) headers.set(CLIENT_IP_HEADER, clientIp);
+    // Owners of paying businesses verify with two-factor before working (when switched on).
+    if (!open.has(name) && req.method !== "OPTIONS" && await ownerMfaBlocked(await userClaims(headers.get("authorization")))) {
+      return reply.code(403).send({ error: MFA_REQUIRED.message, ...MFA_REQUIRED });
+    }
     const url = `${config.API_URL}${req.raw.url!.replace(/^\/+/, "/")}`;
     const hasBody = req.method !== "GET" && req.method !== "HEAD" && req.body !== undefined && req.body !== null;
     const webReq = new Request(url, {

@@ -1,4 +1,6 @@
+import { lazy, Suspense } from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import { useSessionSecurity } from "@/hooks/useSessionSecurity";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSuperAdmin } from "@/contexts/SuperAdminContext";
 import { TenantSuspendedScreen } from "@/components/TenantSuspendedScreen";
@@ -43,10 +45,14 @@ const ACCOUNTANT_ALLOWED_ROUTES = [
   "/staff/payroll-journal",
 ];
 
+// Loaded only when needed, so it stays out of the startup bundle.
+const AdminMfaGate = lazy(() => import("@/components/admin/AdminMfaGate").then((m) => ({ default: m.AdminMfaGate })));
+
 export function ProtectedRoute({ children, requireOnboarding = true }: ProtectedRouteProps) {
-  const { user, loading, tenant, roles, hasRole, isManager, isOwner, userDataStatus, retryUserData } = useAuth();
+  const { user, loading, tenant, roles, hasRole, isManager, isOwner, userDataStatus, retryUserData, signOut } = useAuth();
   const { isSuperAdmin, loading: superAdminLoading, isImpersonating } = useSuperAdmin();
   const location = useLocation();
+  const security = useSessionSecurity();
 
   const snapshot = {
     hasUser: !!user,
@@ -178,6 +184,21 @@ export function ProtectedRoute({ children, requireOnboarding = true }: Protected
       track("redirect", "accountant-restricted", "/accounting");
       return <Navigate to="/accounting" replace />;
     }
+  }
+
+  // Owners of paying businesses verify with two-factor (when SuperAdmin switched the rule on);
+  // the API refuses their requests until then.
+  if (!isImpersonating && security.data?.owner_mfa_required && security.data.aal !== "aal2") {
+    track("wait", "owner-mfa-required");
+    return (
+      <Suspense fallback={null}><AdminMfaGate
+        title="Verify it's you"
+        description="Owners of paying businesses sign in with a second factor: a 6-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…). It protects your sales, payments and staff data."
+        friendlyName="Matbex owner"
+        onVerified={() => window.location.reload()}
+        onSignOut={() => void signOut()}
+      /></Suspense>
+    );
   }
 
   track("allow", "granted");

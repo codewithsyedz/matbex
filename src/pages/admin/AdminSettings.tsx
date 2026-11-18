@@ -12,6 +12,7 @@ import { CheckoutComPlatformSettingsCard } from "@/components/admin/CheckoutComP
 import { CloudflareSettingsCard } from "@/components/admin/CloudflareSettingsCard";
 import { HyperPaySettingsCard } from "@/components/admin/HyperPaySettingsCard";
 import { PromotionCampaignCard } from "@/components/admin/PromotionCampaignCard";
+import { AdminSecurityCard } from "@/components/admin/AdminSecurityCard";
 import { MatbexSellerSettingsCard } from "@/components/admin/MatbexSellerSettingsCard";
 import { db } from "@/integrations/db/client";
 
@@ -121,6 +122,8 @@ export default function AdminSettings() {
             </p>
           </CardContent>
         </Card>
+
+        <AdminSecurityCard />
 
         <MatbexSellerSettingsCard />
 

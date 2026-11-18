@@ -10,6 +10,7 @@
  */
 import type { FastifyInstance } from "fastify";
 import { config } from "../config.js";
+import { allowedWhileMfaPending, CLIENT_IP_HEADER, MFA_REQUIRED, ownerMfaBlocked, publicClientIp, userClaims } from "../lib/securityGate.js";
 
 /** Tables no longer reachable from the browser once migrated to /api/v1. */
 const BLOCKED_TABLES = new Set<string>([]);
@@ -36,6 +37,14 @@ export async function restGateway(app: FastifyInstance) {
       headers[k] = Array.isArray(v) ? v.join(",") : v;
     }
     // Browser clients send no bearer when signed out: PostgREST then uses the anon role.
+    // The caller's IP for Postgres (SuperAdmin allow-list), from the proxy chain only.
+    delete headers[CLIENT_IP_HEADER];
+    const clientIp = publicClientIp(req.ip);
+    if (clientIp) headers[CLIENT_IP_HEADER] = clientIp;
+    // Owners of paying businesses verify with two-factor before working (when switched on).
+    if (await ownerMfaBlocked(await userClaims(headers.authorization)) && !allowedWhileMfaPending(req.method, path)) {
+      return reply.code(403).send({ ...MFA_REQUIRED, details: null, hint: null });
+    }
 
     const upstream = await fetch(`${config.POSTGREST_URL}/${path}${qs}`, {
       method: req.method,

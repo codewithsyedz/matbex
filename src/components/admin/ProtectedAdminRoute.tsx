@@ -18,11 +18,14 @@ export function ProtectedAdminRoute({ children }: ProtectedAdminRouteProps) {
   const location = useLocation();
   // SuperAdmin rights need a session that passed two-factor (aal2); the database and the admin
   // functions refuse otherwise, so ask for the code here instead of showing empty pages.
-  const [mfa, setMfa] = useState<"checking" | "ok" | "needed">("checking");
+  const [mfa, setMfa] = useState<"checking" | "ok" | "needed" | "network">("checking");
+  const [clientIp, setClientIp] = useState<string | null>(null);
   const checkMfa = () => {
     if (!user) return;
-    void (db.rpc as any)("superadmin_mfa_status").then(({ data }: { data: { is_superadmin_account?: boolean; aal?: string } | null }) => {
-      setMfa(data?.is_superadmin_account && data.aal !== "aal2" ? "needed" : "ok");
+    void (db.rpc as any)("session_security_status").then(({ data }: { data: { is_superadmin_account?: boolean; aal?: string; admin_ip_allowed?: boolean; client_ip?: string | null } | null }) => {
+      setClientIp(data?.client_ip ?? null);
+      if (data?.is_superadmin_account && data.admin_ip_allowed === false) setMfa("network");
+      else setMfa(data?.is_superadmin_account && data.aal !== "aal2" ? "needed" : "ok");
     });
   };
   useEffect(checkMfa, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -48,6 +51,20 @@ export function ProtectedAdminRoute({ children }: ProtectedAdminRouteProps) {
 
   if (!isSuperAdmin && location.pathname !== "/admin/seo") {
     return <Navigate to="/dashboard" replace />;
+  }
+
+  if (mfa === "network") {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <div className="max-w-md space-y-2 rounded-lg border p-6 text-center">
+          <h1 className="text-lg font-semibold">Not allowed from this network</h1>
+          <p className="text-sm text-muted-foreground">
+            SuperAdmin access is limited to approved networks. Your address{clientIp ? ` (${clientIp})` : ""} is not on the list.
+            Connect from an approved network or VPN, or ask another SuperAdmin to add it.
+          </p>
+        </div>
+      </div>
+    );
   }
 
   if (mfa === "needed") {

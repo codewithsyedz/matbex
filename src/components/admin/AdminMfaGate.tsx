@@ -14,7 +14,13 @@ interface Factor { id: string; friendly_name?: string | null }
  * functions require aal2). This screen gets the session there: the 6-digit code from the
  * authenticator app, or, the first time, setting one up.
  */
-export function AdminMfaGate({ onVerified }: { onVerified: () => void }) {
+export function AdminMfaGate({ onVerified, title = "Two-factor verification", description, friendlyName = "Matbex SuperAdmin", onSignOut }: {
+  onVerified: () => void;
+  title?: string;
+  description?: string;
+  friendlyName?: string;
+  onSignOut?: () => void;
+}) {
   const [loading, setLoading] = useState(true);
   const [factor, setFactor] = useState<Factor | null>(null);
   const [enrol, setEnrol] = useState<{ id: string; qr: string; secret: string } | null>(null);
@@ -30,7 +36,7 @@ export function AdminMfaGate({ onVerified }: { onVerified: () => void }) {
 
   const startEnrol = async () => {
     setBusy(true);
-    const { data, error } = await db.auth.mfa.enroll({ factorType: "totp", friendlyName: "Matbex SuperAdmin" });
+    const { data, error } = await db.auth.mfa.enroll({ factorType: "totp", friendlyName });
     setBusy(false);
     if (error) { toast.error(error.message || "Could not start the setup"); return; }
     setEnrol({ id: data.id, qr: data.totp.qr_code, secret: data.totp.secret });
@@ -51,10 +57,9 @@ export function AdminMfaGate({ onVerified }: { onVerified: () => void }) {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <Card className="w-full max-w-md">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" /> Two-factor verification</CardTitle>
+          <CardTitle className="flex items-center gap-2"><ShieldCheck className="h-5 w-5 text-primary" /> {title}</CardTitle>
           <CardDescription>
-            SuperAdmin access needs a second factor: a 6-digit code from an authenticator app (Google Authenticator,
-            Microsoft Authenticator, 1Password…).
+            {description ?? "SuperAdmin access needs a second factor: a 6-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…)."}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -87,6 +92,9 @@ export function AdminMfaGate({ onVerified }: { onVerified: () => void }) {
                 {busy && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}Verify
               </Button>
             </>
+          )}
+          {onSignOut && (
+            <Button variant="ghost" size="sm" className="w-full text-muted-foreground" onClick={onSignOut}>Sign out</Button>
           )}
         </CardContent>
       </Card>

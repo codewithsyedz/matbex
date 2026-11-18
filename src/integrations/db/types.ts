@@ -21255,6 +21255,11 @@ export type Database = {
         Args: { _tenant_id?: unknown }
         Returns: string
       }
+      admin_ip_allowed:
+        | {
+        Args: { _ip?: string }
+        Returns: boolean
+      }
       admin_job_run_stats:
         | {
         Args: never
@@ -22650,6 +22655,11 @@ export type Database = {
           accrual_label: string
         }[]
       }
+      owner_mfa_required:
+        | {
+        Args: { _user_id: string }
+        Returns: boolean
+      }
       pay_installment:
         | {
         Args: { p_installment_id?: unknown }
@@ -23044,6 +23054,11 @@ export type Database = {
         Args: { p_expense_id: unknown }
         Returns: Json
       }
+      request_client_ip:
+        | {
+        Args: never
+        Returns: string
+      }
       request_terminal_state_refresh:
         | {
         Args: { _restaurant_id: string; _branch_id?: string; _terminal_uid?: string }
@@ -23345,6 +23360,16 @@ export type Database = {
         | {
         Args: { p_tenant_id: string }
         Returns: number
+      }
+      session_security_status:
+        | {
+        Args: never
+        Returns: Json
+      }
+      set_admin_ip_allowlist:
+        | {
+        Args: { _cidrs: string[] }
+        Returns: Json
       }
       set_tenant_admin_pin:
         | {

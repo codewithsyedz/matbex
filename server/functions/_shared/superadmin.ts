@@ -47,6 +47,10 @@ export async function requireSuperAdmin(req: Request): Promise<SuperAdminCaller>
   if (claimsData.claims.aal !== "aal2") {
     throw new Response(JSON.stringify({ error: "Two-factor verification required for SuperAdmin access", code: "mfa_required" }), { status: 403 });
   }
+  // ...and a network on the SuperAdmin IP allow-list (when one is set).
+  if (!(await adminIpAllowed(req))) {
+    throw new Response(JSON.stringify({ error: "SuperAdmin access is not allowed from this network", code: "ip_not_allowed" }), { status: 403 });
+  }
 
   // 1) JWT-embedded claim (fast path)
   const appMeta = (claimsData.claims.app_metadata ?? {}) as Record<string, unknown>;
@@ -85,7 +89,24 @@ export function requestAal(req: Request): string {
  */
 export async function isSuperAdminSession(req: Request, userId: string): Promise<boolean> {
   if (requestAal(req) !== "aal2") return false;
+  if (!(await adminIpAllowed(req))) return false;
   return dbIsSuperAdmin(userId);
+}
+
+/**
+ * Is this request's network on the SuperAdmin IP allow-list? The functions host sets
+ * x-matbex-client-ip from the proxy chain (never from the client). An empty list allows all.
+ */
+export async function adminIpAllowed(req: Request): Promise<boolean> {
+  const ip = req.headers.get("x-matbex-client-ip");
+  if (!ip) return true;
+  const admin = createClient(API_URL, SERVICE_ROLE_KEY);
+  const { data, error } = await admin.rpc("admin_ip_allowed", { _ip: ip });
+  if (error) {
+    console.error("admin_ip_allowed RPC failed:", error);
+    return true; // a failed check must not lock SuperAdmins out
+  }
+  return data !== false;
 }
 
 async function dbIsSuperAdmin(userId: string): Promise<boolean> {
