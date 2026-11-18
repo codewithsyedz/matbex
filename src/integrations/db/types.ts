@@ -4518,6 +4518,59 @@ export type Database = {
             },
           ]
       }
+      data_exports: {
+        Row: {
+          completed_at: string | null
+          downloaded_at: string | null
+          error: string | null
+          expires_at: string | null
+          file_path: string | null
+          file_size: number | null
+          id: string
+          requested_at: string
+          requested_by: string
+          row_counts: Json
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          downloaded_at?: string | null
+          error?: string | null
+          expires_at?: string | null
+          file_path?: string | null
+          file_size?: number | null
+          id?: string
+          requested_at?: string
+          requested_by: string
+          row_counts?: Json
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          downloaded_at?: string | null
+          error?: string | null
+          expires_at?: string | null
+          file_path?: string | null
+          file_size?: number | null
+          id?: string
+          requested_at?: string
+          requested_by?: string
+          row_counts?: Json
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "data_exports_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       day_end_adjustments: {
         Row: {
           amount: number
@@ -18641,6 +18694,59 @@ export type Database = {
             },
           ]
       }
+      tenant_deletion_requests: {
+        Row: {
+          cancelled_at: string | null
+          completed_at: string | null
+          completed_by: string | null
+          id: string
+          reason: string | null
+          requested_at: string
+          requested_by: string
+          requested_by_email: string | null
+          scheduled_for: string
+          status: string
+          summary: Json | null
+          tenant_id: string
+        }
+        Insert: {
+          cancelled_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          id?: string
+          reason?: string | null
+          requested_at?: string
+          requested_by: string
+          requested_by_email?: string | null
+          scheduled_for?: string
+          status?: string
+          summary?: Json | null
+          tenant_id: string
+        }
+        Update: {
+          cancelled_at?: string | null
+          completed_at?: string | null
+          completed_by?: string | null
+          id?: string
+          reason?: string | null
+          requested_at?: string
+          requested_by?: string
+          requested_by_email?: string | null
+          scheduled_for?: string
+          status?: string
+          summary?: Json | null
+          tenant_id?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "tenant_deletion_requests_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       tenant_domains: {
         Row: {
           cf_hostname_id: string | null
@@ -21214,6 +21320,24 @@ export type Database = {
         Args: { _tenant_id?: unknown }
         Returns: undefined
       }
+      admin_tenant_costs:
+        | {
+        Args: { _days?: number }
+        Returns: {
+          tenant_id: string
+          name: string
+          status: string
+          plan: string
+          plan_price: number
+          users: number
+          branches: number
+          sales: number
+          revenue: number
+          moyasar_amount: number
+          moyasar_payments: number
+          ai_usage: Json
+        }[]
+      }
       admin_tenant_health:
         | {
         Args: never
@@ -21933,6 +22057,11 @@ export type Database = {
         | {
         Args: { _tenant_id: string }
         Returns: undefined
+      }
+      erase_tenant_personal_data:
+        | {
+        Args: { _request_id: unknown }
+        Returns: Json
       }
       expire_trials:
         | {

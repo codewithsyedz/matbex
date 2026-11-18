@@ -333,11 +333,6 @@
       "h1-typography",
       "root-container"
     ],
-    "src/pages/admin/AdminTenantCosts.tsx": [
-      "card-title-typography",
-      "h1-typography",
-      "root-container"
-    ],
     "src/pages/admin/AdminTenantDetails.tsx": [
       "h1-typography",
       "root-container"

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TenantClosureCard } from "@/components/admin/TenantClosureCard";
 import { TenantEntitlementsCard } from "@/components/admin/TenantEntitlementsCard";
 import { ViewAsTenantDialog } from "@/components/admin/ViewAsTenantDialog";
 import { planLabel } from "@/lib/billing/planLabel";
@@ -443,6 +444,7 @@ export default function AdminTenantDetails() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
+            <TenantClosureCard tenantId={tenant.id} tenantName={tenant.name} />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Tenant Info */}
               <Card className="border-border/40">

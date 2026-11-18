@@ -24,6 +24,7 @@ import { invokeFunction } from "../functions/host.js";
 import { httpQueueDeliveries, jobRuns, registry, statusClass } from "../lib/metrics.js";
 import { DEFAULT_FUNCTION_SCHEDULES, JOBS_TIMEZONE } from "./schedules.js";
 import { pruneRuns, recordRun } from "./runLog.js";
+import { runFunctionTask, type FunctionTask } from "./tasks.js";
 
 const FN_URL = /\/functions\/v1\/([a-z0-9-]+)/i;
 const PREFIX = `${config.REDIS_KEY_PREFIX.replace(/:+$/, "")}:bull`;
@@ -240,7 +241,20 @@ export async function startQueueJobs(logger: FastifyBaseLogger) {
   schedWorker.on("failed", onFailed("schedules"));
   const httpWorker = new Worker<HttpRow>("http", deliver, { connection: connection(), prefix: PREFIX, concurrency: 10 });
   httpWorker.on("failed", onFailed("http"));
-  workers.push(schedWorker, httpWorker);
+  // Background tasks (tasks.ts): a server function called with the cron secret; long exports allowed.
+  const taskWorker = new Worker<FunctionTask>("tasks", async (job) => {
+    const started = new Date();
+    try {
+      const out = await runFunctionTask(job.data);
+      await recordRun(log, `task:${job.data.fn}`, "function", started, true, 200, out);
+      return out;
+    } catch (err: any) {
+      await recordRun(log, `task:${job.data.fn}`, "function", started, false, null, err?.message ?? String(err));
+      throw err;
+    }
+  }, { connection: connection(), prefix: PREFIX, concurrency: 2, lockDuration: 15 * 60_000 });
+  taskWorker.on("failed", onFailed("tasks"));
+  workers.push(schedWorker, httpWorker, taskWorker);
 
   const count = await syncSchedules(schedules);
   log.info({ schedules: count, prefix: PREFIX }, "BullMQ workers started");
