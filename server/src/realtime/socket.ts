@@ -13,6 +13,7 @@
  * The connection is closed when the access token expires; the client reconnects with a fresh
  * token and re-subscribes.
  */
+import { forwardedClientIp, MFA_REQUIRED, ownerMfaBlocked } from "../lib/securityGate.js";
 import type { FastifyInstance } from "fastify";
 import { Server, type Socket } from "socket.io";
 import client from "prom-client";
@@ -92,7 +93,8 @@ export async function startSocketServer(app: FastifyInstance) {
       if (!token) return next(new Error("unauthorized"));
       const claims = await verify<DbClaims & { exp?: number }>(token);
       if (claims.role !== "authenticated" || !claims.sub) return next(new Error("unauthorized"));
-      socket.data.claims = claims;
+      if (await ownerMfaBlocked(claims as never)) return next(new Error(MFA_REQUIRED.code));
+      socket.data.claims = { ...claims, x_client_ip: forwardedClientIp(socket.handshake.headers["x-forwarded-for"], socket.handshake.address) };
       if (claims.exp) {
         const ms = claims.exp * 1000 - Date.now();
         const t = setTimeout(() => socket.disconnect(true), Math.max(ms, 0));

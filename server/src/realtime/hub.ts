@@ -7,6 +7,7 @@
  * re-read as that subscriber (asCaller), so RLS decides who sees what.
  * DELETE events carry only the primary key.
  */
+import { ownerMfaBlocked, publicClientIp } from "../lib/securityGate.js";
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import { asCaller, sql, type DbClaims } from "../db.js";
@@ -26,6 +27,7 @@ interface Sub {
 interface Conn {
   ws: WebSocket;
   claims: DbClaims;
+  ip: string | null;
   subs: Map<string, Sub>;
 }
 interface DbEvent {
@@ -44,11 +46,13 @@ const IDENT = /^[a-z_][a-z0-9_]*$/i;
 
 const anon: DbClaims = { role: "anon" };
 
-async function toClaims(token: string | null | undefined): Promise<DbClaims> {
+/** An owner still owing two-factor gets no more than a signed-out connection until they verify. */
+async function toClaims(token: string | null | undefined, ip: string | null): Promise<DbClaims> {
   if (!token) return anon;
   try {
     const c = await verify<AccessClaims>(token);
-    return c as unknown as DbClaims;
+    if (await ownerMfaBlocked(c)) return anon;
+    return { ...c, x_client_ip: ip } as unknown as DbClaims;
   } catch {
     return anon;
   }
@@ -111,7 +115,8 @@ async function dispatch(e: DbEvent) {
   // Re-read once per distinct identity, as that identity (RLS enforced).
   const cache = new Map<string, Record<string, unknown> | null>();
   for (const t of targets) {
-    const key = `${t.c.claims.role}:${t.c.claims.sub ?? ""}`;
+    // Two-factor level and network are part of the identity: RLS can answer differently for them.
+    const key = `${t.c.claims.role}:${t.c.claims.sub ?? ""}:${t.c.claims.aal ?? ""}:${t.c.ip ?? ""}`;
     if (!cache.has(key)) {
       if (!e.id) {
         cache.set(key, null);
@@ -164,7 +169,8 @@ export async function realtimeRoutes(app: FastifyInstance) {
   });
 
   app.get<{ Querystring: { token?: string } }>("/websocket", { websocket: true }, async (socket, req) => {
-    const conn: Conn = { ws: socket, claims: await toClaims(req.query.token), subs: new Map() };
+    const ip = publicClientIp(req.ip);
+    const conn: Conn = { ws: socket, claims: await toClaims(req.query.token, ip), ip, subs: new Map() };
     conns.add(conn);
 
     socket.on("message", async (raw: Buffer) => {
@@ -179,7 +185,7 @@ export async function realtimeRoutes(app: FastifyInstance) {
           send(conn, { type: "pong" });
           break;
         case "token":
-          conn.claims = await toClaims(m.token);
+          conn.claims = await toClaims(m.token, conn.ip);
           break;
         case "subscribe":
           if (typeof m.topic !== "string") return;

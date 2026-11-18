@@ -24,6 +24,12 @@ export function publicClientIp(ip: string | undefined): string | null {
   return a;
 }
 
+/** The client address on a raw upgrade request: Caddy sets X-Forwarded-For to the real client. */
+export function forwardedClientIp(xff: string | string[] | undefined, fallback?: string): string | null {
+  const first = (Array.isArray(xff) ? xff[0] : xff)?.split(",")[0]?.trim();
+  return publicClientIp(first || fallback);
+}
+
 const TTL_MS = 60_000;
 const cache = new Map<string, { value: boolean; expires: number }>();
 

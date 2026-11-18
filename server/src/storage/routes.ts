@@ -10,7 +10,8 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../config.js";
 import { asCaller, sql, type DbClaims } from "../db.js";
 import { badRequest, forbidden, HttpError, notFound } from "../lib/errors.js";
-import { claimsFromHeader, sign, verify } from "../lib/jwt.js";
+import { claimsFromHeader, sign, verify, type AccessClaims } from "../lib/jwt.js";
+import { MFA_REQUIRED, ownerMfaBlocked, publicClientIp } from "../lib/securityGate.js";
 import { driver } from "./driver.js";
 
 interface Bucket {
@@ -27,11 +28,15 @@ async function bucket(id: string): Promise<Bucket> {
 }
 
 async function callerClaims(req: FastifyRequest): Promise<DbClaims> {
+  let claims: AccessClaims;
   try {
-    return (await claimsFromHeader(req.headers.authorization)) as unknown as DbClaims;
+    claims = await claimsFromHeader(req.headers.authorization);
   } catch {
     throw new HttpError(400, "invalid JWT", "InvalidJWT");
   }
+  // Same rules as the data API: owners verify with two-factor, SuperAdmins from an allowed network.
+  if (await ownerMfaBlocked(claims)) throw new HttpError(403, MFA_REQUIRED.message, MFA_REQUIRED.code);
+  return { ...claims, x_client_ip: publicClientIp(req.ip) } as unknown as DbClaims;
 }
 
 const objectPath = (req: FastifyRequest) => decodeURIComponent((req.params as any)["*"] ?? "").replace(/^\/+/, "");
