@@ -170,10 +170,14 @@ export async function realtimeRoutes(app: FastifyInstance) {
 
   app.get<{ Querystring: { token?: string } }>("/websocket", { websocket: true }, async (socket, req) => {
     const ip = publicClientIp(req.ip);
-    const conn: Conn = { ws: socket, claims: await toClaims(req.query.token, ip), ip, subs: new Map() };
+    // Listen before any await: a client subscribes as soon as the socket opens, and checking its
+    // token can take a database round trip. Messages wait here until the identity is known.
+    const conn: Conn = { ws: socket, claims: anon, ip, subs: new Map() };
     conns.add(conn);
+    const ready = toClaims(req.query.token, ip).then((claims) => { conn.claims = claims; });
 
     socket.on("message", async (raw: Buffer) => {
+      await ready;
       let m: any;
       try {
         m = JSON.parse(raw.toString());
