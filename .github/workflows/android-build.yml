@@ -11,6 +11,10 @@ jobs:
   build:
     name: Build signed APK & AAB
     runs-on: ubuntu-latest
+    env:
+      # A step's `if` cannot read `secrets` or the step's own `env`, so the keystore check is
+      # worked out here. Only "true"/"false" is exposed, never the keystore itself.
+      HAS_ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
 
     steps:
       - name: Checkout
@@ -57,7 +61,7 @@ jobs:
         run: bash scripts/apply-android-signing.sh
 
       - name: Decode signing keystore
-        if: ${{ env.ANDROID_KEYSTORE_BASE64 != '' }}
+        if: ${{ env.HAS_ANDROID_KEYSTORE == 'true' }}
         env:
           ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
