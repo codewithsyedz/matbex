@@ -185,6 +185,20 @@ await check("api/v1: pos sales validates input and refuses users without a role"
   await admin.from("restaurants").delete().eq("id", r!.id);
 });
 
+// lock_fiscal_period is SECURITY DEFINER: it must check the caller itself, or any user could
+// lock another business's month and block its postings.
+await check("rpc: month lock refuses users outside the business", async () => {
+  const { data: r } = await admin.from("restaurants").insert({ name: "Smoke Lock Restaurant", tenant_id: tenantId }).select("id").single();
+  try {
+    const { error } = await user.rpc("lock_fiscal_period", { p_restaurant_id: r!.id, p_period_start: "2020-01-01", p_period_end: "2020-01-31" });
+    assert(error?.code === "42501", `expected 42501, got ${JSON.stringify(error)}`);
+    const { count } = await admin.from("fiscal_period_locks").select("id", { count: "exact", head: true }).eq("restaurant_id", r!.id);
+    assert(count === 0, `lock row was written (${count})`);
+  } finally {
+    await admin.from("restaurants").delete().eq("id", r!.id);
+  }
+});
+
 // cache-proxy builds a client with the caller's token in global headers and calls
 // auth.getUser(): guards the bug where the anon key overrode that header (403).
 await check("functions: act-as-user client + Redis cache round trip", async () => {
