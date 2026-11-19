@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useRoleGuard } from "@/hooks/useRoleGuard";
 import { useBranch } from "@/contexts/BranchContext";
@@ -15,6 +15,7 @@ import { useDashboardFilterStore } from "@/stores/dashboardFilterStore";
 import { startOfDay, endOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 interface TodayTickerBadgesProps {
   /** Hide uppercase metric labels (Today Sales / Expenses / Transactions). */
@@ -46,10 +47,16 @@ function useChangeFlash(value: number) {
   return { flash, pulseKey };
 }
 
+/** Gate; the badges are a separate component so their hooks always run in the same order. */
 export function TodayTickerBadges({ compact = false }: TodayTickerBadgesProps = {}) {
   const { restaurant } = useAuth();
   const { isCashierOnly } = useRoleGuard();
   if (!restaurant || isCashierOnly) return null;
+  return <TodayTickerBadgesInner compact={compact} />;
+}
+
+function TodayTickerBadgesInner({ compact }: { compact: boolean }) {
+  const { restaurant } = useAuth();
 
   const { activeBranchId } = useBranch();
   const { format: formatCurrency } = useCurrency();
@@ -82,13 +89,13 @@ export function TodayTickerBadges({ compact = false }: TodayTickerBadgesProps = 
       const startDate = format(today, "yyyy-MM-dd");
 
       const [salesRes, expensesRes] = await Promise.all([
-        (supabase as any).rpc("dashboard_sales_summary", {
+        (db as any).rpc("dashboard_sales_summary", {
           p_restaurant_id: restaurant!.id,
           p_start: startISO,
           p_end: endISO,
           p_branch_id: activeBranchId,
         }),
-        (supabase as any).rpc("dashboard_expense_summary", {
+        (db as any).rpc("dashboard_expense_summary", {
           p_restaurant_id: restaurant!.id,
           p_start_date: startDate,
           p_end_date: startDate,
@@ -109,22 +116,14 @@ export function TodayTickerBadges({ compact = false }: TodayTickerBadgesProps = 
 
   // Real-time refresh: invalidate the ticker whenever a sale or expense
   // is created, updated, or deleted for this restaurant.
-  useEffect(() => {
-    if (!restaurant?.id) return;
-    const filter = `restaurant_id=eq.${restaurant.id}`;
-    const channel = supabase
-      .channel(`ticker-rt-${restaurant.id}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "sales_transactions", filter }, () => {
-        qc.invalidateQueries({ queryKey: ["today-ticker", restaurant.id, activeBranchId] });
-      })
-      .on("postgres_changes", { event: "*", schema: "public", table: "expenses", filter }, () => {
-        qc.invalidateQueries({ queryKey: ["today-ticker", restaurant.id, activeBranchId] });
-      })
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [restaurant?.id, qc, activeBranchId]);
+  // Real-time refresh: invalidate the ticker whenever a sale or expense changes for this
+  // restaurant (event channel, topic "sales").
+  useTableChanges({
+    topic: "sales",
+    restaurantId: restaurant?.id,
+    tables: ["sales_transactions", "expenses"],
+    onChange: () => qc.invalidateQueries({ queryKey: ["today-ticker", restaurant?.id, activeBranchId] }),
+  });
 
   if (isLoading) {
     return (

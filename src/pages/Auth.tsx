@@ -7,7 +7,7 @@ import { RouteSeo } from "@/components/seo/RouteSeo";
 import { DotLottiePlayer } from "@dotlottie/react-player";
 import { useAuth } from "@/contexts/AuthContext";
 import { useLoginRateLimiting } from "@/hooks/useLoginRateLimiting";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -200,7 +200,7 @@ export default function Auth() {
   const acceptInviteIfNeeded = async () => {
     if (!isInvite || !inviteToken) return false;
 
-    const { error } = await supabase.functions.invoke("accept-invite", {
+    const { error } = await db.functions.invoke("accept-invite", {
       body: { invite_token: inviteToken },
     });
 
@@ -220,7 +220,7 @@ export default function Auth() {
     setLoading(true);
 
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await db.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
 
@@ -241,7 +241,7 @@ export default function Auth() {
     if (resendCooldown > 1 || resendLoading || !email) return;
     setResendLoading(true);
     try {
-      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+      const { error } = await db.auth.resetPasswordForEmail(email, {
         redirectTo: `${window.location.origin}/reset-password`,
       });
       if (error) {
@@ -346,9 +346,9 @@ export default function Auth() {
 
           // Native APK: enforce device-tenant binding before letting the user in.
           if (isNative && deviceTenant) {
-            const { data: { user: justLoggedIn } } = await supabase.auth.getUser();
+            const { data: { user: justLoggedIn } } = await db.auth.getUser();
             if (justLoggedIn) {
-              const { data: membership } = await supabase
+              const { data: membership } = await db
                 .from("user_tenant_roles")
                 .select("role")
                 .eq("user_id", justLoggedIn.id)
@@ -356,7 +356,7 @@ export default function Auth() {
                 .maybeSingle();
 
               if (!membership) {
-                await supabase.auth.signOut();
+                await db.auth.signOut();
                 setLockWarning(
                   t("auth.notMemberMsg", { name: deviceTenant.name }),
                 );
@@ -386,9 +386,9 @@ export default function Auth() {
             }
           }
 
-          const { data: { user: loggedInUser } } = await supabase.auth.getUser();
+          const { data: { user: loggedInUser } } = await db.auth.getUser();
           if (loggedInUser) {
-            const { data: superAdminData } = await supabase
+            const { data: superAdminData } = await db
               .from("superadmin_users")
               .select("id")
               .eq("user_id", loggedInUser.id)
@@ -397,7 +397,7 @@ export default function Auth() {
             if (superAdminData) {
               navigate("/admin");
             } else {
-              const { data: userRoles } = await supabase
+              const { data: userRoles } = await db
                 .from("user_roles")
                 .select("role")
                 .eq("user_id", loggedInUser.id);
@@ -447,7 +447,7 @@ export default function Auth() {
           // Demo trial signup → provision a DEMO_ENTERPRISE tenant on the spot.
           if (wantsTrial) {
             try {
-              const { error: provErr } = await supabase.functions.invoke(
+              const { error: provErr } = await db.functions.invoke(
                 "provision-demo-tenant",
                 {},
               );

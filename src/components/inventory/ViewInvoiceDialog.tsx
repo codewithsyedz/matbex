@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -96,7 +96,7 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
   const fetchInvoiceItems = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("invoice_items")
         .select("*")
         .eq("invoice_id", invoice.id);
@@ -114,7 +114,7 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
     if (!invoice.image_url) return;
     
     try {
-      const { data, error } = await supabase.storage
+      const { data, error } = await db.storage
         .from("invoice-images")
         .createSignedUrl(invoice.image_url.replace("invoice-images/", ""), 3600);
 
@@ -133,7 +133,7 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
 
     setPosting(true);
     try {
-      const { error } = await supabase.rpc("post_purchase_invoice_to_ledger", {
+      const { error } = await db.rpc("post_purchase_invoice_to_ledger", {
         p_invoice_id: invoice.id,
         p_account_id: selectedAccountId,
       });

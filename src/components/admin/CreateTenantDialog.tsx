@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -19,7 +20,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Plus, Calendar } from "lucide-react";
 
@@ -62,7 +63,7 @@ export function CreateTenantDialog({ plans, onCreated }: CreateTenantDialogProps
         ? new Date(Date.now() + formData.trialDays * 24 * 60 * 60 * 1000).toISOString()
         : null;
 
-      const { data: tenant, error: tenantError } = await supabase
+      const { data: tenant, error: tenantError } = await db
         .from("tenants")
         .insert({
           name: formData.tenantName,
@@ -77,7 +78,7 @@ export function CreateTenantDialog({ plans, onCreated }: CreateTenantDialogProps
       if (tenantError) throw tenantError;
 
       // Create primary restaurant
-      const { error: restaurantError } = await supabase
+      const { error: restaurantError } = await db
         .from("restaurants")
         .insert({
           tenant_id: tenant.id,
@@ -173,7 +174,7 @@ export function CreateTenantDialog({ plans, onCreated }: CreateTenantDialogProps
               <SelectContent>
                 {plans.map((plan) => (
                   <SelectItem key={plan.id} value={plan.id}>
-                    {plan.name} - ${plan.price}/mo
+                    {planLabel(plan.name)} - {sarPrice(plan.price)}/mo
                   </SelectItem>
                 ))}
               </SelectContent>

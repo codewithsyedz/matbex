@@ -1,7 +1,7 @@
 // =====================================================================
 // Cache hydrator (Epic C2)
 // ---------------------------------------------------------------------
-// Pulls source-of-truth rows from Supabase into IndexedDB so the POS can
+// Pulls source-of-truth rows from the API into IndexedDB so the POS can
 // render fully offline. Delta-based: each cache tracks its own
 // `kv['cache.<name>.since']` watermark and only fetches rows updated
 // after it. First run is a full pull.
@@ -11,7 +11,7 @@
 // config). Everything else stays server-side.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { STORES, put, kvGet, kvSet, type StoreName } from "./db";
 import { isOnline } from "./connectivity";
 
@@ -36,7 +36,7 @@ async function pullDelta<T extends Record<string, any>>(opts: {
 }) {
   const sinceKey = watermarkKey(opts.cacheName);
   const since = ((await kvGet<string>(sinceKey)) as string) || "1970-01-01T00:00:00Z";
-  let q = supabase.from(opts.table as any)
+  let q = db.from(opts.table as any)
     .select(opts.select)
     .eq("restaurant_id", opts.restaurantId)
     .gt("updated_at", since)

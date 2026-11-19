@@ -11,10 +11,10 @@
  * runs only when CI provides a pre-seeded pinned-cashier account.
  */
 import { describe, it, expect } from "vitest";
-import { createClient } from "@supabase/supabase-js";
+import { createClient } from "@matbex/client";
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string | undefined;
-const SUPABASE_ANON = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as
+const API_URL = import.meta.env.VITE_API_URL as string | undefined;
+const API_ANON_KEY = import.meta.env.VITE_API_KEY as
   | string
   | undefined;
 
@@ -40,8 +40,8 @@ const BRANCH_SCOPED_TABLES = [
 ] as const;
 
 const shouldRun = Boolean(
-  SUPABASE_URL &&
-    SUPABASE_ANON &&
+  API_URL &&
+    API_ANON_KEY &&
     CASHIER_EMAIL &&
     CASHIER_PASSWORD &&
     FORBIDDEN_BRANCH_ID,
@@ -49,7 +49,7 @@ const shouldRun = Boolean(
 
 describe.runIf(shouldRun)("RLS branch-pin isolation contract", () => {
   it("blocks pinned cashier from reading rows of a non-pinned branch", async () => {
-    const sb = createClient(SUPABASE_URL!, SUPABASE_ANON!);
+    const sb = createClient(API_URL!, API_ANON_KEY!);
     const { error: authErr } = await sb.auth.signInWithPassword({
       email: CASHIER_EMAIL!,
       password: CASHIER_PASSWORD!,

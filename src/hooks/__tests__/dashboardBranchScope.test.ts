@@ -1,5 +1,5 @@
 /**
- * Static contract: every Supabase read in `useDashboardData` must be scoped to
+ * Static contract: every the API read in `useDashboardData` must be scoped to
  * the active branch, and every cached query key must include the branch id.
  *
  * A source-level audit is used (instead of rendering the hook) because the hook
@@ -49,7 +49,7 @@ describe("useDashboardData branch scoping", () => {
 
   it("every query body applies a branch filter", () => {
     const offenders = parsed
-      .filter((b) => /supabase\s*\n?\s*\.?from\(|\.from\(|supabase\.rpc\(|fetch[A-Za-z]+\(/.test(b.body))
+      .filter((b) => /supabase\s*\n?\s*\.?from\(|\.from\(|db\.rpc\(|fetch[A-Za-z]+\(/.test(b.body))
       .filter((b) => !LOOKUP_EXEMPT.has(b.name))
       .filter((b) => !BRANCH_FILTER.test(b.body))
       .map((b) => b.name);
@@ -57,7 +57,7 @@ describe("useDashboardData branch scoping", () => {
   });
 
   it("staff-related reads scope on assigned_branch_id, not branch_id", () => {
-    const staffReads = (SRC.match(/from\("staff"\)[\s\S]{0,600}/g) ?? [])
+    const staffReads = ((SRC.match(/from\("staff"\)[\s\S]{0,600}/g) ?? []) as string[])
       // id -> name lookups are resolved from ids that are already branch-scoped
       .filter((read) => !/\.in\(/.test(read.slice(0, 200)));
     expect(staffReads.length).toBeGreaterThan(0);

@@ -5,11 +5,8 @@ import { History, UserMinus, UserPlus, PencilLine } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
-
-const db = supabase as any;
-
 type Row = Record<string, any> | null;
 
 interface AuditRow {

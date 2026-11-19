@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 /**
  * Parses the current hostname and, if it matches `{slug}.matbex.com` (or
- * `{slug}.matbex.lovable.app` for previews), resolves it against the
+ * `{slug}.<VITE_PREVIEW_DOMAIN>` for previews), resolves it against the
  * `resolve_subdomain` RPC.
  *
  * Returns:
@@ -25,7 +25,7 @@ export function useSubdomainTenant() {
     staleTime: 5 * 60 * 1000,
     queryFn: async () => {
       if (subdomain) {
-        const { data, error } = await (supabase.rpc as any)("resolve_subdomain", {
+        const { data, error } = await (db.rpc as any)("resolve_subdomain", {
           _subdomain: subdomain,
         });
         if (error) throw error;
@@ -38,7 +38,7 @@ export function useSubdomainTenant() {
         };
       }
       if (customDomain) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("tenant_domains")
           .select("tenant_id, domain_status")
           .eq("custom_domain", customDomain)
@@ -68,6 +68,9 @@ export function useSubdomainTenant() {
   };
 }
 
+/** Optional preview/staging parent domain, e.g. "staging.matbex.com". */
+const PREVIEW_DOMAIN = ((import.meta.env.VITE_PREVIEW_DOMAIN as string | undefined) ?? "").toLowerCase();
+
 /** Reserved hosts that should never resolve as a tenant subdomain. */
 const RESERVED_HOSTS = new Set([
   "www",
@@ -77,30 +80,28 @@ const RESERVED_HOSTS = new Set([
   "api",
   "preview",
   "id-preview",
-  "lovable",
+  // Staging deployment of the app itself (docs/self-hosting/STAGING.md), not a storefront.
+  "staging",
+  "staging-api",
 ]);
 
 /** App-owned hostnames that must never be treated as custom-domain tenants. */
 const APP_HOSTS = new Set([
   "matbex.com",
   "www.matbex.com",
-  "matbex.lovable.app",
   "localhost",
 ]);
 
 /**
  * Returns the hostname if it looks like a tenant-owned custom domain (i.e. not
- * a matbex.* or matbex.lovable.app host, and not a local/preview host).
+ * a matbex.* or preview host, and not a local host).
  */
 export function extractCustomDomain(hostname: string): string | null {
   if (!hostname) return null;
   const host = hostname.toLowerCase();
   if (APP_HOSTS.has(host)) return null;
   if (host.endsWith(".matbex.com")) return null;
-  if (host.endsWith(".matbex.lovable.app")) return null;
-  if (host.endsWith(".lovable.app")) return null;
-  if (host.endsWith(".lovableproject.com")) return null;
-  if (host.endsWith(".lovable.dev")) return null;
+  if (PREVIEW_DOMAIN && (host === PREVIEW_DOMAIN || host.endsWith(`.${PREVIEW_DOMAIN}`))) return null;
   if (host === "localhost" || host.endsWith(".localhost")) return null;
   // IP addresses
   if (/^\d+\.\d+\.\d+\.\d+$/.test(host)) return null;
@@ -119,8 +120,10 @@ export function extractTenantSubdomain(hostname: string): string | null {
     return RESERVED_HOSTS.has(slug) ? null : slug;
   }
 
-  // Preview: <slug>.matbex.lovable.app
-  const previewMatch = host.match(/^([a-z0-9-]+)\.matbex\.lovable\.app$/);
+  // Preview / staging: <slug>.<VITE_PREVIEW_DOMAIN>  (e.g. <slug>.staging.matbex.com)
+  const previewMatch = PREVIEW_DOMAIN
+    ? host.match(new RegExp(`^([a-z0-9-]+)\\.${PREVIEW_DOMAIN.replace(/\./g, "\\.")}$`))
+    : null;
   if (previewMatch) {
     const slug = previewMatch[1];
     return RESERVED_HOSTS.has(slug) ? null : slug;

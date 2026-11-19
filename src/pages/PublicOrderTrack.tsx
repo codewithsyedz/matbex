@@ -1,4 +1,8 @@
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
+import { refreshOnlinePayment, startOnlinePayment } from "@/lib/onlineOrderPay";
 import { useOnlineOrderDetail } from "@/hooks/useOnlineOrders";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -19,6 +23,43 @@ function fmt(n: number) {
 export default function PublicOrderTrack() {
   const { orderId } = useParams<{ orderId: string }>();
   const { data, isLoading } = useOnlineOrderDetail(orderId);
+  const qc = useQueryClient();
+  const [paying, setPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const awaitingPayment = data?.order?.payment_method === "online" && data?.order?.payment_status === "pending";
+
+  // Back from Moyasar (or reopened): ask the server to check with Moyasar, a few times while
+  // the payment settles.
+  useEffect(() => {
+    if (!orderId || !awaitingPayment) return;
+    let stopped = false;
+    let tries = 0;
+    const tick = async () => {
+      try {
+        const status = await refreshOnlinePayment(orderId);
+        if (status !== "pending") {
+          void qc.invalidateQueries({ queryKey: ["online-order", orderId] });
+          return;
+        }
+      } catch { /* keep trying */ }
+      if (!stopped && ++tries < 6) timer = setTimeout(tick, 4000);
+    };
+    let timer = setTimeout(tick, 500);
+    return () => { stopped = true; clearTimeout(timer); };
+  }, [orderId, awaitingPayment, qc]);
+
+  const payNow = async () => {
+    if (!orderId) return;
+    setPaying(true);
+    setPayError(null);
+    try {
+      if ((await startOnlinePayment(orderId)) === "paid") void qc.invalidateQueries({ queryKey: ["online-order", orderId] });
+    } catch (e) {
+      setPayError(e instanceof Error ? e.message : "The payment page could not be opened");
+    } finally {
+      setPaying(false);
+    }
+  };
 
   if (isLoading) return <div className="p-8 text-center text-muted-foreground">Loading…</div>;
   if (!data?.order) return <div className="p-8 text-center">Order not found</div>;
@@ -99,6 +140,12 @@ export default function PublicOrderTrack() {
             <p><span className="text-muted-foreground">Address:</span> {(order.delivery_address as any).line1}, {(order.delivery_address as any).city}</p>
           )}
           <p><span className="text-muted-foreground">Payment:</span> <span className="capitalize">{order.payment_method}</span> ({order.payment_status})</p>
+          {awaitingPayment && !cancelled && (
+            <div className="pt-2 space-y-1">
+              <Button onClick={payNow} disabled={paying} className="w-full">{paying ? "Opening payment…" : `Pay ${fmt(order.total)} now`}</Button>
+              {payError && <p className="text-xs text-destructive">{payError}</p>}
+            </div>
+          )}
         </Card>
       </div>
     </div>

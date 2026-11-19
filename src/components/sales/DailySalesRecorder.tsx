@@ -47,7 +47,7 @@ import {
   ArrowRight,
   RotateCcw
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { DayEndAdjustmentDialog } from "@/components/dayend/DayEndAdjustmentDialog";
 import { DayEndAdjustedBadge } from "@/components/dayend/DayEndAdjustedBadge";
@@ -69,7 +69,7 @@ import {
 } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useTranslation } from "react-i18next";
-import { postSalesWithAi, postSalesToConfirmedAccount, AiIncomeNeedsReviewError } from "@/lib/aiIncomeJournal";
+import { postSalesWithAi, AiIncomeNeedsReviewError, promptConfirmSalesAccount } from "@/lib/aiIncomeJournal";
 
 interface DeliveryEntry {
   platform: DeliveryPlatform;
@@ -126,7 +126,7 @@ export function DailySalesRecorder() {
     enabled: !!dailySales?.id,
     staleTime: 30_000,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("day_end_adjustments")
         .select("id, amount, reason, notes, created_at, reversed_at, reversal_of_id, ledger_posted, branch_id")
         .eq("scope", "daily_sales")
@@ -214,11 +214,15 @@ export function DailySalesRecorder() {
   }, [deliveryBreakdown]);
 
   // Calculated values
+  // Sales put on customers' tabs: worked out from the POS (not typed), left out of cash/card
+  // and posted to the Customer Accounts receivable when the day is posted.
+  const accountSales = Number(dailySales?.account_sales ?? systemBreakdown?.account ?? 0) || 0;
   const totalSales = 
     (parseFloat(cashSales) || 0) + 
     (parseFloat(cardSales) || 0) + 
     (parseFloat(deliverySales) || 0) + 
-    (parseFloat(otherSales) || 0);
+    (parseFloat(otherSales) || 0) +
+    accountSales;
   
   const isLocked = dailySales?.status === 'closed';
   const isPrefilling = isBreakdownLoading && !dailySales;
@@ -441,7 +445,7 @@ export function DailySalesRecorder() {
         onClick: async () => {
           try {
             // 1) Reverse the day-end adjustment (immutable ledger - voids via reversal)
-            const { error: revErr } = await supabase.rpc(
+            const { error: revErr } = await db.rpc(
               "reverse_day_end_adjustment" as never,
               {
                 p_adjustment_id: adjustmentId,
@@ -451,7 +455,7 @@ export function DailySalesRecorder() {
             if (revErr) throw revErr;
 
             // 2) Reopen the day so the user can re-edit
-            const { error: reopenErr } = await supabase
+            const { error: reopenErr } = await db
               .from("daily_sales_summary")
               .update({
                 status: "draft",
@@ -493,24 +497,9 @@ export function DailySalesRecorder() {
       queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
     } catch (error: any) {
       if (error instanceof AiIncomeNeedsReviewError) {
-        const s = error.result;
-        const salesId = dailySales.id;
-        toast.warning(`Please confirm: post to ${s.account.code} · ${s.account.name}?`, {
-          description: `AI was only ${Math.round(s.confidence * 100)}% sure. ${s.rationale}`,
-          duration: 30000,
-          action: {
-            label: "Confirm & post",
-            onClick: async () => {
-              try {
-                await postSalesToConfirmedAccount(salesId, s.account.id);
-                toast.success(`Posted to ${s.account.code} · ${s.account.name}`);
-                queryClient.invalidateQueries({ queryKey: ["daily-sales"] });
-                queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
-              } catch (e: any) {
-                toast.error(e?.message ?? "Posting failed");
-              }
-            },
-          },
+        promptConfirmSalesAccount(dailySales.id, error.result, toast, () => {
+          queryClient.invalidateQueries({ queryKey: ["daily-sales"] });
+          queryClient.invalidateQueries({ queryKey: ["journal-entries"] });
         });
         return;
       }
@@ -546,7 +535,7 @@ export function DailySalesRecorder() {
 
   const reverseMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
-      const { data, error } = await supabase.rpc(
+      const { data, error } = await db.rpc(
         "reverse_day_end_adjustment" as never,
         { p_adjustment_id: id, p_reason: reason } as never,
       );
@@ -842,6 +831,11 @@ export function DailySalesRecorder() {
                   />
                 </div>
               </div>
+              {accountSales > 0 && (
+                <p className="text-xs text-muted-foreground" data-testid="account-sales-note">
+                  {t('app.dailySalesRecorder.accountSales', { amount: formatCurrency(accountSales) })}
+                </p>
+              )}
 
               {/* Total Display */}
               <div className="flex items-center justify-between pt-4 border-t">
@@ -1262,7 +1256,7 @@ export function DailySalesRecorder() {
                 const isOverage = variance > 0;
                 const reasons: { value: string; label: string; action: 'adjustment' | 'resolve'; hint: string }[] = isOverage
                   ? [
-                      { value: 'unrecorded_sales', label: 'Cashier missed POS entry (unrecorded sale)', action: 'adjustment', hint: 'Real cash collected but not rung. Post DR Cash / CR Sales (or Cash Over/Short).' },
+                      { value: 'unrecorded_sales', label: 'Cashier missed POS entry (unrecorded sale)', action: 'adjustment', hint: 'Real cash collected but not rung. The counted cash is posted as sales (with VAT) at End of Day; the adjustment records why.' },
                       { value: 'tip_in_drawer', label: 'Tips kept in drawer', action: 'adjustment', hint: 'Move from cash to tips liability via an adjustment entry.' },
                       { value: 'overring_correction', label: 'POS overring already corrected / timing only', action: 'resolve', hint: 'Books are already right - document the explanation and resolve to close.' },
                       { value: 'counting_error', label: 'Found extra cash / counting error', action: 'adjustment', hint: 'Post a Cash Over (DR Cash / CR Cash Over/Short) so books match the drawer.' },

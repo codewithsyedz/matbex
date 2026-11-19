@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,7 +56,7 @@ export function DrawerManager() {
     queryKey: ["drawers", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("drawers")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -69,7 +69,7 @@ export function DrawerManager() {
 
   const createMutation = useMutation({
     mutationFn: async (data: { name: string; is_active: boolean }) => {
-      const { error } = await supabase.from("drawers").insert({
+      const { error } = await db.from("drawers").insert({
         name: data.name,
         is_active: data.is_active,
         restaurant_id: restaurant!.id,
@@ -88,7 +88,7 @@ export function DrawerManager() {
 
   const updateMutation = useMutation({
     mutationFn: async (data: { id: string; name: string; is_active: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("drawers")
         .update({ name: data.name, is_active: data.is_active })
         .eq("id", data.id);
@@ -106,7 +106,7 @@ export function DrawerManager() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("drawers").delete().eq("id", id);
+      const { error } = await db.from("drawers").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -120,7 +120,7 @@ export function DrawerManager() {
 
   const toggleActiveMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("drawers")
         .update({ is_active })
         .eq("id", id);

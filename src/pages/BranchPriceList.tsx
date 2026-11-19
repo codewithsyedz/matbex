@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -111,7 +111,7 @@ export default function BranchPriceList() {
     queryKey: ["price-editor-menu-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("id, name, category, quarter_price, half_price, full_price")
         .eq("restaurant_id", restaurant.id)
@@ -129,7 +129,7 @@ export default function BranchPriceList() {
     queryFn: async () => {
       if (!selectedBranchId) return [];
       const today = todayLocal();
-      const { data, error } = await (supabase as any).rpc("get_branch_menu_prices", {
+      const { data, error } = await (db as any).rpc("get_branch_menu_prices", {
         _branch_id: selectedBranchId,
         _at: today,
       });
@@ -149,7 +149,7 @@ export default function BranchPriceList() {
     queryKey: ["branch-price-history", selectedBranchId, historyItem?.id],
     queryFn: async () => {
       if (!selectedBranchId || !historyItem?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_item_price_history" as any)
         .select("*")
         .eq("branch_id", selectedBranchId)
@@ -160,9 +160,9 @@ export default function BranchPriceList() {
       const actorIds = Array.from(
         new Set(rows.map((r) => r.changed_by).filter(Boolean)),
       ) as string[];
-      let nameMap: Record<string, string> = {};
+      const nameMap: Record<string, string> = {};
       if (actorIds.length > 0) {
-        const { data: profs } = await supabase
+        const { data: profs } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", actorIds);
@@ -185,7 +185,7 @@ export default function BranchPriceList() {
     queryKey: ["branch-price-item-rows", selectedBranchId, editorItem?.id],
     queryFn: async () => {
       if (!selectedBranchId || !editorItem?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_item_branch_prices" as any)
         .select("id, effective_from, effective_to")
         .eq("branch_id", selectedBranchId)
@@ -359,7 +359,7 @@ export default function BranchPriceList() {
       const prevDay = new Date(`${form.effective_from}T00:00:00Z`);
       prevDay.setUTCDate(prevDay.getUTCDate() - 1);
       const closeOn = prevDay.toISOString().slice(0, 10);
-      await supabase
+      await db
         .from("menu_item_branch_prices" as any)
         .update({ effective_to: closeOn } as any)
         .eq("branch_id", selectedBranchId)
@@ -369,14 +369,14 @@ export default function BranchPriceList() {
 
       if (replacedRow?.id) {
         // Same start date: update the existing open row in place.
-        const { error } = await supabase
+        const { error } = await db
           .from("menu_item_branch_prices" as any)
           .update(payload as any)
           .eq("id", replacedRow.id);
         if (error) throw error;
         return;
       }
-      const { error } = await supabase.from("menu_item_branch_prices" as any).insert(payload as any);
+      const { error } = await db.from("menu_item_branch_prices" as any).insert(payload as any);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -391,7 +391,7 @@ export default function BranchPriceList() {
 
   const deleteMutation = useMutation({
     mutationFn: async (rowId: string) => {
-      const { error } = await supabase.from("menu_item_branch_prices" as any).delete().eq("id", rowId);
+      const { error } = await db.from("menu_item_branch_prices" as any).delete().eq("id", rowId);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -457,7 +457,7 @@ export default function BranchPriceList() {
         note: "Inline quick price change",
       };
 
-      const { data: rows } = await supabase
+      const { data: rows } = await db
         .from("menu_item_branch_prices" as any)
         .select("id, effective_from, effective_to")
         .eq("branch_id", selectedBranchId)
@@ -469,7 +469,7 @@ export default function BranchPriceList() {
       // Periods are date-inclusive: close earlier open rows the day before.
       const prevDay = new Date(`${from}T00:00:00Z`);
       prevDay.setUTCDate(prevDay.getUTCDate() - 1);
-      await supabase
+      await db
         .from("menu_item_branch_prices" as any)
         .update({ effective_to: prevDay.toISOString().slice(0, 10) } as any)
         .eq("branch_id", selectedBranchId)
@@ -478,14 +478,14 @@ export default function BranchPriceList() {
         .lt("effective_from", from);
 
       if (sameDayOpen?.id) {
-        const { error } = await supabase
+        const { error } = await db
           .from("menu_item_branch_prices" as any)
           .update(payload as any)
           .eq("id", sameDayOpen.id);
         if (error) throw error;
         return;
       }
-      const { error } = await supabase.from("menu_item_branch_prices" as any).insert(payload as any);
+      const { error } = await db.from("menu_item_branch_prices" as any).insert(payload as any);
       if (error) throw error;
     },
     onSuccess: () => {

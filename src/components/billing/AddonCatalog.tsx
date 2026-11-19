@@ -9,16 +9,11 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Check, Package, Sparkles, CreditCard } from "lucide-react";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Loader2, Check, Package, Sparkles } from "lucide-react";
 import { useAddonCatalog, useMyTenantAddons } from "@/hooks/useAddons";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
+import { payForAddon } from "@/lib/billing/subscriptionPay";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 
@@ -44,14 +39,14 @@ export function AddonCatalog() {
       try {
         let data: any, error: any;
         if (stripeSessionId) {
-          ({ data, error } = await supabase.functions.invoke(
+          ({ data, error } = await db.functions.invoke(
             "verify-addon-purchase",
             { body: { session_id: stripeSessionId } },
           ));
         } else {
           // Look up the pending tenant_addon row by reference to get the
           // Checkout.com hosted-payment id stored in stripe_checkout_session_id.
-          const { data: row } = await supabase
+          const { data: row } = await db
             .from("tenant_addons")
             .select("stripe_checkout_session_id")
             .eq("provider", "checkout_com")
@@ -60,7 +55,7 @@ export function AddonCatalog() {
             .limit(1)
             .maybeSingle();
           if (row?.stripe_checkout_session_id) {
-            ({ data, error } = await supabase.functions.invoke(
+            ({ data, error } = await db.functions.invoke(
               "verify-addon-purchase-cko",
               { body: { session_id: row.stripe_checkout_session_id } },
             ));
@@ -86,32 +81,18 @@ export function AddonCatalog() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const handleBuy = async (
-    addonId: string,
-    provider: "stripe" | "checkout_com" = "stripe",
-  ) => {
+  const handleBuy = async (addonId: string) => {
     if (!isOwner) {
       toast.error("Only owners can purchase addons");
       return;
     }
     setPurchasing(addonId);
     try {
-      const fn =
-        provider === "checkout_com"
-          ? "create-addon-checkout-cko"
-          : "create-addon-checkout";
-      const { data, error } = await supabase.functions.invoke(fn, {
-        body: { addon_id: addonId },
-      });
-      if (error) throw error;
-      if (data?.url) {
-        window.open(data.url, "_blank");
-      } else {
-        throw new Error("No checkout URL returned");
-      }
+      // Moyasar payment page for the days left to the plan's paid-until date; the Billing page
+      // confirms the payment on return (?payment=<id>).
+      await payForAddon(addonId);
     } catch (err: any) {
       toast.error(err.message ?? "Failed to start checkout");
-    } finally {
       setPurchasing(null);
     }
   };
@@ -141,7 +122,7 @@ export function AddonCatalog() {
     <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
       {catalog.map((a) => {
         const isOwned = ownedActiveIds.has(a.id);
-        const canBuy = !!a.stripe_price_id && !isOwned;
+        const canBuy = Number(a.price) > 0 && !isOwned;
         return (
           <Card
             key={a.id}
@@ -188,7 +169,7 @@ export function AddonCatalog() {
                       <span className="capitalize">{f.replace(/_/g, " ")}</span>
                     </li>
                   ))}
-                  {Object.entries(a.quota_boosts).map(([k, v]) => (
+                  {Object.entries(a.quota_boosts as Record<string, number>).map(([k, v]) => (
                     <li
                       key={k}
                       className="flex items-center gap-2 text-sm text-muted-foreground"
@@ -206,40 +187,25 @@ export function AddonCatalog() {
                 <Button className="w-full" variant="outline" disabled>
                   Active
                 </Button>
-              ) : !a.stripe_price_id ? (
+              ) : !(Number(a.price) > 0) ? (
                 <Button className="w-full" variant="outline" disabled>
                   Contact sales
                 </Button>
               ) : (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <Button
-                      className="w-full"
-                      disabled={!canBuy || purchasing !== null}
-                    >
-                      {purchasing === a.id ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Processing…
-                        </>
-                      ) : (
-                        "Get addon"
-                      )}
-                    </Button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-56">
-                    <DropdownMenuItem onClick={() => handleBuy(a.id, "stripe")}>
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      Pay with Stripe
-                    </DropdownMenuItem>
-                    <DropdownMenuItem
-                      onClick={() => handleBuy(a.id, "checkout_com")}
-                    >
-                      <CreditCard className="h-4 w-4 mr-2" />
-                      Pay with Checkout.com
-                    </DropdownMenuItem>
-                  </DropdownMenuContent>
-                </DropdownMenu>
+                <Button
+                  onClick={() => handleBuy(a.id)}
+                  className="w-full"
+                  disabled={!canBuy || purchasing !== null}
+                >
+                  {purchasing === a.id ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing…
+                    </>
+                  ) : (
+                    "Get addon"
+                  )}
+                </Button>
               )}
             </CardContent>
           </Card>

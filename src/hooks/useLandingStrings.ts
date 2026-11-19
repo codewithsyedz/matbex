@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import i18n from "i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface LandingString {
   id: string;
@@ -38,7 +38,7 @@ export function useLandingStrings() {
   const query = useQuery({
     queryKey: ["landing-strings"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_strings")
         .select("id,key,group_name,value_en,value_ar,updated_at")
         .order("key");

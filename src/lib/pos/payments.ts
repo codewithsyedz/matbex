@@ -1,10 +1,17 @@
 // Single entry point for POS code to charge an order. Routes through Matbex
 // backend - POS clients NEVER talk to a gateway directly.
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
+
+/** The server's own message for a failed function call (e.g. "Moyasar is not set up..."). */
+async function functionError(error: { message: string; context?: unknown }): Promise<Error> {
+  const ctx = error.context as Response | undefined;
+  const body = ctx && typeof ctx.clone === "function" ? await ctx.clone().json().catch(() => null) : null;
+  return new Error(body?.error || body?.message || error.message);
+}
 
 export type PaymentMethod =
-  | "mada" | "apple_pay" | "visa" | "mastercard" | "stc_pay" | "cash" | "external_card";
+  | "card" | "mada" | "apple_pay" | "visa" | "mastercard" | "stc_pay" | "cash" | "external_card";
 
 export interface ChargeOrderInput {
   orderId?: string;
@@ -16,6 +23,7 @@ export interface ChargeOrderInput {
   returnUrl?: string;
   idempotencyKey?: string;
   externalReference?: string; // for bank-terminal recording
+  metadata?: Record<string, unknown>;
 }
 
 export interface ChargeOrderResult {
@@ -30,7 +38,7 @@ export interface ChargeOrderResult {
 /** Cash / external bank terminal - peak-hour safe, no gateway. */
 async function recordExternal(input: ChargeOrderInput): Promise<ChargeOrderResult> {
   const kind = input.method === "cash" ? "cash" : "external_card_recorded";
-  const { data, error } = await supabase.functions.invoke("payments-record-external", {
+  const { data, error } = await db.functions.invoke("payments-record-external", {
     body: {
       amount: input.amount,
       method: input.method,
@@ -47,7 +55,7 @@ async function recordExternal(input: ChargeOrderInput): Promise<ChargeOrderResul
 
 /** Gateway-driven charge (Mada / Apple Pay / STC Pay / cards). */
 async function chargeViaGateway(input: ChargeOrderInput): Promise<ChargeOrderResult> {
-  const { data, error } = await supabase.functions.invoke("payments-create-intent", {
+  const { data, error } = await db.functions.invoke("payments-create-intent", {
     body: {
       amount: input.amount,
       method: input.method,
@@ -57,9 +65,10 @@ async function chargeViaGateway(input: ChargeOrderInput): Promise<ChargeOrderRes
       channel: input.channel ?? "pos",
       return_url: input.returnUrl,
       idempotency_key: input.idempotencyKey,
+      metadata: input.metadata,
     },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw await functionError(error);
   return {
     status: data.status === "captured" ? "captured" : "pending",
     intentId: data.intent_id,
@@ -78,10 +87,10 @@ export async function chargeOrder(input: ChargeOrderInput): Promise<ChargeOrderR
 
 /** Poll the orchestrator after redirect/QR return until status is terminal. */
 export async function confirmPayment(intentId: string): Promise<"captured" | "failed" | "pending"> {
-  const { data, error } = await supabase.functions.invoke("payments-confirm", {
+  const { data, error } = await db.functions.invoke("payments-confirm", {
     body: { intent_id: intentId },
   });
-  if (error) throw new Error(error.message);
+  if (error) throw await functionError(error);
   if (data.status === "captured") return "captured";
   if (data.status === "failed" || data.status === "expired" || data.status === "canceled") return "failed";
   return "pending";

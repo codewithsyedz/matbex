@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { useParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -79,7 +79,7 @@ export default function GuestOrder() {
     if (!code) return;
     (async () => {
       setLoading(true);
-      const { data: res, error } = await supabase.rpc("guest_lookup_table", { p_code: code });
+      const { data: res, error } = await db.rpc("guest_lookup_table", { p_code: code });
       if (error) {
         toast.error("Could not load table");
       }
@@ -125,7 +125,7 @@ export default function GuestOrder() {
     if (!code || cart.length === 0) return;
     setSubmitting(true);
     try {
-      const { data: res, error } = await supabase.rpc("guest_create_order", {
+      const { data: res, error } = await db.rpc("guest_create_order", {
         p_table_code: code,
         p_guest_name: guestName || "",
         p_items: cart.map(({ key, ...rest }) => rest),

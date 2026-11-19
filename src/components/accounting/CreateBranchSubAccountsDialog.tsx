@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import {
@@ -58,7 +58,7 @@ export function CreateBranchSubAccountsDialog({
     queryKey: ["coa-sub-account-branches", restaurantId],
     enabled: open && !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("branches")
         .select("id, name")
         .eq("restaurant_id", restaurantId!)

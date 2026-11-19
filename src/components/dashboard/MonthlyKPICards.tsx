@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { dashboardQueryOptions } from "@/lib/query/queryPolicy";
 import { qk } from "@/lib/query/queryKeys";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { fetchReconciledSalesByDay } from "@/lib/reconciledSales";
@@ -167,7 +167,7 @@ export function MonthlyKPICards({ dateRange, preset }: MonthlyKPICardsProps) {
 
       const cutoffDateStr = format(dataCutoffDate, "yyyy-MM-dd");
       
-      let expensesQuery = supabase
+      let expensesQuery = db
         .from("expenses")
         .select("amount, status")
         .eq("restaurant_id", restaurant.id)

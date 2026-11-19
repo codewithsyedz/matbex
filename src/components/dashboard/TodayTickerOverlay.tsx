@@ -104,9 +104,8 @@ export function TodayTickerOverlay() {
     return () => mql.removeEventListener("change", handleChange);
   }, []);
 
-  if (!restaurant) return null;
-
   const { isCashierOnly } = useRoleGuard();
+  if (!restaurant) return null;
   if (isCashierOnly) return null;
 
   const handleDismiss = () => {

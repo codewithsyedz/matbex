@@ -27,7 +27,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -70,7 +70,7 @@ export function BranchReconciliationView() {
     queryKey: ["branch-recon-drawer", restaurant?.id, branchKey, fromIso, toIso],
     enabled: !!restaurant?.id && !!fromIso && !!toIso,
     queryFn: async () => {
-      let shiftQ = supabase
+      let shiftQ = db
         .from("shifts")
         .select("opening_float, counted_cash, expected_cash, variance, branch_id, opened_at")
         .eq("restaurant_id", restaurant!.id)
@@ -80,7 +80,7 @@ export function BranchReconciliationView() {
       const { data: shifts, error: sErr } = await shiftQ;
       if (sErr) throw sErr;
 
-      let evtQ = supabase
+      let evtQ = db
         .from("cash_events")
         .select("event_type, amount, branch_id, created_at")
         .eq("restaurant_id", restaurant!.id)
@@ -125,7 +125,7 @@ export function BranchReconciliationView() {
     enabled: !!tenant?.id && !!fromYmd && !!toYmd,
     queryFn: async () => {
       // Pull chart of accounts to classify (cash vs revenue vs other)
-      const { data: accounts, error: aErr } = await supabase
+      const { data: accounts, error: aErr } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenant!.id);
@@ -149,7 +149,7 @@ export function BranchReconciliationView() {
       let page = 0;
       const all: Array<{ account_id: string; debit: number | null; credit: number | null }> = [];
       while (true) {
-        let q = supabase
+        let q = db
           .from("account_transactions")
           .select("account_id, debit, credit")
           .eq("tenant_id", tenant!.id)

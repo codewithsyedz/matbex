@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { BranchBadge } from "@/components/branch/BranchBadge";
@@ -91,7 +91,7 @@ export function OverheadPaymentManager() {
     queryKey: ["overhead-allocations-payments", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("overhead_allocation")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -117,7 +117,7 @@ export function OverheadPaymentManager() {
     queryKey: ["overhead-payments", restaurant?.id, selectedMonth],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("overhead_payments")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -145,7 +145,7 @@ export function OverheadPaymentManager() {
       }
 
       // Insert payment record
-      const { data: payment, error: paymentError } = await supabase
+      const { data: payment, error: paymentError } = await db
         .from("overhead_payments")
         .insert({
           overhead_allocation_id: overheadId,
@@ -164,7 +164,7 @@ export function OverheadPaymentManager() {
       if (paymentError) throw paymentError;
 
       // Post to ledger
-      const { error: ledgerError } = await supabase.rpc("post_overhead_payment_to_ledger", {
+      const { error: ledgerError } = await db.rpc("post_overhead_payment_to_ledger", {
         p_payment_id: payment.id,
         p_payment_method: paymentMethod,
       });
@@ -211,7 +211,7 @@ export function OverheadPaymentManager() {
       const results = [];
       const blocked: string[] = [];
       for (const overhead of unpaidItems) {
-        const { data: payment, error: paymentError } = await supabase
+        const { data: payment, error: paymentError } = await db
           .from("overhead_payments")
           .insert({
             overhead_allocation_id: overhead.id,
@@ -236,7 +236,7 @@ export function OverheadPaymentManager() {
         }
 
         // Post to ledger
-        await supabase.rpc("post_overhead_payment_to_ledger", {
+        await db.rpc("post_overhead_payment_to_ledger", {
           p_payment_id: payment.id,
           p_payment_method: paymentMethod,
         });

@@ -13,7 +13,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface InventorySettingsData {
@@ -46,7 +46,7 @@ export function InventorySettings() {
     if (!restaurant?.id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_settings")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -84,14 +84,14 @@ export function InventorySettings() {
       };
 
       if (settings.id) {
-        const { error } = await supabase
+        const { error } = await db
           .from("inventory_settings")
           .update(settingsData)
           .eq("id", settings.id);
 
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("inventory_settings")
           .insert(settingsData);
 
@@ -116,7 +116,7 @@ export function InventorySettings() {
 
     setSaving(true);
     try {
-      const { data, error } = await supabase.functions.invoke("send-expiry-alerts", {
+      const { data, error } = await db.functions.invoke("send-expiry-alerts", {
         body: { restaurant_id: restaurant.id, test: true },
       });
 

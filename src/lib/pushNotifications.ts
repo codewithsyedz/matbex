@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 // VAPID public key - loaded from environment or fallback to dev key
 const VAPID_PUBLIC_KEY = import.meta.env.VITE_VAPID_PUBLIC_KEY || "BEl62iUYgUivxIkv69yViEuiBIa-Ib9-SkvMeAtA3LFgDzkrxZJjSgSnfckjBJuBkr3qBUYIHBQFLXYp5Nksh8U";
@@ -55,7 +55,7 @@ export async function subscribeToPush(
     // Store subscription in database
     const subscriptionJson = subscription.toJSON();
     
-    const { error } = await supabase.from("push_subscriptions").upsert(
+    const { error } = await db.from("push_subscriptions").upsert(
       {
         user_id: userId,
         tenant_id: tenantId,
@@ -91,7 +91,7 @@ export async function unsubscribeFromPush(userId: string): Promise<boolean> {
       await subscription.unsubscribe();
 
       // Remove from database
-      await supabase
+      await db
         .from("push_subscriptions")
         .delete()
         .eq("user_id", userId)

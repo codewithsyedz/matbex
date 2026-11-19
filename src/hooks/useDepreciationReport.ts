@@ -1,13 +1,11 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 
 /** Untyped client: fixed asset tables are newer than the generated types. */
-const db = supabase as any;
-
 export interface DepreciationReportRow {
   assetId: string;
   assetTag: string | null;

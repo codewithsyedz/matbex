@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -54,7 +54,7 @@ export function BulkSplitFinesIntoInstallmentsDialog({ fines, open, onOpenChange
       queryKey: ["fine-capacity", f.staff_id, f.payroll_month, f.id],
       enabled: open && !!f.staff_id && !!f.payroll_month,
       queryFn: async () => {
-        const { data, error } = await supabase.rpc("get_employee_fine_capacity", {
+        const { data, error } = await db.rpc("get_employee_fine_capacity", {
           p_staff_id: f.staff_id,
           p_payroll_month: f.payroll_month,
           p_exclude_fine_id: f.id,
@@ -130,7 +130,7 @@ export function BulkSplitFinesIntoInstallmentsDialog({ fines, open, onOpenChange
     const outcome: Record<string, string> = {};
     let ok = 0;
     for (const p of plans) {
-      const { error } = await supabase.rpc("convert_fine_to_installments", {
+      const { error } = await db.rpc("convert_fine_to_installments", {
         p_fine_id: p.fine.id,
         p_already_deducted: p.already,
         p_monthly_limit: p.monthlyLimit || null,

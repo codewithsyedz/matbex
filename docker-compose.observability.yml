@@ -1,0 +1,123 @@
+# Observability stack: Prometheus (metrics) · Loki (logs) · Tempo (traces) · Grafana · Alloy.
+# Run it together with the main stack so it shares the network:
+#
+#   docker compose -f docker-compose.yml -f docker-compose.observability.yml up -d
+#
+# Grafana listens on 127.0.0.1:${GRAFANA_PORT:-3300} only. Reach it through an SSH tunnel
+# (ssh -L 3300:127.0.0.1:3300 server) or put it behind Caddy with authentication.
+# See docs/self-hosting/OBSERVABILITY.md.
+services:
+  api:
+    environment:
+      # Turns on tracing in server/src/otel.ts; Alloy forwards spans to Tempo.
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
+      OTEL_SERVICE_NAME: matbex-api
+
+  worker:
+    environment:
+      OTEL_EXPORTER_OTLP_ENDPOINT: http://alloy:4318
+      OTEL_SERVICE_NAME: matbex-worker
+
+  prometheus:
+    image: prom/prometheus:v3.4.1
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-30d}
+    volumes:
+      - ./deploy/observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+
+  loki:
+    image: grafana/loki:3.5.1
+    restart: unless-stopped
+    command: ["-config.file=/etc/loki/loki.yml"]
+    volumes:
+      - ./deploy/observability/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+
+  tempo:
+    image: grafana/tempo:2.8.1
+    restart: unless-stopped
+    user: "0"
+    command: ["-config.file=/etc/tempo/tempo.yml"]
+    volumes:
+      - ./deploy/observability/tempo.yml:/etc/tempo/tempo.yml:ro
+      - tempo_data:/var/tempo
+
+  alloy:
+    image: grafana/alloy:v1.9.2
+    restart: unless-stopped
+    command: ["run", "--server.http.listen-addr=0.0.0.0:12345", "--storage.path=/var/lib/alloy/data", "/etc/alloy/config.alloy"]
+    volumes:
+      - ./deploy/observability/config.alloy:/etc/alloy/config.alloy:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - alloy_data:/var/lib/alloy/data
+    environment:
+      # Ship logs of this compose project only
+      LOG_PROJECT: ${COMPOSE_PROJECT_NAME:-matbex}
+    depends_on: [loki, tempo]
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:v0.17.1
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_NAME: postgres://postgres:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-matbex}?sslmode=disable
+
+  redis-exporter:
+    image: oliver006/redis_exporter:v1.74.0
+    restart: unless-stopped
+    environment:
+      REDIS_ADDR: redis://redis:6379
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  # Host disk, memory and CPU, plus the backup status file written by deploy/backup.sh
+  # (textfile collector: ~/backup/metrics/*.prom).
+  node-exporter:
+    image: prom/node-exporter:v1.9.1
+    restart: unless-stopped
+    command:
+      - --path.rootfs=/host
+      - --collector.textfile.directory=/textfile
+    volumes:
+      - /:/host:ro,rslave
+      - ${HOME}/backup/metrics:/textfile:ro
+
+  grafana:
+    image: grafana/grafana:12.0.2
+    restart: unless-stopped
+    ports: ["127.0.0.1:${GRAFANA_PORT:-3300}:3000"]
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      # Alerts (provisioning/alerting/alerting.yml): email through Resend's SMTP, and Telegram.
+      # Defaults are empty so a missing value only affects Grafana, never `docker compose` itself.
+      GF_SMTP_ENABLED: "true"
+      GF_SMTP_HOST: smtp.resend.com:587
+      GF_SMTP_USER: resend
+      GF_SMTP_PASSWORD: ${RESEND_API_KEY:-}
+      GF_SMTP_FROM_ADDRESS: alerts@${EMAIL_FROM_DOMAIN:-}
+      GF_SMTP_FROM_NAME: Matbex Alerts
+      GF_SMTP_STARTTLS_POLICY: MandatoryStartTLS
+      ALERT_EMAIL: ${ALERT_EMAIL:-}
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN:-}
+      # Trailing space on purpose: Grafana turns a substituted all-digit value into a number,
+      # which the Telegram integration rejects (chatid must be a string), and keeps quotes
+      # literally. Telegram accepts the id with a trailing space.
+      TELEGRAM_CHAT_ID: "${TELEGRAM_CHAT_ID:-} "
+    volumes:
+      - ./deploy/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./deploy/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on: [prometheus, loki, tempo]
+
+volumes:
+  prometheus_data:
+  loki_data:
+  tempo_data:
+  alloy_data:
+  grafana_data:

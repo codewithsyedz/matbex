@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { formatDistanceStrict, formatDistanceToNow } from "date-fns";
 import { Clock, Download, History, ShieldCheck, UserCog } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Card,
@@ -67,7 +67,7 @@ export function ImpersonationHistoryCard() {
     queryKey: ["role-impersonation-logs", tenant?.id],
     queryFn: async () => {
       if (!tenant?.id) return [] as ImpersonationLogRow[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("role_impersonation_logs")
         .select("id, impersonated_role, started_at, ended_at, expires_at, end_reason, user_agent")
         .eq("tenant_id", tenant.id)
@@ -85,7 +85,7 @@ export function ImpersonationHistoryCard() {
   const handleExport = async () => {
     if (!tenant?.id) return;
     try {
-      const { data: rows, error } = await supabase
+      const { data: rows, error } = await db
         .from("role_impersonation_logs")
         .select("id, impersonated_role, started_at, ended_at, expires_at, end_reason, user_agent")
         .eq("tenant_id", tenant.id)

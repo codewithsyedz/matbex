@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface UnreadCounts {
@@ -19,7 +19,7 @@ export function useUnreadCounts() {
       }
 
       // Get all messages in the restaurant
-      const { data: messages, error: messagesError } = await supabase
+      const { data: messages, error: messagesError } = await db
         .from("chat_messages")
         .select("id, channel_id, conversation_id, sender_id, created_at")
         .eq("restaurant_id", restaurant.id)
@@ -29,7 +29,7 @@ export function useUnreadCounts() {
 
       // Get user's read receipts
       const messageIds = messages?.map(m => m.id) || [];
-      const { data: readReceipts, error: receiptsError } = await supabase
+      const { data: readReceipts, error: receiptsError } = await db
         .from("chat_read_receipts")
         .select("message_id")
         .eq("user_id", user.id)
@@ -40,7 +40,7 @@ export function useUnreadCounts() {
       const readMessageIds = new Set(readReceipts?.map(r => r.message_id) || []);
 
       // Get user's conversations (to filter out conversations user is not part of)
-      const { data: userConversations } = await supabase
+      const { data: userConversations } = await db
         .from("chat_conversation_participants")
         .select("conversation_id")
         .eq("user_id", user.id);

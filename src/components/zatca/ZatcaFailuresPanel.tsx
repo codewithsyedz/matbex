@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Card,
@@ -111,7 +111,7 @@ export function ZatcaFailuresPanel() {
     enabled: !!tenantId,
     refetchInterval: 30_000,
     queryFn: async (): Promise<FailedSale[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .select(
           "id, receipt_number, created_at, total_amount, zatca_device_id, zatca_uuid, zatca_invoice_hash, zatca_signed_xml_url, zatca_clearance_status, zatca_clearance_response",
@@ -148,7 +148,7 @@ export function ZatcaFailuresPanel() {
   };
 
   async function resign(saleId: string): Promise<boolean> {
-    const { data: sale, error } = await supabase
+    const { data: sale, error } = await db
       .from("sales_transactions")
       .select(
         "id, receipt_number, zatca_device_id, zatca_invoice_hash, zatca_signed_xml_url",
@@ -174,7 +174,7 @@ export function ZatcaFailuresPanel() {
       return false;
     }
     const xml = await xmlResp.text();
-    const { error: signErr } = await supabase.functions.invoke("zatca-sign-invoice", {
+    const { error: signErr } = await db.functions.invoke("zatca-sign-invoice", {
       body: {
         device_id: sale.zatca_device_id,
         sales_transaction_id: sale.id,
@@ -191,7 +191,7 @@ export function ZatcaFailuresPanel() {
   }
 
   async function submit(saleId: string): Promise<boolean> {
-    const { error } = await supabase.functions.invoke("zatca-submit-clearance", {
+    const { error } = await db.functions.invoke("zatca-submit-clearance", {
       body: { sales_transaction_id: saleId },
     });
     if (error) {

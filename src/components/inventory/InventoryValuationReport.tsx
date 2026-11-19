@@ -3,7 +3,7 @@ import { TrendingUp, TrendingDown, DollarSign, Package, RefreshCw } from "lucide
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { format, subDays } from "date-fns";
@@ -55,7 +55,7 @@ export function InventoryValuationReport() {
     try {
       const thirtyDaysAgo = subDays(new Date(), 30).toISOString().split("T")[0];
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_valuations")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -93,7 +93,7 @@ export function InventoryValuationReport() {
     setSnapshotting(true);
     try {
       // Fetch current inventory
-      const { data: items, error: itemsError } = await supabase
+      const { data: items, error: itemsError } = await db
         .from("inventory_items")
         .select("id, name, current_stock, unit_cost, unit, branch_id")
         .eq("restaurant_id", restaurant.id);
@@ -107,7 +107,7 @@ export function InventoryValuationReport() {
       const today = new Date().toISOString().split("T")[0];
 
       // Upsert valuation (update if exists for today)
-      const { error } = await supabase
+      const { error } = await db
         .from("inventory_valuations")
         .upsert({
           restaurant_id: restaurant.id,

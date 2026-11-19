@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -21,7 +21,7 @@ export function useWhatsAppSubscription() {
     queryKey: ["whatsapp-subscription", user?.id, restaurant?.id],
     enabled: !!user?.id && !!restaurant?.id,
     queryFn: async (): Promise<WhatsAppSubscription | null> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("owner_whatsapp_subscriptions")
         .select("*")
         .eq("user_id", user!.id)
@@ -35,7 +35,7 @@ export function useWhatsAppSubscription() {
   const upsert = useMutation({
     mutationFn: async (input: { phone_e164: string; enabled: boolean }) => {
       if (!user?.id || !restaurant?.id) throw new Error("Not authenticated");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("owner_whatsapp_subscriptions")
         .upsert(
           {
@@ -61,7 +61,7 @@ export function useWhatsAppSubscription() {
   const remove = useMutation({
     mutationFn: async () => {
       if (!user?.id || !restaurant?.id) throw new Error("Not authenticated");
-      const { error } = await supabase
+      const { error } = await db
         .from("owner_whatsapp_subscriptions")
         .delete()
         .eq("user_id", user.id)
@@ -77,7 +77,7 @@ export function useWhatsAppSubscription() {
   const sendTest = useMutation({
     mutationFn: async () => {
       if (!user?.id || !restaurant?.id) throw new Error("Not authenticated");
-      const { data, error } = await supabase.functions.invoke("send-daily-whatsapp-summary", {
+      const { data, error } = await db.functions.invoke("send-daily-whatsapp-summary", {
         body: { restaurant_id: restaurant.id, user_id: user.id, test: true },
       });
       if (error) throw error;
@@ -90,7 +90,7 @@ export function useWhatsAppSubscription() {
   const preview = useMutation({
     mutationFn: async (input: { date: string }) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { data, error } = await supabase.functions.invoke("send-daily-whatsapp-summary", {
+      const { data, error } = await db.functions.invoke("send-daily-whatsapp-summary", {
         body: { restaurant_id: restaurant.id, date: input.date, preview: true },
       });
       if (error) throw error;
@@ -108,7 +108,7 @@ export function useWhatsAppSubscription() {
   const cutoffCheck = useMutation({
     mutationFn: async (input: { atUtc: string }) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { data, error } = await supabase.functions.invoke("send-daily-whatsapp-summary", {
+      const { data, error } = await db.functions.invoke("send-daily-whatsapp-summary", {
         body: { restaurant_id: restaurant.id, cutoffCheck: true, atUtc: input.atUtc },
       });
       if (error) throw error;
@@ -126,7 +126,7 @@ export function useWhatsAppSubscription() {
   const resend = useMutation({
     mutationFn: async (input: { date: string }) => {
       if (!user?.id || !restaurant?.id) throw new Error("Not authenticated");
-      const { data, error } = await supabase.functions.invoke("send-daily-whatsapp-summary", {
+      const { data, error } = await db.functions.invoke("send-daily-whatsapp-summary", {
         body: {
           restaurant_id: restaurant.id,
           user_id: user.id,

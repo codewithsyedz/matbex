@@ -12,7 +12,9 @@ import { CheckoutComPlatformSettingsCard } from "@/components/admin/CheckoutComP
 import { CloudflareSettingsCard } from "@/components/admin/CloudflareSettingsCard";
 import { HyperPaySettingsCard } from "@/components/admin/HyperPaySettingsCard";
 import { PromotionCampaignCard } from "@/components/admin/PromotionCampaignCard";
-import { supabase } from "@/integrations/supabase/client";
+import { AdminSecurityCard } from "@/components/admin/AdminSecurityCard";
+import { MatbexSellerSettingsCard } from "@/components/admin/MatbexSellerSettingsCard";
+import { db } from "@/integrations/db/client";
 
 interface Plan {
   id: string;
@@ -25,7 +27,7 @@ export default function AdminSettings() {
   const [plans, setPlans] = useState<Plan[]>([]);
 
   const fetchPlans = async () => {
-    const { data } = await supabase
+    const { data } = await db
       .from("plans")
       .select("id, name, price, quota_limits")
       .eq("is_active", true)
@@ -67,11 +69,11 @@ export default function AdminSettings() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-muted-foreground">RLS Policies</span>
                 <Badge variant="default">Enabled</Badge>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-muted-foreground">Tenant Isolation</span>
                 <Badge variant="default">Active</Badge>
               </div>
@@ -91,11 +93,11 @@ export default function AdminSettings() {
           </CardHeader>
           <CardContent>
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-muted-foreground">Multi-tenant</span>
                 <Badge variant="default">Configured</Badge>
               </div>
-              <div className="flex items-center justify-between">
+              <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="text-sm text-muted-foreground">Backups</span>
                 <Badge variant="secondary">Managed</Badge>
               </div>
@@ -120,6 +122,10 @@ export default function AdminSettings() {
             </p>
           </CardContent>
         </Card>
+
+        <AdminSecurityCard />
+
+        <MatbexSellerSettingsCard />
 
         <TestConfirmationEmailCard />
 

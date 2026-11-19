@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { dashboardQueryOptions } from "@/lib/query/queryPolicy";
 import { qk } from "@/lib/query/queryKeys";
 import { format } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface BranchPerformanceRow {
@@ -52,7 +52,7 @@ export function useBranchComparison(start: Date, end: Date) {
     enabled: !!restaurant?.id,
     staleTime: 60_000,
     queryFn: async (): Promise<BranchPerformanceRow[]> => {
-      const { data, error } = await (supabase as any).rpc("branch_performance_summary", {
+      const { data, error } = await (db as any).rpc("branch_performance_summary", {
         p_restaurant_id: restaurant!.id,
         p_start_date: startStr,
         p_end_date: endStr,
@@ -74,7 +74,7 @@ export function useBranchShiftSummary(start: Date, end: Date) {
     enabled: !!restaurant?.id,
     staleTime: 60_000,
     queryFn: async (): Promise<BranchShiftRow[]> => {
-      const { data, error } = await (supabase as any).rpc("branch_shift_summary", {
+      const { data, error } = await (db as any).rpc("branch_shift_summary", {
         p_restaurant_id: restaurant!.id,
         p_start_date: startStr,
         p_end_date: endStr,

@@ -27,7 +27,7 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Download, Clock, CheckCircle, XCircle, AlertTriangle, FileDown } from "lucide-react";
@@ -69,7 +69,7 @@ export function DataExportManager() {
     if (!tenantId) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("export_requests")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -95,7 +95,7 @@ export function DataExportManager() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.from("export_requests").insert({
+      const { error } = await db.from("export_requests").insert({
         tenant_id: tenantId,
         requested_by: user.id,
         export_type: selectedType,
@@ -120,7 +120,7 @@ export function DataExportManager() {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("export_requests")
         .update({
           status: "approved",
@@ -142,7 +142,7 @@ export function DataExportManager() {
     if (!user) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("export_requests")
         .update({
           status: "rejected",

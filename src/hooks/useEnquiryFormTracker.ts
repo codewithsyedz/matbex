@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 const SESSION_KEY = "mb_visit_session";
 
@@ -36,7 +36,7 @@ export function useEnquiryFormTracker(formRef: React.RefObject<HTMLElement>) {
     const isExternal =
       referrer && !referrer.startsWith(window.location.origin) ? referrer : null;
 
-    void supabase
+    void db
       .from("enquiry_form_events")
       .insert({
         event,

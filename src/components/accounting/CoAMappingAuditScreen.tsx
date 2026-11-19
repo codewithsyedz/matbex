@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -93,7 +93,7 @@ export function CoAMappingAuditScreen() {
     queryKey: ["coa-audit-accounts", tenant?.id],
     queryFn: async (): Promise<Account[]> => {
       if (!tenant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenant.id)
@@ -110,7 +110,7 @@ export function CoAMappingAuditScreen() {
     queryKey: ["coa-audit-categories", restaurant?.id],
     queryFn: async (): Promise<CategoryRow[]> => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_categories")
         .select("id, name, account_id, account:chart_of_accounts(id, account_code, account_name, account_type)")
         .eq("restaurant_id", restaurant.id)
@@ -126,7 +126,7 @@ export function CoAMappingAuditScreen() {
     queryKey: ["coa-audit-expenses", restaurant?.id],
     queryFn: async (): Promise<ExpenseLite[]> => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expenses")
         .select("id, category_id, account_id")
         .eq("restaurant_id", restaurant.id)
@@ -146,7 +146,7 @@ export function CoAMappingAuditScreen() {
 
   const updateCategory = useMutation({
     mutationFn: async ({ id, account_id }: { id: string; account_id: string | null }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("expense_categories")
         .update({ account_id })
         .eq("id", id);
@@ -158,7 +158,7 @@ export function CoAMappingAuditScreen() {
       qc.invalidateQueries({ queryKey: ["coa-audit-categories"] });
     },
     onError: (e: unknown) => {
-      const info = describeSupabaseError(e);
+      const info = describeDbError(e);
       setUpdateBlock({
         table: "public.expense_categories",
         query: "UPDATE public.expense_categories SET account_id = $1 WHERE id = $2",
@@ -537,7 +537,7 @@ function MappingHistoryPanel({
     queryKey: ["coa-mapping-history", restaurantId],
     enabled: !!restaurantId,
     queryFn: async (): Promise<MappingHistoryRow[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_category_mapping_history")
         .select("id, category_id, old_account_id, new_account_id, changed_by, changed_at")
         .eq("restaurant_id", restaurantId!)
@@ -557,7 +557,7 @@ function MappingHistoryPanel({
     queryKey: ["coa-mapping-history-profiles", userIds.join(",")],
     enabled: userIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("profiles")
         .select("id, full_name")
         .in("id", userIds);
@@ -711,14 +711,14 @@ function RenumberSeriesDialog({
       const temp = `T${Date.now().toString().slice(-6)}_`;
       for (const p of planned) {
         const tmpCode = temp + p.account.account_code;
-        const { error } = await supabase
+        const { error } = await db
           .from("chart_of_accounts")
           .update({ account_code: tmpCode })
           .eq("id", p.account.id);
         if (error) throw error;
       }
       for (const p of planned) {
-        const { error } = await supabase
+        const { error } = await db
           .from("chart_of_accounts")
           .update({ account_code: p.newCode })
           .eq("id", p.account.id);
@@ -835,14 +835,14 @@ function RenumberSeriesDialog({
 
 // --- Access / RLS warning surface ------------------------------------------
 
-interface SupabaseErrorInfo {
+interface DbErrorInfo {
   message: string;
   code?: string;
   isRls: boolean;
   isMissingTable: boolean;
 }
 
-function describeSupabaseError(err: unknown): SupabaseErrorInfo {
+function describeDbError(err: unknown): DbErrorInfo {
   const e = (err ?? {}) as { message?: string; code?: string; details?: string; hint?: string };
   const message = e.message || "Unknown error";
   const code = e.code;
@@ -883,7 +883,7 @@ function AccessWarnings({
     label: string;
     table: string;
     query: string;
-    info: SupabaseErrorInfo;
+    info: DbErrorInfo;
   }> = [];
   if (accountsError) {
     readBlocks.push({
@@ -891,7 +891,7 @@ function AccessWarnings({
       table: "public.chart_of_accounts",
       query:
         "SELECT id, account_code, account_name, account_type FROM public.chart_of_accounts WHERE tenant_id = <tenant> AND is_active = true",
-      info: describeSupabaseError(accountsError),
+      info: describeDbError(accountsError),
     });
   }
   if (categoriesError) {
@@ -900,7 +900,7 @@ function AccessWarnings({
       table: "public.expense_categories",
       query:
         "SELECT id, name, account_id, account:chart_of_accounts(...) FROM public.expense_categories WHERE restaurant_id = <restaurant>",
-      info: describeSupabaseError(categoriesError),
+      info: describeDbError(categoriesError),
     });
   }
   if (expensesError) {
@@ -909,7 +909,7 @@ function AccessWarnings({
       table: "public.expenses",
       query:
         "SELECT id, category_id, account_id FROM public.expenses WHERE restaurant_id = <restaurant> AND deleted_at IS NULL",
-      info: describeSupabaseError(expensesError),
+      info: describeDbError(expensesError),
     });
   }
 
@@ -979,7 +979,7 @@ function AccessWarnings({
             message={updateBlock.message}
             code={updateBlock.code}
             isRls={
-              describeSupabaseError({
+              describeDbError({
                 message: updateBlock.message,
                 code: updateBlock.code,
               }).isRls

@@ -17,6 +17,7 @@ export const STARTER_ALLOWED_PATHS = [
   "/billing",
   "/onboarding",
   "/profile",
+  "/support",
 ];
 
 export function isStarterAllowedPath(pathname: string): boolean {

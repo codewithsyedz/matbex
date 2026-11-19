@@ -3,19 +3,18 @@ import type { CapacitorConfig } from "@capacitor/cli";
 /**
  * Capacitor configuration for the Matbex Android POS terminal.
  *
- * The `server.url` enables hot-reload from the Lovable sandbox during
- * development. Remove `server.url` (or point it at your published domain)
- * for production APK builds so the app loads the bundled web assets.
+ * The optional `server.url` enables hot-reload from a dev server during
+ * development. Leave it unset for production APK builds so the app loads
+ * the bundled web assets.
  */
 const config: CapacitorConfig = {
   appId: "net.matbex.app",
   appName: "matbex",
   webDir: "dist",
-  // To enable hot-reload from the Lovable sandbox during development,
-  // uncomment the block below. Leave it disabled for standalone APKs
-  // so the app loads the bundled web assets from dist/.
+  // To enable hot-reload from your local dev server, uncomment and set your
+  // machine's LAN IP. Leave it disabled for standalone APKs.
   // server: {
-  //   url: "https://6d7e02d6-71b7-49c7-8974-833cd1b54c5f.lovableproject.com?forceHideBadge=true",
+  //   url: "http://192.168.1.10:8080",
   //   cleartext: true,
   // },
   android: {

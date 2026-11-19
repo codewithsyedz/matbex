@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { inventoryNeedsAttention, pendingExpenseReasons, pendingSignature } from '../../supabase/functions/accountant-pending-alerts/pending';
+import { inventoryNeedsAttention, pendingExpenseReasons, pendingSignature } from '../../server/functions/accountant-pending-alerts/pending';
 describe('accountant pending email rules', () => {
   it('includes pending VAT even when another correction is pending', () => {
     expect(pendingExpenseReasons({account_id: null, ledger_posted: false, vat_split_status: 'pending'})).toContain('VAT review / reversal check');

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface AmendmentLedgerLine {
   transaction_id: string | null;
@@ -40,7 +40,7 @@ export function useExpenseAmendmentAudit(expenseId: string | null | undefined) {
     enabled: !!expenseId,
     staleTime: 30_000,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("expense_amendment_audit")
         .select("*")
         .eq("expense_id", expenseId)
@@ -52,9 +52,9 @@ export function useExpenseAmendmentAudit(expenseId: string | null | undefined) {
         new Set(rows.map((r) => r.amended_by).filter(Boolean)),
       ) as string[];
 
-      let names: Record<string, string> = {};
+      const names: Record<string, string> = {};
       if (userIds.length > 0) {
-        const { data: profiles } = await (supabase as any)
+        const { data: profiles } = await (db as any)
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds);

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -59,7 +59,7 @@ export function PayrollScheduleRecalcDialog({ disabled }: { disabled?: boolean }
 
   const run = async (dryRun: boolean) => {
     if (!restaurant?.id) throw new Error("No restaurant selected");
-    const { data, error } = await supabase.rpc("recalculate_payroll_payment_schedule", {
+    const { data, error } = await db.rpc("recalculate_payroll_payment_schedule", {
       p_restaurant_id: restaurant.id,
       p_from_period_start: fromPeriod || null,
       p_reprorate: reprorate,

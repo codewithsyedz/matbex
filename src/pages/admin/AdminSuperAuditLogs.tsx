@@ -9,7 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useSuperAdminAudit } from "@/hooks/useSuperAdminAudit";
 import { 
   Shield, 
@@ -31,7 +31,7 @@ import {
 import { format } from "date-fns";
 import { toast } from "sonner";
 
-import type { Json } from "@/integrations/supabase/types";
+import type { Json } from "@/integrations/db/types";
 
 const getOutcome = (context: Json): "success" | "failure" | "unknown" => {
   if (context && typeof context === "object" && !Array.isArray(context)) {
@@ -119,7 +119,7 @@ export default function AdminSuperAuditLogs() {
   const fetchEvents = async () => {
     setLoading(true);
     try {
-      let query = supabase
+      let query = db
         .from("superadmin_audit_events")
         .select("*")
         .order("timestamp", { ascending: false })
@@ -228,12 +228,12 @@ export default function AdminSuperAuditLogs() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">SuperAdmin Audit Log</h1>
           <p className="text-muted-foreground">Immutable record of all privileged actions</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setShowFilters(!showFilters)}>
             <Filter className="h-4 w-4 mr-2" />
             Filters

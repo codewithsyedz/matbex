@@ -76,9 +76,14 @@ const chartConfig = {
   grossMargin: { label: "Gross Margin", color: "hsl(var(--success))" },
 };
 
+/**
+ * Plan gate. The screen itself is a separate component so its hooks always run in the same
+ * order: returning the locked screen before them broke the rules of hooks and crashed the
+ * page ("Rendered more hooks than during the previous render") when the plan's features
+ * changed while it was open.
+ */
 export default function COGSPage() {
-  const { isManager, isOwner, hasFeature, loading: authLoading } = useAuth();
-  const { t } = useTranslation();
+  const { hasFeature, loading: authLoading } = useAuth();
 
   // Show locked screen if COGS feature is not enabled
   if (!authLoading && !hasFeature("cogs")) {
@@ -92,6 +97,14 @@ export default function COGSPage() {
       </>
     );
   }
+
+  return <COGSScreen />;
+}
+
+function COGSScreen() {
+  const { isManager, isOwner, hasFeature, loading: authLoading } = useAuth();
+  const { t } = useTranslation();
+
 
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [activeTab, setActiveTab] = useState("dashboard");

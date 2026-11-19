@@ -16,7 +16,7 @@ import {
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
 import { BranchBadge } from "@/components/branch/BranchBadge";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { RefreshCw, Search, Monitor } from "lucide-react";
 
 /**
@@ -54,23 +54,23 @@ export default function TerminalPricingReport() {
     queryFn: async () => {
       const rid = restaurant!.id;
       const [terminalsRes, branchesRes, auditRes, staffRes] = await Promise.all([
-        supabase
+        db
           .from("pos_terminals")
           .select("id, terminal_uid, name, branch_id, platform, app_version, active, last_seen_at")
           .eq("restaurant_id", rid)
           .order("last_seen_at", { ascending: false, nullsFirst: false }),
-        supabase
+        db
           .from("branches")
           .select("id, name, code, is_primary, vat_rate, is_active")
           .eq("restaurant_id", rid),
-        supabase
+        db
           .from("pos_terminal_audit")
           .select("terminal_id, cashier_id, created_at")
           .eq("restaurant_id", rid)
           .not("cashier_id", "is", null)
           .order("created_at", { ascending: false })
           .limit(1000),
-        supabase
+        db
           .from("staff")
           .select("user_id, name, assigned_branch_id")
           .eq("restaurant_id", rid)

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useToast } from "@/hooks/use-toast";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -162,7 +162,7 @@ export function NotificationPreferences() {
     if (!profile?.id || !tenant?.id) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("notification_preferences")
         .select("*")
         .eq("user_id", profile.id)
@@ -210,14 +210,14 @@ export function NotificationPreferences() {
       const { id, ...prefsToSave } = preferences;
 
       if (id) {
-        const { error } = await supabase
+        const { error } = await db
           .from("notification_preferences")
           .update(prefsToSave)
           .eq("id", id);
 
         if (error) throw error;
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("notification_preferences")
           .insert({
             user_id: profile.id,

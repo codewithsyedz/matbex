@@ -17,7 +17,7 @@ import {
   ShiftLookup,
 } from "./postingFilters";
 import { useUnpostedExpenses, useImbalancedExpenses } from "@/hooks/usePostingCenter";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export function PostingCenter() {
   const { activeBranchId, activeBranch } = useBranch();
@@ -35,7 +35,7 @@ export function PostingCenter() {
     queryKey: ["posting-shift-lookup", allIds.join(",")],
     enabled: allIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("expenses")
         .select("id, shift_id")
         .in("id", allIds);

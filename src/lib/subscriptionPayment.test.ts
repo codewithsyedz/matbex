@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { SUBSCRIPTION_PRICES, verifiedPaidPlan } from "../../supabase/functions/_shared/subscriptionPayment";
+import { SUBSCRIPTION_PRICES, verifiedPaidPlan } from "../../server/functions/_shared/subscriptionPayment";
 
 const session = { status: "complete", payment_status: "paid", mode: "subscription", metadata: { tenant_id: "tenant-a", user_id: "owner-a", plan_name: "starter" } };
 const price = SUBSCRIPTION_PRICES.starter.id;

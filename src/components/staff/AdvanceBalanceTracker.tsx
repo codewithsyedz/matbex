@@ -66,8 +66,8 @@ export function AdvanceBalanceTracker({
     queryKey: ["salary-calendar-advances", restaurantId, branchId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { supabase } = await import("@/integrations/supabase/client");
-      let q = supabase
+      const { db } = await import("@/integrations/db/client");
+      let q = db
         .from("staff_advances")
         .select("id, staff_id, amount, repaid_amount, advance_date, status, reason, branch_id")
         .eq("restaurant_id", restaurantId!)
@@ -80,7 +80,7 @@ export function AdvanceBalanceTracker({
       const ids = (advances ?? []).map((a: any) => a.id);
       let repayments: RepaymentRow[] = [];
       if (ids.length > 0) {
-        const { data: reps, error: repErr } = await supabase
+        const { data: reps, error: repErr } = await db
           .from("staff_advance_repayments")
           .select("id, advance_id, amount, repayment_date, source, payroll_id, notes")
           .in("advance_id", ids)

@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { format } from "date-fns";
@@ -87,13 +87,13 @@ export function StocktakeManager() {
     
     try {
       const [stocktakesRes, itemsRes] = await Promise.all([
-        supabase
+        db
           .from("stocktakes")
           .select("*")
           .eq("restaurant_id", restaurant.id)
           .order("created_at", { ascending: false })
           .limit(20),
-        supabase
+        db
           .from("inventory_items")
           .select("id, name, unit, current_stock, unit_cost")
           .eq("restaurant_id", restaurant.id)
@@ -118,7 +118,7 @@ export function StocktakeManager() {
     setSubmitting(true);
     try {
       // Create stocktake
-      const { data: stocktake, error: stocktakeError } = await supabase
+      const { data: stocktake, error: stocktakeError } = await db
         .from("stocktakes")
         .insert({
           restaurant_id: restaurant.id,
@@ -138,7 +138,7 @@ export function StocktakeManager() {
         unit_cost: item.unit_cost,
       }));
 
-      const { error: itemsError } = await supabase
+      const { error: itemsError } = await db
         .from("stocktake_items")
         .insert(itemsToInsert);
 
@@ -164,7 +164,7 @@ export function StocktakeManager() {
     setCountValues({});
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("stocktake_items")
         .select("*, inventory_items(name, unit)")
         .eq("stocktake_id", stocktake.id)
@@ -198,7 +198,7 @@ export function StocktakeManager() {
     const numValue = value === "" ? null : parseFloat(value);
     
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("stocktake_items")
         .update({ counted_quantity: numValue })
         .eq("id", itemId);
@@ -206,7 +206,7 @@ export function StocktakeManager() {
       if (error) throw error;
       
       // Refresh items
-      const { data } = await supabase
+      const { data } = await db
         .from("stocktake_items")
         .select("*, inventory_items(name, unit)")
         .eq("stocktake_id", selectedStocktake?.id)
@@ -240,7 +240,7 @@ export function StocktakeManager() {
       const totalVariance = totalCounted - totalExpected;
 
       // Update stocktake
-      const { error: updateError } = await supabase
+      const { error: updateError } = await db
         .from("stocktakes")
         .update({
           status: "completed",
@@ -257,7 +257,7 @@ export function StocktakeManager() {
       // Update inventory levels to match counted quantities
       for (const item of stocktakeItems) {
         if (item.counted_quantity !== null) {
-          const { error } = await supabase
+          const { error } = await db
             .from("inventory_items")
             .update({ current_stock: item.counted_quantity })
             .eq("id", item.inventory_item_id);

@@ -4,7 +4,7 @@
  * Why this exists: `useImpersonationGuard` is opt-in per call site. An audit
  * found only 6 of ~178 mutation hooks remember to call it, so a guard you
  * have to remember is not a guard. This file installs a single fetch
- * interceptor that refuses mutating HTTP verbs to Supabase endpoints
+ * interceptor that refuses mutating HTTP verbs to the API endpoints
  * whenever an owner is acting as another role — regardless of which code
  * path tries to mutate. The opt-in hook still exists for UX (disable
  * buttons, show toast); this file is the safety net behind it.
@@ -51,7 +51,7 @@ const BYPASS_URL_FRAGMENTS = [
   "/rest/v1/client_errors",
 ];
 
-function isSupabaseMutationRequest(url: string, method: string): boolean {
+function isApiMutationRequest(url: string, method: string): boolean {
   const upper = method.toUpperCase();
   if (upper === "GET" || upper === "HEAD" || upper === "OPTIONS") return false;
 
@@ -109,7 +109,7 @@ export function installImpersonationFetchGuard(): void {
         (input instanceof Request ? input.method : "GET") ??
         "GET";
 
-      if (!isSupabaseMutationRequest(url, method)) {
+      if (!isApiMutationRequest(url, method)) {
         return originalFetch(input, init);
       }
       if (isBypassed(url)) {

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { qk } from "@/lib/query/queryKeys";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -57,7 +57,7 @@ export function SharedOverheadRescopeDialog({ open, onOpenChange, items, branche
   const applyMutation = useMutation({
     mutationFn: async () => {
       for (const item of changed) {
-        const { error } = await supabase
+        const { error } = await db
           .from("overhead_allocation")
           .update({ branch_id: choices[item.id] } as any)
           .eq("id", item.id);

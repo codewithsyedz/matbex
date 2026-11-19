@@ -18,7 +18,7 @@ import {
   Clock
 } from "lucide-react";
 import { useTenantDomain } from "@/hooks/useTenantDomain";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -78,7 +78,7 @@ export function CustomDomainSetup() {
       onSuccess: async () => {
         // Pull fresh result via direct call so we can show per-record check state
         try {
-          const { data } = await supabase.functions.invoke("verify-custom-domain", {
+          const { data } = await db.functions.invoke("verify-custom-domain", {
             body: { domain_id: domain?.id },
           });
           if (data) {

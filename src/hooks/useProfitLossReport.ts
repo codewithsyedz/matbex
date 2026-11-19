@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type ProfitLossSection = "revenue" | "cogs" | "expense";
 
@@ -134,8 +134,8 @@ export function useProfitLossReport(fromDate: string, toDate: string, branchId: 
       if (!tenantId || !fromDate || !toDate) throw new Error("Reporting period is required");
       const args = { p_tenant_id: tenantId, p_from_date: fromDate, p_to_date: toDate, p_branch_id: branchId };
       const [statementResult, expenseResult] = await Promise.all([
-        supabase.rpc("get_profit_loss_by_branch", args),
-        supabase.rpc("get_profit_loss_expense_lines", args),
+        db.rpc("get_profit_loss_by_branch", args),
+        db.rpc("get_profit_loss_expense_lines", args),
       ]);
       if (statementResult.error) throw statementResult.error;
       if (expenseResult.error) throw expenseResult.error;

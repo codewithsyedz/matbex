@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useToast } from "@/hooks/use-toast";
 import { getTerminalId, regenerateTerminalId } from "@/lib/offline/terminal";
 import { persistSyncCredentials } from "@/lib/offline/backgroundSync";
@@ -83,7 +83,7 @@ export default function PosTerminals() {
   const refresh = async () => {
     if (!restaurant?.id) return;
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("pos_terminals")
       .select("*")
       .eq("restaurant_id", restaurant.id)
@@ -124,7 +124,7 @@ export default function PosTerminals() {
   const handleRename = async () => {
     if (!renaming) return;
     setBusy(true);
-    const { error } = await supabase
+    const { error } = await db
       .from("pos_terminals")
       .update({
         name: renameValue.name.trim() || "Unnamed terminal",
@@ -144,7 +144,7 @@ export default function PosTerminals() {
   const handleRevoke = async () => {
     if (!revokeTarget) return;
     setBusy(true);
-    const { error } = await supabase
+    const { error } = await db
       .from("pos_terminals")
       .update({ active: false })
       .eq("id", revokeTarget.id);
@@ -162,7 +162,7 @@ export default function PosTerminals() {
   };
 
   const handleReactivate = async (term: PosTerminal) => {
-    const { error } = await supabase
+    const { error } = await db
       .from("pos_terminals")
       .update({ active: true })
       .eq("id", term.id);
@@ -178,7 +178,7 @@ export default function PosTerminals() {
     if (!restaurant?.id) return;
     setBusy(true);
     const tid = thisDeviceUid ?? (await getTerminalId());
-    const { error } = await supabase.from("pos_terminals").upsert(
+    const { error } = await db.from("pos_terminals").upsert(
       {
         restaurant_id: restaurant.id,
         terminal_uid: tid,
@@ -209,7 +209,7 @@ export default function PosTerminals() {
     const newId = await regenerateTerminalId();
     setThisDeviceUid(newId);
     await persistSyncCredentials({ branchId: restaurant.id, terminalId: newId });
-    const { error } = await supabase.from("pos_terminals").insert({
+    const { error } = await db.from("pos_terminals").insert({
       restaurant_id: restaurant.id,
       terminal_uid: newId,
       name: "This device (re-registered)",
@@ -598,7 +598,7 @@ export default function PosTerminals() {
                   onClick={async () => {
                     if (!restaurant?.id) return;
                     setBusy(true);
-                    const { data, error } = await supabase.rpc("create_pairing_code", {
+                    const { data, error } = await db.rpc("create_pairing_code", {
                       _restaurant_id: restaurant.id,
                       _default_name: pairingForm.name.trim() || null,
                       _default_branch_label: pairingForm.branch_label.trim() || null,

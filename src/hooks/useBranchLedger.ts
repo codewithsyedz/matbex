@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCardSalesByBranch, type CardSalesBranchRow } from "@/hooks/useCardSalesByBranch";
 
@@ -65,7 +65,7 @@ export function useBranchLedger({ from, to, branchId }: Args) {
     enabled: !!tenantId,
     staleTime: 1000 * 60 * 2,
     queryFn: async () => {
-      let aq = (supabase as any)
+      let aq = (db as any)
         .from("day_end_adjustments")
         .select(
           "id, branch_id, business_date, amount, reason, scope, notes, ledger_posted, reversed_at, reversal_of_id",
@@ -80,7 +80,7 @@ export function useBranchLedger({ from, to, branchId }: Args) {
       const { data: adjData, error: adjErr } = await aq;
       if (adjErr) throw adjErr;
 
-      let dq = (supabase as any)
+      let dq = (db as any)
         .from("card_settlement_deposits")
         .select(
           "id, branch_id, deposit_date, gross_amount, fee_amount, net_amount, reference, notes, period_from, period_to",

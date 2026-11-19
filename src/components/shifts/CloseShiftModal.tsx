@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   Dialog,
   DialogContent,
@@ -72,6 +72,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
   const [loading, setLoading] = useState(false);
   const [loadingData, setLoadingData] = useState(true);
   const [showSuccess, setShowSuccess] = useState(false);
+  const [closedStatus, setClosedStatus] = useState<string | null>(null);
 
   const [cashEvents, setCashEvents] = useState<CashEvent[]>([]);
   const [inventoryMovements, setInventoryMovements] = useState<Array<{
@@ -122,6 +123,11 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
     .reduce((sum, e) => sum + e.amount, 0);
 
   const variance = countedCash - expectedCash;
+
+  /** Card the terminal should show: card sales less card refunds (saved as expected_card). */
+  const expectedCardNet = cashEvents
+    .filter((e) => e.payment_method === "card")
+    .reduce((sum, e) => (e.event_type === "sale" ? sum + e.amount : e.event_type === "refund" ? sum - e.amount : sum), 0);
   const varianceStatus = getVarianceStatus(variance, thresholds);
   const explanationRequired = isExplanationRequired(variance, thresholds);
 
@@ -157,7 +163,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
     
     setLoadingData(true);
     try {
-      const { data: eventsData } = await supabase
+      const { data: eventsData } = await db
         .from("cash_events")
         .select("*")
         .eq("shift_id", shift.id);
@@ -167,7 +173,7 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
       // Load inventory-linked expenses created during this shift window
       // (uses created_at between shift open and now)
       try {
-        const sb = supabase as any;
+        const sb = db as any;
         const shiftEndIso = new Date().toISOString();
         const { data: movs } = await sb
           .from('stock_movements')
@@ -181,9 +187,9 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
         const expenseIds = (movs || [])
           .filter((m: any) => m.reference_type === 'expense' && m.reference_id)
           .map((m: any) => m.reference_id);
-        let expenseAmounts: Record<string, number> = {};
+        const expenseAmounts: Record<string, number> = {};
         if (expenseIds.length > 0) {
-          const { data: exps } = await supabase
+          const { data: exps } = await db
             .from('expenses')
             .select('id, amount')
             .in('id', expenseIds);
@@ -228,13 +234,14 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
     setLoading(true);
     try {
       // Close the shift with variance explanation
-      const { error } = await supabase
+      const { error } = await db
         .from("shifts")
         .update({
           status: "closed",
           counted_cash: countedCash,
           counted_card: countedCard,
           expected_cash: expectedCash,
+          expected_card: expectedCardNet,
           variance: variance,
           variance_status: varianceStatus,
           variance_explanation: explanationRequired ? varianceExplanation : null,
@@ -250,6 +257,9 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
 
       if (error) throw error;
 
+      // The list refetch below drops this shift, after which the live values recompute
+      // against nothing; the success screen shows what was saved.
+      setClosedStatus(varianceStatus);
       toast.success("Shift closed successfully!");
       
       // Immediately call refetch before showing success
@@ -307,14 +317,14 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
             <div className="text-center space-y-1">
               <h3 className="text-lg font-semibold">Shift Closed!</h3>
               <p className="text-sm text-muted-foreground">
-                {varianceStatus === "perfect" 
+                {closedStatus === "perfect"
                   ? "Perfect close with zero variance"
-                  : varianceStatus === "minor"
+                  : closedStatus === "minor"
                   ? "Great job! Minor variance recorded"
                   : "Variance recorded for review"}
               </p>
             </div>
-            {varianceStatus === "perfect" && (
+            {closedStatus === "perfect" && (
               <div className="px-3 py-1 bg-success/10 text-success text-xs font-medium rounded-full">
                 🏆 Perfect Close
               </div>
@@ -551,8 +561,12 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
                             e.event_type === "adjustment" &&
                             e.payment_method === "cash" &&
                             e.reference_type !== "installment_payment" &&
-                            e.reference_type !== "installment_payment_void",
+                            e.reference_type !== "installment_payment_void" &&
+                            e.reference_type !== "customer_credit_payment",
                         )
+                        .reduce((sum, e) => sum + e.amount, 0);
+                      const tabPayments = cashEvents
+                        .filter((e) => e.event_type === "adjustment" && e.reference_type === "customer_credit_payment")
                         .reduce((sum, e) => sum + e.amount, 0);
                       const openingFloat = shift?.opening_float || 0;
                       
@@ -572,6 +586,12 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
                               <span>+ Cash sales</span>
                               <span>SAR {cashSales.toLocaleString()}</span>
                             </div>
+                            {tabPayments !== 0 && (
+                              <div className="flex justify-between">
+                                <span>+ Customer tab payments</span>
+                                <span>SAR {tabPayments.toLocaleString()}</span>
+                              </div>
+                            )}
                             {cashRefunds > 0 && (
                               <div className="flex justify-between text-destructive">
                                 <span>− Refunds</span>

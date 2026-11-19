@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,7 @@ export default function IngredientCategoryMappings() {
   const { data: categories = [], isLoading } = useQuery({
     queryKey: ["ing-category-mappings", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_categories")
         .select("id, name, inventory_account_code, cogs_account_code")
         .eq("restaurant_id", restaurantId)
@@ -62,7 +62,7 @@ export default function IngredientCategoryMappings() {
   const { data: standards = [] } = useQuery({
     queryKey: ["standard-ingredient-categories"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("standard_ingredient_categories" as any)
         .select("*")
         .order("sort_order");
@@ -74,7 +74,7 @@ export default function IngredientCategoryMappings() {
   const { data: accounts = [] } = useQuery({
     queryKey: ["coa-asset-cogs", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .in("account_type", ["asset", "cogs", "expense"])
@@ -124,7 +124,7 @@ export default function IngredientCategoryMappings() {
         if ("inv" in patch) dbPatch.inventory_account_code = patch.inv ?? null;
         if ("cogs" in patch) dbPatch.cogs_account_code = patch.cogs ?? null;
         if (Object.keys(dbPatch).length === 0) continue;
-        const { error } = await supabase
+        const { error } = await db
           .from("inventory_categories")
           .update(dbPatch)
           .eq("id", id);

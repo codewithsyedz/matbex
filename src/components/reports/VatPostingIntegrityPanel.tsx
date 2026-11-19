@@ -14,7 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { VatCorrectionDialog } from "./VatCorrectionDialog";
 
 interface Props {
@@ -69,7 +69,7 @@ export function VatPostingIntegrityPanel({
     queryKey: ["vat-posting-integrity-settings", tenantId],
     enabled: !!tenantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("vat_posting_integrity_settings")
         .select("tenant_id, enforce, tolerance")
         .eq("tenant_id", tenantId)
@@ -85,7 +85,7 @@ export function VatPostingIntegrityPanel({
 
   const saveSettings = useMutation({
     mutationFn: async (patch: { enforce?: boolean; tolerance?: number }) => {
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from("vat_posting_integrity_settings")
         .upsert(
           {
@@ -116,7 +116,7 @@ export function VatPostingIntegrityPanel({
     enabled: !!tenantId && !!from && !!to,
     staleTime: 60_000,
     queryFn: async (): Promise<ScanRow[]> => {
-      const { data, error } = await (supabase as any).rpc("scan_sale_posting_vat_integrity", {
+      const { data, error } = await (db as any).rpc("scan_sale_posting_vat_integrity", {
         p_tenant_id: tenantId,
         p_from: format(from!, "yyyy-MM-dd"),
         p_to: format(to!, "yyyy-MM-dd"),
@@ -138,7 +138,7 @@ export function VatPostingIntegrityPanel({
     enabled: !!tenantId && !!from && !!to,
     staleTime: 60_000,
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("vat_posting_integrity_incidents")
         .select(
           "id, branch_id, posting_date, source, vat_rate, revenue_credit, vat_recorded, vat_expected, variance, was_blocked, details, created_at",

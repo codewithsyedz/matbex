@@ -7,7 +7,7 @@
  * re-uploaded sheet can never silently re-post or overwrite historical
  * accounting records.
  *
- * Pure module - no React, no Supabase.
+ * Pure module - no React, no the API.
  */
 
 /** Import scopes are namespaces: the same fingerprint may legitimately exist in two importers. */

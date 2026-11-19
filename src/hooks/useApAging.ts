@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type AgingBucket = "current" | "d1_30" | "d31_60" | "d61_90" | "d90_plus";
@@ -90,7 +90,7 @@ export function useApAging({ asOf, branchId, supplierId }: Args) {
     staleTime: 1000 * 60 * 2,
     queryFn: async () => {
       // 1a. Suppliers and their dedicated AP heads
-      const { data: supplierRows, error: supErr } = await supabase
+      const { data: supplierRows, error: supErr } = await db
         .from("suppliers")
         .select("id, name, ap_account_id")
         .order("name");
@@ -106,7 +106,7 @@ export function useApAging({ asOf, branchId, supplierId }: Args) {
       }
 
       // 1b. Shared 2000 control accounts + every supplier-specific AP head
-      const { data: sharedAccounts, error: accErr } = await supabase
+      const { data: sharedAccounts, error: accErr } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenantId!)
@@ -119,7 +119,7 @@ export function useApAging({ asOf, branchId, supplierId }: Args) {
         .filter(Boolean) as string[];
       let supplierApAccounts: any[] = [];
       if (supplierApIds.length) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("chart_of_accounts")
           .select("id, account_code, account_name, account_type")
           .eq("tenant_id", tenantId!)
@@ -154,7 +154,7 @@ export function useApAging({ asOf, branchId, supplierId }: Args) {
       let page = 0;
       const legs: Leg[] = [];
       while (true) {
-        let q = supabase
+        let q = db
           .from("account_transactions")
           .select(
             "account_id, reference_id, reference_type, branch_id, transaction_date, debit, credit, description",
@@ -187,7 +187,7 @@ export function useApAging({ asOf, branchId, supplierId }: Args) {
       const expenses: Record<string, any> = {};
       for (let i = 0; i < expenseIds.length; i += 200) {
         const chunk = expenseIds.slice(i, i + 200);
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("expenses")
           .select(
             "id, description, expense_date, branch_id, supplier_id, purchase_invoice_id, amount",
@@ -206,14 +206,14 @@ export function useApAging({ asOf, branchId, supplierId }: Args) {
       );
       const invoices: Record<string, any> = {};
       if (invoiceIds.length) {
-        const { data } = await supabase
+        const { data } = await db
           .from("purchase_invoices")
           .select("id, invoice_number, invoice_date, due_date, supplier_id")
           .in("id", invoiceIds);
         (data ?? []).forEach((inv: any) => (invoices[inv.id] = inv));
       }
 
-      const { data: branchRows } = await supabase.from("branches").select("id, name");
+      const { data: branchRows } = await db.from("branches").select("id, name");
       const suppliers: Record<string, string> = {};
       supplierList.forEach((s) => (suppliers[s.id] = s.name));
       const branches: Record<string, string> = {};

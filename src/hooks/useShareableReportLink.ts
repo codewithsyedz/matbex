@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 /** Storage bucket holding generated report exports (private, restaurant-scoped). */
 const BUCKET = "report-exports";
@@ -39,7 +39,7 @@ export function useShareableReportLink() {
       const stamp = new Date().toISOString().replace(/[:.]/g, "-");
       const path = `${opts.restaurantId}/${opts.folder}/${stamp}_${opts.fileName}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await db.storage
         .from(BUCKET)
         .upload(path, opts.blob, {
           contentType: opts.contentType ?? "application/pdf",
@@ -47,7 +47,7 @@ export function useShareableReportLink() {
         });
       if (uploadError) throw uploadError;
 
-      const { data, error } = await supabase.storage
+      const { data, error } = await db.storage
         .from(BUCKET)
         .createSignedUrl(path, opts.expiresInSeconds);
       if (error || !data?.signedUrl) throw error ?? new Error("Could not sign the link");
@@ -69,7 +69,7 @@ export function useShareableReportLink() {
   const resignLink = async (path: string, expiresInSeconds: number): Promise<ShareableLink> => {
     setIsSharing(true);
     try {
-      const { data, error } = await supabase.storage
+      const { data, error } = await db.storage
         .from(BUCKET)
         .createSignedUrl(path, expiresInSeconds);
       if (error || !data?.signedUrl) throw error ?? new Error("Could not sign the link");

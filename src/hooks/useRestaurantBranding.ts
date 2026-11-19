@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -47,7 +47,7 @@ export function useRestaurantBranding() {
     }
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("restaurant_branding")
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -76,7 +76,7 @@ export function useRestaurantBranding() {
     try {
       if (branding) {
         // Update existing
-        const { error } = await supabase
+        const { error } = await db
           .from("restaurant_branding")
           .update({
             ...updates,
@@ -87,7 +87,7 @@ export function useRestaurantBranding() {
         if (error) throw error;
       } else {
         // Create new
-        const { error } = await supabase
+        const { error } = await db
           .from("restaurant_branding")
           .insert({
             restaurant_id: restaurantId,
@@ -121,7 +121,7 @@ export function useRestaurantBranding() {
       const fileExt = 'png';
       const fileName = `${restaurantId}/${type}-${Date.now()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await db.storage
         .from("restaurant-logos")
         .upload(fileName, resizedFile, {
           cacheControl: "3600",
@@ -130,7 +130,7 @@ export function useRestaurantBranding() {
 
       if (uploadError) throw uploadError;
 
-      const { data: urlData } = supabase.storage
+      const { data: urlData } = db.storage
         .from("restaurant-logos")
         .getPublicUrl(fileName);
 

@@ -63,7 +63,6 @@ const VerifyZatcaReport = lazy(() => import("@/pages/VerifyZatcaReport"));
 
 // KSA SEO landing pages (single template, 6 slugs)
 const SeoLanding = lazy(() => import("@/pages/seo/SeoLanding"));
-const OAuthConsent = lazy(() => import("@/pages/OAuthConsent"));
 const ArabicHomepage = lazy(() => import("@/pages/ArabicHomepage"));
 const ZatcaPhase2Guide = lazy(() => import("@/pages/blog/ZatcaPhase2Guide"));
 const RestaurantCogsGuide = lazy(() => import("@/pages/blog/RestaurantCogsGuide"));
@@ -123,6 +122,7 @@ const Inventory = lazy(() => import("@/pages/Inventory"));
 const Reports = lazy(() => import("@/pages/Reports"));
 const Settings = lazy(() => import("@/pages/Settings"));
 const Team = lazy(() => import("@/pages/Team"));
+const Support = lazy(() => import("@/pages/Support"));
 const Staff = lazy(() => import("@/pages/Staff"));
 const FinesHistory = lazy(() => import("@/pages/FinesHistory"));
 const SalaryCalendar = lazy(() => import("@/pages/SalaryCalendar"));
@@ -247,6 +247,11 @@ const AdminOverview = lazy(() => import("@/pages/admin/AdminOverview"));
 const AdminTenants = lazy(() => import("@/pages/admin/AdminTenants"));
 const AdminTenantDetails = lazy(() => import("@/pages/admin/AdminTenantDetails"));
 const AdminPlans = lazy(() => import("@/pages/admin/AdminPlans"));
+const AdminRevenue = lazy(() => import("@/pages/admin/AdminRevenue"));
+const AdminJobs = lazy(() => import("@/pages/admin/AdminJobs"));
+const AdminAnnouncements = lazy(() => import("@/pages/admin/AdminAnnouncements"));
+const AdminCustomerHealth = lazy(() => import("@/pages/admin/AdminCustomerHealth"));
+const AdminSupport = lazy(() => import("@/pages/admin/AdminSupport"));
 const AdminWebhooks = lazy(() => import("@/pages/admin/AdminWebhooks"));
 const AdminAuditLogs = lazy(() => import("@/pages/admin/AdminAuditLogs"));
 const AdminResidencyAudit = lazy(() => import("@/pages/admin/AdminResidencyAudit"));
@@ -429,7 +434,6 @@ export function AnimatedRoutes() {
         />
         <Route path="/auth" element={<LazyRoute Component={Auth} />} />
         <Route path="/auth/callback" element={<LazyRoute Component={AuthCallback} />} />
-        <Route path="/.lovable/oauth/consent" element={<LazyRoute Component={OAuthConsent} />} />
         <Route path="/reset-password" element={<LazyRoute Component={ResetPassword} />} />
         <Route path="/zoho/callback" element={<LazyRoute Component={ZohoCallback} />} />
         <Route path="/quickbooks/callback" element={<LazyRoute Component={QuickBooksCallback} />} />
@@ -563,6 +567,31 @@ export function AnimatedRoutes() {
         <Route path="/admin/custom-domains" element={
           <ProtectedAdminRoute>
             <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminCustomDomains /></Suspense></LazyLoadErrorBoundary>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/announcements" element={
+          <ProtectedAdminRoute>
+            <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminAnnouncements /></Suspense></LazyLoadErrorBoundary>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/support" element={
+          <ProtectedAdminRoute>
+            <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminSupport /></Suspense></LazyLoadErrorBoundary>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/health" element={
+          <ProtectedAdminRoute>
+            <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminCustomerHealth /></Suspense></LazyLoadErrorBoundary>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/jobs" element={
+          <ProtectedAdminRoute>
+            <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminJobs /></Suspense></LazyLoadErrorBoundary>
+          </ProtectedAdminRoute>
+        } />
+        <Route path="/admin/revenue" element={
+          <ProtectedAdminRoute>
+            <LazyLoadErrorBoundary><Suspense fallback={<RouteLoadingFallback />}><AdminRevenue /></Suspense></LazyLoadErrorBoundary>
           </ProtectedAdminRoute>
         } />
         <Route path="/admin/plans" element={
@@ -1040,6 +1069,9 @@ export function AnimatedRoutes() {
         } />
         <Route path="/team" element={
           <TenantRoute Component={Team} />
+        } />
+        <Route path="/support" element={
+          <TenantRoute Component={Support} />
         } />
         <Route path="/staff" element={
           <TenantRoute Component={Staff} />

@@ -2,7 +2,7 @@ import { useDemoTrial } from "@/hooks/useDemoTrial";
 import { Lock, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -21,7 +21,7 @@ export function DemoExpiredLock({ children }: { children: React.ReactNode }) {
     if (!tenant?.id) return;
     setBusy(true);
     try {
-      const { error } = await supabase.functions.invoke("activate-demo-tenant", {
+      const { error } = await db.functions.invoke("activate-demo-tenant", {
         body: { tenant_id: tenant.id },
       });
       if (error) throw error;

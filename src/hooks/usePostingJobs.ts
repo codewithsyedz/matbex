@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -47,7 +47,7 @@ export interface PostingJob {
 }
 
 async function invokeWorker(jobId: string) {
-  const { data, error } = await supabase.functions.invoke("process-posting-job", {
+  const { data, error } = await db.functions.invoke("process-posting-job", {
     body: { job_id: jobId },
   });
   if (error) throw error;
@@ -66,7 +66,7 @@ export function useEnqueuePostingJob() {
     }) => {
       if (!tenantId) throw new Error("No active tenant");
       if (vars.expenseIds.length === 0) throw new Error("No entries to process");
-      const { data: jobId, error } = await (supabase as any).rpc(
+      const { data: jobId, error } = await (db as any).rpc(
         "enqueue_posting_job",
         {
           p_tenant_id: tenantId,
@@ -105,7 +105,7 @@ export function usePostingJobs(branchId: string | null, limit = 10) {
     queryKey: ["posting-jobs", tenantId, branchId, limit],
     enabled: !!tenantId,
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("posting_jobs")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -121,7 +121,7 @@ export function usePostingJobs(branchId: string | null, limit = 10) {
 
   useEffect(() => {
     if (!tenantId) return;
-    const channel = (supabase as any)
+    const channel = (db as any)
       .channel(`posting-jobs:${tenantId}`)
       .on(
         "postgres_changes",
@@ -140,7 +140,7 @@ export function usePostingJobs(branchId: string | null, limit = 10) {
       )
       .subscribe();
     return () => {
-      (supabase as any).removeChannel(channel);
+      (db as any).removeChannel(channel);
     };
   }, [tenantId, qc]);
 

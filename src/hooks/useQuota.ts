@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface QuotaLimits {
@@ -7,7 +7,6 @@ export interface QuotaLimits {
   owner?: number;
   manager?: number;
   cashier?: number;
-  menu_items?: number;
   image_uploads?: number;
   email_reminders?: number;
 }
@@ -38,7 +37,7 @@ export function useQuota() {
     queryFn: async () => {
       if (!tenant?.id) return null;
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_usage")
         .select("*")
         .eq("tenant_id", tenant.id)
@@ -55,7 +54,7 @@ export function useQuota() {
     queryKey: ["tenant-addon-boosts", tenant?.id],
     queryFn: async (): Promise<Record<string, number>> => {
       if (!tenant?.id) return {};
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_addons" as any)
         .select("addon:addons(quota_boosts)")
         .eq("tenant_id", tenant.id)
@@ -102,7 +101,7 @@ export function useQuota() {
     }
 
     try {
-      const { data, error } = await supabase.rpc("check_quota", {
+      const { data, error } = await db.rpc("check_quota", {
         p_tenant_id: tenant.id,
         p_quota_type: quotaType,
         p_increment: increment,
@@ -124,7 +123,7 @@ export function useQuota() {
     if (!tenant?.id) return false;
 
     try {
-      const { data, error } = await supabase.rpc("increment_usage", {
+      const { data, error } = await db.rpc("increment_usage", {
         p_tenant_id: tenant.id,
         p_quota_type: quotaType,
         p_amount: amount,
@@ -151,7 +150,6 @@ export function useQuota() {
       owner: "owner_count",
       manager: "manager_count",
       cashier: "cashier_count",
-      menu_items: "menu_item_count",
       image_uploads: "image_upload_count",
       email_reminders: "email_reminder_count",
     };

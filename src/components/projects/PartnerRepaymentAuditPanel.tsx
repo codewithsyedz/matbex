@@ -24,11 +24,8 @@ import {
 } from "@/components/ui/table";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { FUNDING_LABELS, type FundingClassification, type ProjectPartner } from "@/hooks/useProjects";
-
-const db = supabase as any;
-
 interface LedgerRow {
   id: string;
   account_id: string;

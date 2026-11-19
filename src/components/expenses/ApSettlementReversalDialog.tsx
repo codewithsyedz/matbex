@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Undo2, ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   Dialog,
   DialogContent,
@@ -60,7 +60,7 @@ export function ApSettlementReversalDialog({
   const handleConfirm = async () => {
     if (!expenseId) return;
     setSubmitting(true);
-    const { data, error } = await supabase.rpc("request_ap_settlement_reversal" as any, {
+    const { data, error } = await db.rpc("request_ap_settlement_reversal" as any, {
       p_expense_id: expenseId,
       p_reason: reason.trim(),
     });

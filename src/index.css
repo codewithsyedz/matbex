@@ -460,3 +460,38 @@
     }
   }
 }
+
+/* SuperAdmin pages (AdminLayout wraps each page in .admin-page): one page-title style across all
+   pages, and tab bars that wrap on small screens instead of running off the edge. Plain CSS
+   (class + element) so it wins over the per-page utility classes it normalises. */
+.admin-page h1 {
+  font-size: 1.5rem;
+  line-height: 2rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: hsl(var(--foreground));
+}
+.admin-page h1 + p {
+  margin-top: 0.25rem;
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+  font-weight: 400;
+  color: hsl(var(--muted-foreground));
+}
+.admin-page [role="tablist"][aria-orientation="horizontal"] {
+  flex-wrap: wrap;
+  height: auto;
+  max-width: 100%;
+  justify-content: flex-start;
+}
+
+/* Revenue dashboard series colours (checked for colour-blind separation, light and dark). */
+.admin-revenue { --rev-mrr: #176435; --rev-gain: #1d6fb8; --rev-loss: #d9711c; }
+.dark .admin-revenue { --rev-mrr: #2bc570; --rev-gain: #4a90d9; --rev-loss: #d9782a; }
+
+/* AdminLayout already gives each page its gutter and max width, so a page's own
+   "container ... max-w-7xl py-5" wrapper (the app-wide page contract) adds no second padding. */
+.admin-page > .container {
+  padding: 0;
+  max-width: none;
+}

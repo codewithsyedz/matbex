@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   computeProjectReconciliation,
@@ -42,8 +42,6 @@ export interface ProjectPostingRun {
 }
 
 /** Untyped client: the project tables are newer than the generated types. */
-const db = supabase as any;
-
 export type ProjectPhase =
   | "acquisition"
   | "construction"
@@ -604,7 +602,7 @@ export function useProjects(projectId?: string | null) {
         else posted.push(id);
       }
       if (posted.length > 0 && pid && tenantId) {
-        const { data: auth } = await supabase.auth.getUser();
+        const { data: auth } = await db.auth.getUser();
         const postedSet = new Set(posted);
         const total =
           meta?.total ??
@@ -646,7 +644,7 @@ export function useProjects(projectId?: string | null) {
         else reverted.push(id);
       }
       if (reverted.length > 0) {
-        const { data: auth } = await supabase.auth.getUser();
+        const { data: auth } = await db.auth.getUser();
         await db
           .from("project_posting_runs")
           .update({
@@ -945,7 +943,7 @@ export function useProjects(projectId?: string | null) {
   // Keep the Budget tab in sync the moment any transaction row changes.
   useEffect(() => {
     if (!pid) return;
-    const channel = supabase
+    const channel = db
       .channel(`project-txns-${pid}`)
       .on(
         "postgres_changes",
@@ -964,7 +962,7 @@ export function useProjects(projectId?: string | null) {
       )
       .subscribe();
     return () => {
-      void supabase.removeChannel(channel);
+      void db.removeChannel(channel);
     };
   }, [pid, qc]);
 

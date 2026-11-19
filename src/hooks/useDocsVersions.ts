@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type DocsVersion = {
   id: string;
@@ -25,7 +25,7 @@ export function useDocsVersions() {
   return useQuery({
     queryKey: ["docs-versions"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("docs_versions")
         .select("*")
         .order("sort_order", { ascending: false })
@@ -41,7 +41,7 @@ export function useDocsStepVersions() {
   return useQuery({
     queryKey: ["docs-step-versions"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("docs_step_versions")
         .select("*, version:docs_versions(*)")
         .order("created_at", { ascending: false });

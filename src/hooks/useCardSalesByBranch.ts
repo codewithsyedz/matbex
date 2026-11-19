@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getRestaurantDayBoundsUTC } from "@/lib/timezone";
 
@@ -76,7 +76,7 @@ export function useCardSalesByBranch({ from, to, branchId }: Args) {
         created_at: string;
       }[] = [];
       while (true) {
-        let q: any = (supabase as any)
+        let q: any = (db as any)
           .from("sales_transactions")
           .select("branch_id, total, tax, created_at")
           .eq("restaurant_id", restaurantId!)
@@ -96,7 +96,7 @@ export function useCardSalesByBranch({ from, to, branchId }: Args) {
       }
 
       // 2. Declared card sales from day-end summaries
-      let sq = supabase
+      let sq = db
         .from("daily_sales_summary")
         .select("branch_id, sales_date, card_sales")
         .eq("tenant_id", tenantId!)
@@ -107,7 +107,7 @@ export function useCardSalesByBranch({ from, to, branchId }: Args) {
       if (sumErr) throw sumErr;
 
       // 3. Acquirer settlement deposits covering this period
-      let dq = (supabase as any)
+      let dq = (db as any)
         .from("card_settlement_deposits")
         .select("branch_id, deposit_date, gross_amount, fee_amount, is_reversed")
         .eq("tenant_id", tenantId!)
@@ -119,7 +119,7 @@ export function useCardSalesByBranch({ from, to, branchId }: Args) {
       if (depErr) throw depErr;
 
       // 4. Branch names
-      const { data: branchRows } = await supabase.from("branches").select("id, name");
+      const { data: branchRows } = await db.from("branches").select("id, name");
       const branchNames: Record<string, string> = {};
       (branchRows ?? []).forEach((b: any) => (branchNames[b.id] = b.name));
 

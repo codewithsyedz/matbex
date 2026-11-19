@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -38,7 +38,7 @@ export function ApplicationDocumentsPanel({ applicationId }: { applicationId: st
   const refresh = async () => {
     setLoading(true);
     // Bucket is private; fetch fresh signed URLs via edge function.
-    const { data, error } = await supabase.functions.invoke("application-verification?action=admin-list", {
+    const { data, error } = await db.functions.invoke("application-verification?action=admin-list", {
       body: { applicationId },
     });
     if (error) {
@@ -53,12 +53,12 @@ export function ApplicationDocumentsPanel({ applicationId }: { applicationId: st
     setLoading(false);
   };
 
-  useEffect(() => { refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [applicationId]);
+  useEffect(() => { refresh();   }, [applicationId]);
 
   const review = async (doc: Doc, status: "approved" | "rejected") => {
     setBusyId(doc.id);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("application_documents")
         .update({
           status,

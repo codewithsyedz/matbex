@@ -25,7 +25,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useFiscalSettings, getFiscalMonthRange } from "@/hooks/useFiscalSettings";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { format } from "date-fns";
 import { DateRange } from "react-day-picker";
 import {
@@ -112,7 +112,7 @@ export function AccountDrillDown() {
     queryFn: async () => {
       if (!profile?.tenant_id || !selectedAccountId || !fromIso || !toIso)
         return [];
-      let q = supabase
+      let q = db
         .from("account_transactions")
         .select("*, branch:branches!account_transactions_branch_id_fkey(id, name, code)")
         .eq("tenant_id", profile.tenant_id)
@@ -134,7 +134,7 @@ export function AccountDrillDown() {
     queryKey: ["account-drilldown-sales", restaurant?.id, fromIso, toIso],
     queryFn: async () => {
       if (!restaurant?.id || !fromIso || !toIso) return { total: 0 };
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("daily_sales_summary")
         .select("total_sales")
         .eq("restaurant_id", restaurant.id)
@@ -168,7 +168,7 @@ export function AccountDrillDown() {
     queryKey: ["account-drilldown-cogs-subs", shiftIds.join(",")],
     queryFn: async () => {
       if (!shiftIds.length) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("daily_cogs_submissions")
         .select(
           "id, submission_date, shift_type, cashier_name, cogs, total_sales, food_cost_percentage, status"

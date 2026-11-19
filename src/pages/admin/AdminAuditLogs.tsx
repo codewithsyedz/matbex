@@ -17,7 +17,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Search, Shield, User, Building2, Settings2, Users } from "lucide-react";
 import { format } from "date-fns";
@@ -53,7 +53,7 @@ export default function AdminAuditLogs() {
 
   const fetchLogs = async () => {
     try {
-      const { data: logsData, error } = await supabase
+      const { data: logsData, error } = await db
         .from("audit_logs")
         .select("*")
         .order("created_at", { ascending: false })
@@ -67,10 +67,10 @@ export default function AdminAuditLogs() {
 
       const [{ data: profiles }, { data: tenants }] = await Promise.all([
         userIds.length > 0
-          ? supabase.from("profiles").select("id, full_name").in("id", userIds)
+          ? db.from("profiles").select("id, full_name").in("id", userIds)
           : { data: [] },
         tenantIds.length > 0
-          ? supabase.from("tenants").select("id, name").in("id", tenantIds)
+          ? db.from("tenants").select("id, name").in("id", tenantIds)
           : { data: [] },
       ]);
 
@@ -170,14 +170,14 @@ export default function AdminAuditLogs() {
                 <CardTitle className="text-lg font-medium">Activity Log</CardTitle>
                 <CardDescription>{filteredLogs.length} of {logs.length} entries</CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                <div className="relative w-full sm:w-auto">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 w-48"
+                    className="pl-8 w-full sm:w-48"
                   />
                 </div>
                 <Select value={entityFilter} onValueChange={setEntityFilter}>

@@ -134,7 +134,7 @@ describe("asset cost matches the ledger debit for every installment count", () =
 });
 
 describe("SQL contract: the DB capitalises the stored net price", () => {
-  const dir = join(process.cwd(), "supabase", "migrations");
+  const dir = join(process.cwd(), "db", "migrations");
   const sql = readdirSync(dir)
     .filter((f) => f.endsWith(".sql"))
     .sort()
@@ -157,7 +157,8 @@ describe("SQL contract: the DB capitalises the stored net price", () => {
   });
 
   it("update_installment_plan_details capitalises the stored cash_price as-is", () => {
-    const body = latestWith("update_installment_plan_details");
+    // Match the definition, not any mention: grant/revoke migrations list the name too.
+    const body = latestWith("CREATE OR REPLACE FUNCTION public.update_installment_plan_details");
     expect(body).toBeTruthy();
     expect(/v_net\s*:=\s*ROUND\(\s*v_plan\.cash_price\s*,\s*2\s*\)/.test(body!)).toBe(true);
     expect(/cash_price\s*\/\s*\(1\s*\+/.test(body!)).toBe(false);

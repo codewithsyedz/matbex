@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import { endSupportAccess } from "@/lib/admin/supportAccess";
+import { db } from "@/integrations/db/client";
+import { User } from "@matbex/client";
 import { readSessionHydration, writeSessionHydration } from "@/lib/sessionHydration";
 
 const SUPERADMIN_HYDRATION_KEY = "superadmin-context-hydration";
@@ -41,20 +42,20 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
       : null);
   }, [user, isSuperAdmin]);
 
-  // Get user directly from Supabase to avoid circular dependency with AuthContext
+  // Get user directly from the API to avoid circular dependency with AuthContext
   useEffect(() => {
     // Only update `user` when the user id actually changes, otherwise
     // background TOKEN_REFRESHED events on tab focus create a new user
     // object reference and re-trigger the [user] effect below, causing
     // the full-screen "Initializing..." loader to flash.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = db.auth.onAuthStateChange(
       (event, session) => {
         const nextUser = session?.user ?? null;
         setUser((prev) => (prev?.id === nextUser?.id ? prev : nextUser));
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    db.auth.getSession().then(({ data: { session } }) => {
       const nextUser = session?.user ?? null;
       setUser((prev) => (prev?.id === nextUser?.id ? prev : nextUser));
     });
@@ -77,7 +78,7 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
       }
 
       // Fast path: read the `is_superadmin` claim that our DB trigger writes
-      // into auth.users.raw_app_meta_data - Supabase exposes it on the user
+      // into auth.users.raw_app_meta_data - the API exposes it on the user
       // object as `app_metadata` and embeds it in every JWT.
       const claim = (user.app_metadata as Record<string, unknown> | undefined)?.is_superadmin;
       if (typeof claim === "boolean") {
@@ -87,18 +88,19 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
       }
 
       try {
-        const { data, error } = await supabase
-          .from("superadmin_users")
-          .select("id")
-          .eq("user_id", user.id)
-          .maybeSingle();
+        // Whether this is a SuperAdmin *account*, before two-factor: superadmin_users is only
+        // readable from an aal2 session, so reading it here would mistake a SuperAdmin who has
+        // not entered their code yet for a new user (and send them to onboarding instead of
+        // the admin portal's two-factor screen). The database still requires aal2 for any
+        // SuperAdmin data.
+        const { data, error } = await (db.rpc as any)("superadmin_mfa_status");
 
         if (error) {
           console.error("Error checking superadmin status:", error);
           // Keep the JWT-claim value if we already had one; otherwise fail closed.
           if (typeof claim !== "boolean") setIsSuperAdmin(false);
         } else {
-          setIsSuperAdmin(!!data);
+          setIsSuperAdmin(!!(data as { is_superadmin_account?: boolean } | null)?.is_superadmin_account);
         }
       } catch (err) {
         console.error("Error checking superadmin:", err);
@@ -127,7 +129,7 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
     if (!isSuperAdmin) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenants")
         .select("id, name, status, plan_id")
         .eq("id", tenantId)
@@ -152,6 +154,8 @@ export function SuperAdminProvider({ children }: { children: ReactNode }) {
   };
 
   const stopImpersonation = () => {
+    // Close the logged support-access visit that "View as Tenant" opened.
+    endSupportAccess();
     setImpersonatedTenant(null);
     sessionStorage.removeItem("impersonatedTenant");
     // Dispatch custom event so AuthContext updates without polling

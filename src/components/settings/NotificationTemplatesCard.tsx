@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -142,7 +142,7 @@ function TemplateEditor({
   const { data, isLoading } = useQuery({
     queryKey,
     queryFn: async (): Promise<TemplateRow | null> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("notification_templates")
         .select("id, restaurant_id, template_key, channel, body, enabled")
         .eq("restaurant_id", restaurantId)
@@ -184,7 +184,7 @@ function TemplateEditor({
         body,
         enabled,
       };
-      const { error } = await supabase
+      const { error } = await db
         .from("notification_templates")
         .upsert(payload, { onConflict: "restaurant_id,template_key,channel" });
       if (error) throw error;
@@ -199,7 +199,7 @@ function TemplateEditor({
   const reset = useMutation({
     mutationFn: async () => {
       if (!data) return;
-      const { error } = await supabase
+      const { error } = await db
         .from("notification_templates")
         .delete()
         .eq("id", data.id);
@@ -223,7 +223,7 @@ function TemplateEditor({
       const ymd = d.toISOString().slice(0, 10);
       // Temporarily save the in-progress body if dirty so preview reflects it.
       if (dirty) {
-        await supabase
+        await db
           .from("notification_templates")
           .upsert(
             { restaurant_id: restaurantId, template_key: templateKey, channel, body, enabled },
@@ -231,7 +231,7 @@ function TemplateEditor({
           );
         qc.invalidateQueries({ queryKey });
       }
-      const { data: res, error } = await supabase.functions.invoke("send-daily-whatsapp-summary", {
+      const { data: res, error } = await db.functions.invoke("send-daily-whatsapp-summary", {
         body: { restaurant_id: restaurantId, date: ymd, preview: true },
       });
       if (error) throw error;

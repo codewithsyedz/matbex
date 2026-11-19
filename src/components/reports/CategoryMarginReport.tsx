@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -57,7 +57,7 @@ export function CategoryMarginReport({ dateRange }: Props) {
         ...CATEGORY_PAIRS.map((p) => p.invCode),
         ...REVENUE_CODES,
       ];
-      const { data: accts, error: aErr } = await supabase
+      const { data: accts, error: aErr } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenant!.id)
@@ -70,7 +70,7 @@ export function CategoryMarginReport({ dateRange }: Props) {
       }
 
       // 2. Pull ledger transactions in the date window.
-      let txQuery = supabase
+      let txQuery = db
         .from("account_transactions")
         .select("account_id, debit, credit, transaction_date, is_voided")
         .eq("tenant_id", tenant!.id)
@@ -91,7 +91,7 @@ export function CategoryMarginReport({ dateRange }: Props) {
         byAccount.set(t.account_id, cur);
       }
 
-      const acctByCode = new Map(
+      const acctByCode = new Map<any, any>(
         (accts || []).map((a) => [a.account_code, a]),
       );
 

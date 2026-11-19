@@ -1,10 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /** Untyped client: installment tables/RPCs are newer than the generated types. */
-const db = supabase as any;
-
 export interface OverdueInstallment {
   installment_id: string;
   plan_id: string;

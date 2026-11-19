@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -101,7 +101,7 @@ export function LandingStringsEditor() {
   const { data: rows = [], isLoading } = useQuery({
     queryKey: ["admin-landing-strings"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("landing_strings")
         .select("id,key,group_name,value_en,value_ar,created_at,updated_at")
         .order("key");
@@ -112,7 +112,7 @@ export function LandingStringsEditor() {
 
   const updateMutation = useMutation({
     mutationFn: async ({ id, en, ar }: { id: string; en: string; ar: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("landing_strings")
         .update({ value_en: en, value_ar: ar })
         .eq("id", id);

@@ -21,7 +21,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   ENTITY_SPECS,
   EntityType,
@@ -85,11 +85,11 @@ export function MigrationWizard() {
 
       // Upload to storage
       const path = `${restaurant.id}/${Date.now()}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-      const { error: upErr } = await supabase.storage.from("migration-uploads").upload(path, file, { upsert: true });
+      const { error: upErr } = await db.storage.from("migration-uploads").upload(path, file, { upsert: true });
       if (upErr) console.warn("Upload warning:", upErr.message);
 
       // Create job
-      const { data: job, error: jobErr } = await supabase
+      const { data: job, error: jobErr } = await db
         .from("migration_jobs")
         .insert({
           restaurant_id: restaurant.id,
@@ -134,10 +134,10 @@ export function MigrationWizard() {
       // chunk inserts
       for (let i = 0; i < records.length; i += 200) {
         const chunk = records.slice(i, i + 200);
-        const { error } = await supabase.from("migration_records").insert(chunk);
+        const { error } = await db.from("migration_records").insert(chunk);
         if (error) throw error;
       }
-      await supabase
+      await db
         .from("migration_jobs")
         .update({
           status: "ready",
@@ -148,7 +148,7 @@ export function MigrationWizard() {
         })
         .eq("id", jobId);
 
-      const { data, error } = await supabase.functions.invoke("migration-commit", {
+      const { data, error } = await db.functions.invoke("migration-commit", {
         body: { job_id: jobId },
       });
       if (error) throw error;

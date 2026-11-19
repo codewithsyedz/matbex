@@ -18,7 +18,7 @@ describe("computeTodaySalesTotal", () => {
     { total: 999, created_at: "2026-04-24T20:00:00Z", shift_id: "shift-b" },
     // AFTER today: 2026-04-26 00:00 local = 21:00 UTC (next day in Riyadh - exclusive)
     { total: 999, created_at: "2026-04-25T21:00:00Z", shift_id: null },
-    // string-typed total (Supabase numeric arrives as string sometimes)
+    // string-typed total (the API numeric arrives as string sometimes)
     { total: "12.50" as unknown as string, created_at: "2026-04-25T08:00:00Z" },
   ];
 

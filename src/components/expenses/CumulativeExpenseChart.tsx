@@ -10,7 +10,7 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BranchTotalsExplainerTooltip } from "@/components/branches/BranchTotalsExplainer";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -47,7 +47,7 @@ export function CumulativeExpenseChart({ restaurantId, dateFrom, dateTo, branchI
     queryKey: ["expenses-cumulative", restaurantId, dateFrom, dateTo, branchId],
     enabled: !!restaurantId && !!dateFrom && !!dateTo,
     queryFn: async () => {
-      let eq = supabase
+      let eq = db
         .from("expenses")
         .select("amount, expense_date")
         .eq("restaurant_id", restaurantId!)
@@ -76,7 +76,7 @@ export function CumulativeExpenseChart({ restaurantId, dateFrom, dateTo, branchI
     queryFn: async () => {
       const startISO = startOfDay(parseISO(dateFrom)).toISOString();
       const endISO = endOfDay(parseISO(dateTo)).toISOString();
-      let sq = supabase
+      let sq = db
         .from("sales_transactions")
         .select("total, created_at, settlement_status")
         .eq("restaurant_id", restaurantId!)

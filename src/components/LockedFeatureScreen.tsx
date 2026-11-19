@@ -8,9 +8,11 @@ interface LockedFeatureScreenProps {
   featureName: string;
   description?: string;
   featureKey?: string;
+  /** Plan that includes the feature (default "Pro"). */
+  requiredPlan?: string;
 }
 
-export function LockedFeatureScreen({ featureName, description, featureKey }: LockedFeatureScreenProps) {
+export function LockedFeatureScreen({ featureName, description, featureKey, requiredPlan = "Pro" }: LockedFeatureScreenProps) {
   const navigate = useNavigate();
 
   return (
@@ -21,13 +23,13 @@ export function LockedFeatureScreen({ featureName, description, featureKey }: Lo
             <Lock className="h-8 w-8 text-muted-foreground" />
           </div>
           <CardTitle className="text-base font-medium flex items-center justify-center gap-2">
-            {featureName} is a Pro Feature
+            {featureName} is {/^[AEIOU]/i.test(requiredPlan) ? "an" : "a"} {requiredPlan} feature
             {featureKey && (
               <FeatureReadinessIndicator featureKey={featureKey} />
             )}
           </CardTitle>
           <CardDescription className="text-base">
-            {description || `Upgrade to Pro to unlock ${featureName} and many other powerful features.`}
+            {description || `Upgrade to ${requiredPlan} to unlock ${featureName} and many other powerful features.`}
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -57,7 +59,7 @@ export function LockedFeatureScreen({ featureName, description, featureKey }: Lo
               className="flex-1"
               onClick={() => navigate("/billing")}
             >
-              Upgrade to Pro
+              {requiredPlan === "Enterprise" ? "Contact sales" : `Upgrade to ${requiredPlan}`}
             </Button>
           </div>
         </CardContent>

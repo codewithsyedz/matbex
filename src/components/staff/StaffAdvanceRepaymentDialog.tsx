@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 import { Banknote, Download, FileSpreadsheet, FileText, Loader2, Trash2, Wallet } from "lucide-react";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
@@ -85,7 +85,7 @@ export function StaffAdvanceRepaymentDialog({ advance, open, onOpenChange, canDe
     queryKey: ["staff-advance-repayments", advance?.id],
     queryFn: async () => {
       if (!advance?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_advance_repayments")
         .select("*")
         .eq("advance_id", advance.id)
@@ -100,7 +100,7 @@ export function StaffAdvanceRepaymentDialog({ advance, open, onOpenChange, canDe
     queryKey: ["staff-advance-repayment-legs", advance?.id],
     queryFn: async () => {
       if (!advance?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("account_transactions")
         .select(
           "id, batch_id, debit, credit, transaction_date, is_voided, chart_of_accounts:account_id(account_code, account_name)",

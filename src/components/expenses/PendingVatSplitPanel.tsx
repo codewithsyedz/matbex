@@ -35,7 +35,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useBranchVatRate } from "@/hooks/useBranchVatRate";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { splitVat, validateVatConsistency } from "@/lib/vatSplit";
 import { toast } from "sonner";
 
@@ -95,7 +95,7 @@ export function PendingVatSplitPanel({
   const { data: rows = [], isLoading } = useQuery<PendingRow[]>({
     queryKey: ["pending-vat-split-expenses", activeBranchId, todayOnly ? today : "all"],
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("expenses")
         .select("id, expense_date, description, amount, ledger_posted, branch_id")
         .eq("vat_split_status", "pending")
@@ -124,7 +124,7 @@ export function PendingVatSplitPanel({
 
   const applySplit = useMutation({
     mutationFn: async (vars: { id: string; rate: number }) => {
-      const { error } = await (supabase as any).rpc("apply_expense_vat_split", {
+      const { error } = await (db as any).rpc("apply_expense_vat_split", {
         p_expense_id: vars.id,
         p_rate_percent: vars.rate,
         p_note: null,
@@ -140,7 +140,7 @@ export function PendingVatSplitPanel({
 
   const markNa = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase as any).rpc("mark_expense_vat_not_applicable", {
+      const { error } = await (db as any).rpc("mark_expense_vat_not_applicable", {
         p_expense_id: id,
       });
       if (error) throw error;
@@ -185,7 +185,7 @@ export function PendingVatSplitPanel({
       setBulkProgress({ done: 0, total: targets.length });
       for (let i = 0; i < targets.length; i++) {
         const r = targets[i];
-        const { error } = await (supabase as any).rpc("apply_expense_vat_split", {
+        const { error } = await (db as any).rpc("apply_expense_vat_split", {
           p_expense_id: r.id,
           p_rate_percent: rate,
           p_note: `Batch split @ ${rate}%`,

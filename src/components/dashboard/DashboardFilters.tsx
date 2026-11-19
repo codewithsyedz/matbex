@@ -70,28 +70,33 @@ export function getDateRangeFromPreset(preset: DatePreset, monthStartDay: number
   switch (preset) {
     case "today":
       return { from: today, to: today };
-    case "yesterday":
+    case "yesterday": {
       const yesterday = subDays(today, 1);
       return { from: yesterday, to: yesterday };
+    }
     case "this_week":
       // Use startOfDay to normalize to midnight, ensuring timezone calculations work correctly
       return { from: startOfWeek(today, { weekStartsOn: 0 }), to: startOfDay(endOfWeek(today, { weekStartsOn: 0 })) };
-    case "last_week":
+    case "last_week": {
       const lastWeekStart = startOfWeek(subWeeks(today, 1), { weekStartsOn: 0 });
       return { from: lastWeekStart, to: startOfDay(endOfWeek(lastWeekStart, { weekStartsOn: 0 })) };
-    case "this_month":
+    }
+    case "this_month": {
       // Use fiscal month range
       const fiscalRange = getFiscalMonthRange(today, monthStartDay);
       return { from: fiscalRange.start, to: fiscalRange.end };
-    case "last_month":
+    }
+    case "last_month": {
       // Use previous fiscal month range
       const prevFiscalRange = getPreviousFiscalMonthRange(today, monthStartDay);
       return { from: prevFiscalRange.start, to: prevFiscalRange.end };
+    }
     case "this_year":
       return { from: startOfYear(today), to: startOfDay(endOfYear(today)) };
-    case "last_year":
+    case "last_year": {
       const lastYearStart = startOfYear(subYears(today, 1));
       return { from: lastYearStart, to: startOfDay(endOfYear(lastYearStart)) };
+    }
     case "last_7_days":
       return { from: subDays(today, 6), to: today };
     case "last_30_days":

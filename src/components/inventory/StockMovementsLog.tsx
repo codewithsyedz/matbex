@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, Fragment } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -142,7 +142,7 @@ export function StockMovementsLog() {
     queryKey: ['inventory-items-for-movements', restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Array<{ id: string; name: string }>;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('inventory_items')
         .select('id, name')
         .eq('restaurant_id', restaurant.id)
@@ -159,7 +159,7 @@ export function StockMovementsLog() {
     queryKey: ['inventory-negative-stock', restaurant?.id, undoTick],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Array<{ id: string; name: string; current_stock: number; stock_unit: string | null; unit: string | null }>;
-      const sb = supabase as any;
+      const sb = db as any;
       const { data, error } = await sb
         .from('inventory_items')
         .select('id, name, current_stock, stock_unit, unit')
@@ -176,7 +176,7 @@ export function StockMovementsLog() {
     queryKey: ['stock-movements', restaurant?.id, itemFilter, typeFilter, sourceFilter, rangeId],
     queryFn: async () => {
       if (!restaurant?.id) return [] as StockMovement[];
-      const sb = supabase as any;
+      const sb = db as any;
       let q = sb
         .from('stock_movements')
         .select('*, inventory_items(name, unit, stock_unit, unit_cost, units_per_pack)')
@@ -209,7 +209,7 @@ export function StockMovementsLog() {
     queryFn: async () => {
       const map = new Map<string, { closedAt: string | null; closerName: string }>();
       if (lockedShiftIds.length === 0) return map;
-      const sb = supabase as any;
+      const sb = db as any;
       const { data: shifts, error: sErr } = await sb
         .from('shifts')
         .select('id, closed_at, cashier_user_id, cashier_staff_id, staff:staff_members(full_name)')
@@ -331,7 +331,7 @@ export function StockMovementsLog() {
     try {
       // Server-side guarded undo: validates lock status (closed shift) and
       // 5-minute window before writing the reversing audit row.
-      const sb = supabase as any;
+      const sb = db as any;
       const { error } = await sb.rpc('undo_stock_adjustment', { _movement_id: m.id });
       if (error) throw error;
 
@@ -373,7 +373,7 @@ export function StockMovementsLog() {
         label: 'Undo',
         onClick: async () => {
           // Re-fetch the movement row from cache or DB and run handleUndo on it
-          const sb = supabase as any;
+          const sb = db as any;
           const { data: row } = await sb
             .from('stock_movements')
             .select('*, inventory_items(name, unit, stock_unit)')

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -35,7 +35,7 @@ export function PrimeCostCard() {
       // daily_profit_state is tenant-wide, so only use it for the consolidated view
       const { data: profitData } = branchId
         ? { data: null }
-        : await supabase
+        : await db
             .from("daily_profit_state")
             .select("food_cost, labor_cost, prime_cost, prime_cost_percentage, net_sales")
             .eq("restaurant_id", restaurant.id)
@@ -61,7 +61,7 @@ export function PrimeCostCard() {
       }
 
       // Calculate from raw data if no daily profit state
-      let salesQuery = supabase
+      let salesQuery = db
         .from("sales_transactions")
         .select("total")
         .eq("restaurant_id", restaurant.id)
@@ -73,7 +73,7 @@ export function PrimeCostCard() {
       const netSales = salesData?.reduce((sum, s) => sum + (Number(s.total) || 0), 0) || 0;
 
       // Get inventory usage for food cost
-      const { data: usageData } = await supabase
+      const { data: usageData } = await db
         .from("inventory_usage")
         .select("total_cost")
         .eq("restaurant_id", restaurant.id)
@@ -84,7 +84,7 @@ export function PrimeCostCard() {
       // Get staff for labor cost estimation - versioned based on selected date
       const isViewingCurrentDate = isCurrentPeriod(selectedDate);
       
-      let staffQuery = supabase
+      let staffQuery = db
         .from("staff")
         .select("monthly_salary, hourly_rate, joined_date, termination_date, is_active")
         .eq("restaurant_id", restaurant.id);

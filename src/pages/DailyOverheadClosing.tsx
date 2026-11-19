@@ -28,6 +28,7 @@ import { usePermissions } from "@/contexts/PermissionsContext";
 import { useOverheadData } from "@/hooks/useOverheadData";
 import { useDailyOverhead, type DailyOverheadClosure, type DailyOverheadStatus } from "@/hooks/useDailyOverhead";
 import OverheadDayBreakdown from "@/components/accounting/OverheadDayBreakdown";
+import { OverheadAccrualCard } from "@/components/accounting/OverheadAccrualCard";
 
 const STATUS_META: Record<DailyOverheadStatus | "unopened", { label: string; className: string }> = {
   unopened: { label: "Open Day", className: "bg-muted text-muted-foreground" },
@@ -207,6 +208,8 @@ export default function DailyOverheadClosing() {
           </AlertDescription>
         </Alert>
       )}
+
+      <OverheadAccrualCard />
 
       {/* Workflow strip */}
       <Card>

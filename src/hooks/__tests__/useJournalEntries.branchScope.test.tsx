@@ -22,15 +22,15 @@ import {
 
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
 
-vi.mock("@/integrations/supabase/client", async () => {
-  const { createSupabaseTableMock } = await import("@/test/utils/supabaseTableMock");
+vi.mock("@/integrations/db/client", async () => {
+  const { createDbTableMock } = await import("@/test/utils/dbTableMock");
   const fixtures = await import("@/test/fixtures/journalBranchFixtures");
-  const mock = createSupabaseTableMock({
+  const mock = createDbTableMock({
     journal_entry_batches: fixtures.allBatches,
   });
   return {
-    supabase: {
-      from: mock.supabase.from,
+    db: {
+      from: mock.db.from,
       rpc: vi.fn(async () => ({ data: null, error: null })),
       channel: () => ({ on: () => ({ subscribe: () => ({}) }) }),
       removeChannel: () => {},

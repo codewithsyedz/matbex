@@ -153,7 +153,7 @@ export function ProjectImportDialog({
         }),
         { projectId: api.activeProject?.id ?? null },
       ),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
     [rows, accountMatches, accountOverrides, accounts, api.activeProject?.id],
   );
   const ruleBlockedCount = ruleReport.blockedCount;

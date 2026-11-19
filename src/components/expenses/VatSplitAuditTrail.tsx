@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/collapsible";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 interface LedgerLeg {
   account_code?: string | null;
@@ -58,7 +58,7 @@ export function VatSplitAuditTrail({ expenseId }: { expenseId?: string }) {
   const { data: rows = [], isLoading } = useQuery<AuditRow[]>({
     queryKey: ["vat-split-audit", activeBranchId, expenseId ?? null],
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("expense_vat_split_audit")
         .select("*")
         .order("performed_at", { ascending: false })
@@ -84,7 +84,7 @@ export function VatSplitAuditTrail({ expenseId }: { expenseId?: string }) {
     enabled: actorIds.length > 0,
     staleTime: 5 * 60_000,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("profiles")
         .select("id, full_name")
         .in("id", actorIds);

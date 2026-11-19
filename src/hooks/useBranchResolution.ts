@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTerminalId } from "@/lib/offline/terminal";
 
@@ -40,11 +40,11 @@ export function useBranchResolution() {
     staleTime: 0,
     queryFn: async () => {
       const terminalId = await getTerminalId();
-      const { data: auth } = await supabase.auth.getUser();
+      const { data: auth } = await db.auth.getUser();
       const userId = auth.user?.id ?? null;
 
       const [historyRes, staffRes, terminalRes, primaryRes, branchesRes] = await Promise.all([
-        supabase
+        db
           .from("pos_terminal_audit")
           .select("id, request_id, endpoint, status_code, created_at, response_snapshot, cashier_id")
           .eq("terminal_id", terminalId)
@@ -52,7 +52,7 @@ export function useBranchResolution() {
           .order("created_at", { ascending: false })
           .limit(1),
         userId
-          ? supabase
+          ? db
               .from("staff")
               .select("assigned_branch_id, is_active")
               .eq("user_id", userId)
@@ -62,12 +62,12 @@ export function useBranchResolution() {
               .limit(1)
               .maybeSingle()
           : Promise.resolve({ data: null } as any),
-        supabase
+        db
           .from("pos_terminals")
           .select("id, name, branch_id")
           .eq("id", terminalId)
           .maybeSingle(),
-        supabase
+        db
           .from("branches")
           .select("id, name")
           .eq("restaurant_id", restaurant!.id)
@@ -76,7 +76,7 @@ export function useBranchResolution() {
           .is("deleted_at", null)
           .limit(1)
           .maybeSingle(),
-        supabase.from("branches").select("id, name").eq("restaurant_id", restaurant!.id),
+        db.from("branches").select("id, name").eq("restaurant_id", restaurant!.id),
       ]);
 
       const names = new Map<string, string>(

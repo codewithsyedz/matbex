@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface SalesItemRow {
   branchId: string | null;
@@ -99,7 +99,7 @@ export function useSalesItemBreakdown(fromDate: string, toDate: string, branchId
     queryKey: ["sales-item-breakdown", tenant?.id, fromDate, toDate, branchId],
     enabled: !!tenant?.id && !!fromDate && !!toDate,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_sales_item_breakdown", {
+      const { data, error } = await db.rpc("get_sales_item_breakdown", {
         p_tenant_id: tenant!.id,
         p_from_date: fromDate,
         p_to_date: toDate,

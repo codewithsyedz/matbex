@@ -26,7 +26,7 @@ import { wireSyncTriggers } from "./syncEngine";
 import { getHealthUrl, getHealthHeaders } from "./api";
 import { getTerminalId } from "./terminal";
 import { ensurePosSyncWorker, persistSyncCredentials, requestBackgroundSync } from "./backgroundSync";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 let _bootstrapped = false;
 let _branchId: string | null = null;
@@ -48,7 +48,7 @@ export async function bootstrapOffline(branchId: string | null) {
   await persistSyncCredentials({ branchId: _branchId, terminalId: _terminalId });
 
   // Refresh the cached JWT for the SW whenever auth state changes.
-  supabase.auth.onAuthStateChange(() => {
+  db.auth.onAuthStateChange(() => {
     void persistSyncCredentials({ branchId: _branchId, terminalId: _terminalId });
   });
 

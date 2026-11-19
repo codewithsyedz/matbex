@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 /** Audit actions written whenever an invoice/ledger posting is repaired. */
 export const INVOICE_REPAIR_ACTIONS = [
@@ -43,7 +43,7 @@ export function useInvoiceRepairAudit(limit = 100) {
     queryKey: ["invoice-repair-audit", limit],
     staleTime: 60_000,
     queryFn: async (): Promise<InvoiceRepairAuditRow[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("audit_logs")
         .select("id, action, entity_id, old_data, new_data, created_at, user_id")
         .in("action", INVOICE_REPAIR_ACTIONS as unknown as string[])
@@ -59,13 +59,13 @@ export function useInvoiceRepairAudit(limit = 100) {
 
       const [invoicesRes, profilesRes] = await Promise.all([
         invoiceIds.length
-          ? (supabase as any)
+          ? (db as any)
               .from("purchase_invoices")
               .select("id, invoice_number, suppliers(name)")
               .in("id", invoiceIds)
           : Promise.resolve({ data: [] }),
         userIds.length
-          ? (supabase as any).from("profiles").select("id, full_name").in("id", userIds)
+          ? (db as any).from("profiles").select("id, full_name").in("id", userIds)
           : Promise.resolve({ data: [] }),
       ]);
 

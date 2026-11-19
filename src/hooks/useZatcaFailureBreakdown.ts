@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { categorizeFailure, FAILURE_BUCKET_LABEL, type FailureBucket } from "@/lib/zatca/failureBuckets";
 
@@ -21,7 +21,7 @@ export function useZatcaFailureBreakdown() {
     enabled: !!restaurantId,
     queryFn: async (): Promise<FailureBreakdownEntry[]> => {
       const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .select("id, zatca_clearance_status, zatca_clearance_response")
         .eq("restaurant_id", restaurantId!)

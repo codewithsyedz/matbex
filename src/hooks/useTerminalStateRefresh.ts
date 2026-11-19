@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 
@@ -28,7 +28,7 @@ export function useTerminalStateRefresh() {
   return useMutation({
     mutationFn: async ({ branchId = null, terminalUid = null }: TerminalRefreshArgs = {}) => {
       if (!restaurant?.id) throw new Error("No active restaurant");
-      const { data, error } = await (supabase.rpc as any)("request_terminal_state_refresh", {
+      const { data, error } = await (db.rpc as any)("request_terminal_state_refresh", {
         _restaurant_id: restaurant.id,
         _branch_id: branchId,
         _terminal_uid: terminalUid,

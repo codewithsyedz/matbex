@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -13,9 +13,10 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { ShoppingBag, Plus, Minus, Trash2, MapPin, Clock, Search, Flame, Star, ChefHat, Utensils, User, LayoutGrid, List } from "lucide-react";
 import { toast } from "sonner";
-import { computeDeliveryFee, computeRiderCommission } from "@/lib/deliveryFee";
+import { computeDeliveryFee } from "@/lib/deliveryFee";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { useCustomerAuth } from "@/hooks/useCustomerAuth";
+import { onlinePaymentAvailable, startOnlinePayment } from "@/lib/onlineOrderPay";
 
 interface CartItem {
   menu_item_id: string;
@@ -55,7 +56,7 @@ export default function PublicOrder() {
   const [address, setAddress] = useState("");
   const [city, setCity] = useState("");
   const [notes, setNotes] = useState("");
-  const [payment, setPayment] = useState<"cash" | "card">("cash");
+  const [payment, setPayment] = useState<"cash" | "card" | "online">("cash");
   const [submitting, setSubmitting] = useState(false);
 
   // Prefill from signed-in customer
@@ -71,7 +72,7 @@ export default function PublicOrder() {
     queryKey: ["public-restaurant", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("restaurants_public")
         .select("id,name,currency")
         .eq("id", restaurantId!)
@@ -85,8 +86,9 @@ export default function PublicOrder() {
     queryKey: ["public-online-settings", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
-        .from("online_ordering_settings")
+      const { data, error } = await (db as any)
+        // Public view without internal fields (rider commission); see migration 20261111113452.
+        .from("storefront_settings")
         .select("*")
         .eq("restaurant_id", restaurantId)
         .maybeSingle();
@@ -99,7 +101,7 @@ export default function PublicOrder() {
     queryKey: ["public-menu", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurantId!)
@@ -115,7 +117,7 @@ export default function PublicOrder() {
     queryKey: ["public-top-selling", restaurantId],
     enabled: !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("public_top_selling_items", {
+      const { data, error } = await (db as any).rpc("public_top_selling_items", {
         p_restaurant_id: restaurantId,
         p_limit: 12,
       });
@@ -184,10 +186,6 @@ export default function PublicOrder() {
           Number(settings.data?.delivery_fee_flat ?? 0),
         )
       : 0;
-  const riderCommission =
-    orderType === "delivery"
-      ? computeRiderCommission(deliveryFee, Number((settings.data as any)?.rider_commission_pct ?? 0))
-      : 0;
   const total = subtotal + deliveryFee;
 
   const addToCart = (item: any, variantKey: string, variantLabel: string, price: number) => {
@@ -209,6 +207,13 @@ export default function PublicOrder() {
         .filter((c) => c.qty > 0)
     );
   };
+
+  const onlinePay = useQuery({
+    queryKey: ["online-payment-available", restaurantId],
+    enabled: !!restaurantId,
+    staleTime: 5 * 60_000,
+    queryFn: () => onlinePaymentAvailable(restaurantId!),
+  });
 
   const submit = async () => {
     if (!restaurantId) return;
@@ -241,7 +246,6 @@ export default function PublicOrder() {
         delivery_notes: notes.trim() || null,
         subtotal,
         delivery_fee: deliveryFee,
-        rider_commission: riderCommission,
         tax: 0,
         total,
         payment_method: payment,
@@ -254,7 +258,7 @@ export default function PublicOrder() {
         unit_price: c.unit_price,
         line_total: c.unit_price * c.qty,
       }));
-      const { data: orderId, error } = await (supabase as any).rpc("public_create_online_order", {
+      const { data: orderId, error } = await (db as any).rpc("public_create_online_order", {
         p_payload: payload,
         p_items: items,
       });
@@ -265,6 +269,14 @@ export default function PublicOrder() {
         customerAuth
           .apiFetch("?action=link-order", { method: "POST", body: JSON.stringify({ order_id: orderId }) })
           .catch(() => {});
+      }
+      if (payment === "online" && orderId) {
+        try {
+          // Leaves the page for Moyasar; the customer comes back to the tracking page.
+          if ((await startOnlinePayment(orderId)) === "redirected") return;
+        } catch (e: any) {
+          toast.error(`${e.message ?? "The payment page could not be opened"}. You can pay from the order page.`);
+        }
       }
       navigate(`/order/track/${orderId}`);
     } catch (e: any) {
@@ -600,7 +612,7 @@ export default function PublicOrder() {
                     </div>
                     <div>
                       <Label>Payment</Label>
-                      <RadioGroup value={payment} onValueChange={(v) => setPayment(v as any)} className="flex gap-4 mt-2">
+                      <RadioGroup value={payment} onValueChange={(v) => setPayment(v as any)} className="flex flex-wrap gap-4 mt-2">
                         <div className="flex items-center gap-2">
                           <RadioGroupItem value="cash" id="cash" />
                           <Label htmlFor="cash">Cash on {orderType === "delivery" ? "delivery" : "pickup"}</Label>
@@ -609,6 +621,12 @@ export default function PublicOrder() {
                           <RadioGroupItem value="card" id="card" />
                           <Label htmlFor="card">Card on arrival</Label>
                         </div>
+                        {onlinePay.data && (
+                          <div className="flex items-center gap-2">
+                            <RadioGroupItem value="online" id="online" />
+                            <Label htmlFor="online">Pay online now (mada, Apple Pay, STC Pay, card)</Label>
+                          </div>
+                        )}
                       </RadioGroup>
                     </div>
                   </div>

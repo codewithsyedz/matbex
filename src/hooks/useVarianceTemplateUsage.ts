@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface TemplateUsage {
@@ -16,7 +16,7 @@ export function useVarianceTemplateUsage() {
     queryKey: ["variance-template-usage", tenant?.id, restaurant?.id],
     queryFn: async (): Promise<Record<string, TemplateUsage>> => {
       if (!tenant?.id) return {};
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("variance_template_usage")
         .select("template_key, use_count, last_used_at, restaurant_id")
         .eq("tenant_id", tenant.id)
@@ -62,7 +62,7 @@ export function useVarianceTemplateUsage() {
       notesSnapshot?: string | null;
     }) => {
       if (!tenant?.id) return;
-      const { error } = await supabase.rpc("increment_variance_template_usage", {
+      const { error } = await db.rpc("increment_variance_template_usage", {
         _template_key: templateKey,
         _restaurant_id: restaurant?.id ?? null,
         _variance_amount: varianceAmount,

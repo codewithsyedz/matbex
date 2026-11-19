@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -70,7 +70,7 @@ export function ProfitTargetsSettings() {
     queryKey: ["profit-targets", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("profit_targets")
         .select("*")
         .eq("restaurant_id", restaurant.id);
@@ -91,7 +91,7 @@ export function ProfitTargetsSettings() {
     mutationFn: async (target: ProfitTarget) => {
       if (!restaurant?.id) throw new Error("No restaurant");
       
-      const { error } = await supabase
+      const { error } = await db
         .from("profit_targets")
         .upsert({
           id: target.id,

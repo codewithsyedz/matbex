@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -80,12 +80,12 @@ export function AutoShiftSettings() {
     setLoading(true);
     try {
       const [templatesRes, staffRes] = await Promise.all([
-        supabase
+        db
           .from("shift_templates")
           .select("id, name, start_time, end_time, auto_close_enabled, auto_close_time, default_closing_amount, default_float, auto_open_enabled, default_cashier_staff_id, shift_mode")
           .eq("restaurant_id", restaurant.id)
           .order("start_time"),
-        supabase
+        db
           .from("staff")
           .select("id, name, user_id")
           .eq("restaurant_id", restaurant.id)
@@ -118,7 +118,7 @@ export function AutoShiftSettings() {
   const handleToggleAutoClose = async (templateId: string, enabled: boolean) => {
     setSaving(templateId + "-close");
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("shift_templates")
         .update({ auto_close_enabled: enabled })
         .eq("id", templateId);
@@ -139,7 +139,7 @@ export function AutoShiftSettings() {
   const handleToggleAutoOpen = async (templateId: string, enabled: boolean) => {
     setSaving(templateId + "-open");
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("shift_templates")
         .update({ auto_open_enabled: enabled })
         .eq("id", templateId);
@@ -160,7 +160,7 @@ export function AutoShiftSettings() {
   const handleUpdateTemplate = async (template: ShiftTemplate) => {
     setSaving(template.id);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("shift_templates")
         .update({
           auto_close_time: template.auto_close_time + ":00",
@@ -183,7 +183,7 @@ export function AutoShiftSettings() {
   const handleUpdateShiftMode = async (templateId: string, mode: ShiftMode) => {
     setSaving(templateId + "-mode");
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("shift_templates")
         .update({ shift_mode: mode })
         .eq("id", templateId);
@@ -204,7 +204,7 @@ export function AutoShiftSettings() {
   const handleUpdateTemplateCashier = async (templateId: string, staffId: string | null) => {
     setSaving(templateId + "-cashier");
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("shift_templates")
         .update({ default_cashier_staff_id: staffId })
         .eq("id", templateId);

@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { getTerminalId } from "@/lib/offline/terminal";
 
 const PING_INTERVAL_MS = 5 * 60 * 1000;
@@ -24,11 +24,11 @@ export function useDevicePresencePing(enabled: boolean) {
       if (typeof document !== "undefined" && document.visibilityState === "hidden") return;
       inFlight.current = true;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await db.auth.getSession();
         if (!session?.access_token) return;
         const terminalId = await getTerminalId();
         if (!terminalId) return;
-        await supabase.rpc("touch_device_presence", { p_terminal_id: terminalId });
+        await db.rpc("touch_device_presence", { p_terminal_id: terminalId });
       } catch (e) {
         // Presence is best-effort; never surface an error to the UI.
         console.debug("[presence] ping skipped", e);

@@ -4,7 +4,7 @@ import { useZatcaCompliance } from "@/hooks/useZatcaCompliance";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from "recharts";
 import { categorizeFailure, FAILURE_BUCKET_LABEL, type FailureBucket } from "@/lib/zatca/failureBuckets";
 
@@ -32,7 +32,7 @@ export function ZatcaFailureBreakdown() {
     enabled: !!restaurantId && !!m && (m.rejected + m.schemaInvalid > 0),
     queryFn: async () => {
       const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString();
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("id, zatca_clearance_status, zatca_clearance_response")
         .eq("restaurant_id", restaurantId!)

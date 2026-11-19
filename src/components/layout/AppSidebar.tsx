@@ -83,139 +83,166 @@ const getStarterNavGroups = (t: (key: string, options?: { defaultValue?: string 
   },
 ];
 
-// Navigation structure with translation keys
+interface NavItemDef {
+  title: string;
+  url: string;
+  icon: React.ComponentType<{ className?: string }>;
+  cashierAllowed: boolean;
+  accountantAllowed: boolean;
+  ownerOnly: boolean;
+  featureKey?: string;
+  flagKey?: string;
+  /** Sub-menu inside the module (collapsible); items without one sit at the top of the module. */
+  section?: string;
+}
+interface NavGroupDef {
+  label: string;
+  items: NavItemDef[];
+}
+
+// Navigation by module: each module lists its everyday pages first, then collapsible sub-menus.
 const getNavGroups = (t: (key: string, options?: { defaultValue?: string }) => string) => {
-  const groups = [
+  const groups: NavGroupDef[] = [
   {
-    label: "Operations",
+    label: "Home",
     items: [
       { title: t("nav.dashboard"), url: "/dashboard", icon: LayoutDashboard, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: t("dashboard.recordSale"), url: "/record-sale", icon: ShoppingCart, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
-      { title: t("nav.shifts"), url: "/shifts", icon: Clock, cashierAllowed: true, accountantAllowed: false, ownerOnly: false, featureKey: "shifts" },
-      { title: "QR Tables", url: "/pos-tables", icon: QrCode, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
-      { title: "Table Bookings", url: "/reservations", icon: CalendarCheck, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
-      { title: "Floor Plan", url: "/floor-plan", icon: LayoutGrid, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
-      { title: "Table Timeline", url: "/table-timeline", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Floor Audit Log", url: "/floor-audit-log", icon: HistoryIcon, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Online Orders", url: "/online-orders", icon: ShoppingBag, cashierAllowed: true, accountantAllowed: true, ownerOnly: false },
-      { title: "Order Manager", url: "/order-manager", icon: ChefHat, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
-      { title: "Waiter", url: "/waiter", icon: Soup, cashierAllowed: true, accountantAllowed: false, ownerOnly: false, flagKey: "waiter_app_enabled" },
-      { title: "Kitchen Display", url: "/kds", icon: ChefHat, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
-      { title: "Kitchen Report", url: "/kds-report", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
+      { title: t("nav.reports"), url: "/reports", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
+      { title: "Finance Dashboard", url: "/finance-dashboard", icon: CircleDollarSign, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
     ],
   },
   {
-    label: t("nav.sales"),
+    label: "Point of Sale",
+    items: [
+      { title: t("dashboard.recordSale"), url: "/record-sale", icon: ShoppingCart, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
+      { title: t("nav.shifts"), url: "/shifts", icon: Clock, cashierAllowed: true, accountantAllowed: false, ownerOnly: false, featureKey: "shifts" },
+      { title: "Online Orders", url: "/online-orders", icon: ShoppingBag, cashierAllowed: true, accountantAllowed: true, ownerOnly: false },
+      { title: "Order Manager", url: "/order-manager", icon: ChefHat, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
+      { title: "Kitchen Display", url: "/kds", icon: ChefHat, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
+      { title: "Waiter", url: "/waiter", icon: Soup, cashierAllowed: true, accountantAllowed: false, ownerOnly: false, flagKey: "waiter_app_enabled" },
+      { title: "Kiosk", url: "/kiosk", icon: Webhook, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
+      { title: "Offline Sync", url: "/offline-sync", icon: CloudOff, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
+      { title: "Floor Plan", url: "/floor-plan", icon: LayoutGrid, cashierAllowed: true, accountantAllowed: false, ownerOnly: false, section: "Dine-in" },
+      { title: "QR Tables", url: "/pos-tables", icon: QrCode, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, section: "Dine-in" },
+      { title: "Table Bookings", url: "/reservations", icon: CalendarCheck, cashierAllowed: true, accountantAllowed: false, ownerOnly: false, section: "Dine-in" },
+      { title: "Table Timeline", url: "/table-timeline", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Dine-in" },
+      { title: "Floor Audit Log", url: "/floor-audit-log", icon: HistoryIcon, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Dine-in" },
+      { title: "Delivery Apps", url: "/aggregators", icon: Webhook, cashierAllowed: false, accountantAllowed: false, ownerOnly: true, flagKey: "aggregators_enabled", section: "Delivery" },
+      { title: "Riders", url: "/riders", icon: Users, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, section: "Delivery" },
+      { title: "POS Terminals", url: "/pos-terminals", icon: Monitor, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, section: "Devices" },
+      { title: "Terminal Branches", url: "/terminal-branch-settings", icon: Monitor, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, section: "Devices" },
+      { title: "Licensed Devices", url: "/devices", icon: Monitor, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, section: "Devices" },
+      { title: "Terminal Sync Health", url: "/terminal-sync-health", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Devices" },
+      { title: "Terminal Pricing Report", url: "/terminal-pricing-report", icon: Monitor, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, section: "Devices" },
+      { title: "POS Ack Diagnostics", url: "/reports/pos-ack-diagnostics", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Devices" },
+    ],
+  },
+  {
+    label: "Sales & Customers",
     items: [
       { title: t("nav.sales"), url: "/sales", icon: Receipt, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
       { title: "Sales Analytics", url: "/sales/analytics", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
       { title: t("nav.customers"), url: "/customers", icon: UsersRound, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
       { title: "Settlements", url: "/settlements", icon: FileText, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Offline Sync", url: "/offline-sync", icon: CloudOff, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
-      { title: "POS Terminals", url: "/pos-terminals", icon: Monitor, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
-      { title: "Terminal Branches", url: "/terminal-branch-settings", icon: Monitor, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
-      { title: "Terminal Pricing Report", url: "/terminal-pricing-report", icon: Monitor, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
-      { title: "Terminal Sync Health", url: "/terminal-sync-health", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "POS Ack Diagnostics", url: "/reports/pos-ack-diagnostics", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Sale Posting Monitor", url: "/reports/sale-posting-monitor", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Daily Reconciliation", url: "/reports/daily-reconciliation", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Licensed Devices", url: "/devices", icon: Monitor, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
+      { title: "Loyalty", url: "/loyalty", icon: PieChart, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
+      { title: t("app.salesItemBreakdown.title"), url: "/reports/sales-item-breakdown", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Sales reports" },
+      { title: t("app.salesJournal.title"), url: "/reports/sales-journal", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Sales reports" },
+      { title: t("app.cashCard.title"), url: "/reports/cash-card", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Sales reports" },
+      { title: "Card Sales by Branch", url: "/reports/card-sales-by-branch", icon: CreditCard, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Sales reports" },
+      { title: "Kitchen Report", url: "/kds-report", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Sales reports" },
+      { title: "Channel P&L", url: "/channel-pnl", icon: PieChart, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, flagKey: "channel_pnl_enabled", section: "Sales reports" },
+      { title: "Sale Posting Monitor", url: "/reports/sale-posting-monitor", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Checks" },
+      { title: "Daily Reconciliation", url: "/reports/daily-reconciliation", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Checks" },
+      { title: "Price Reconciliation", url: "/reports/price-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Checks" },
     ],
   },
   {
-    label: "Cost Control",
+    label: "Menu & Inventory",
     items: [
-      { title: t("nav.expenses"), url: "/expenses", icon: Wallet, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Pending VAT Split", url: "/expenses/pending-vat-split", icon: Percent, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
       { title: t("nav.menu"), url: "/menu", icon: UtensilsCrossed, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, featureKey: "menu" },
       { title: "Recipes", url: "/recipes", icon: ChefHat, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, featureKey: "menu" },
       { title: t("nav.inventory"), url: "/inventory", icon: Package, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "inventory" },
       { title: t("nav.cogs"), url: "/cogs", icon: PieChart, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "cogs" },
-      { title: "Inventory Audit", url: "/inventory-audit", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "inventory" },
-      { title: "Account Mappings", url: "/ingredient-mappings", icon: Tags, cashierAllowed: false, accountantAllowed: true, ownerOnly: true, featureKey: "accounting" },
-      { title: "COGS True-up", url: "/cogs-trueup", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "cogs" },
+      { title: "Inventory Audit", url: "/inventory-audit", icon: Activity, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "inventory", section: "Controls" },
+      { title: "COGS True-up", url: "/cogs-trueup", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "cogs", section: "Controls" },
+      { title: "Account Mappings", url: "/ingredient-mappings", icon: Tags, cashierAllowed: false, accountantAllowed: true, ownerOnly: true, featureKey: "accounting", section: "Controls" },
     ],
   },
   {
-    label: "Finance",
+    label: "Purchases & Expenses",
     items: [
-      { title: "Finance Dashboard", url: "/finance-dashboard", icon: CircleDollarSign, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
+      { title: t("nav.expenses"), url: "/expenses", icon: Wallet, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
+      { title: "Pending VAT Split", url: "/expenses/pending-vat-split", icon: Percent, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
+      { title: "Supplier Ledger", url: "/reports/supplier-ledger", icon: BookOpen, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
+      { title: "Daily Overhead Closing", url: "/accounting/daily-overhead", icon: Lock, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Overheads" },
+      { title: "Overhead Audit", url: "/reports/overhead-audit", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Overheads" },
+      { title: "Overhead Reconciliation", url: "/reports/overhead-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Overheads" },
+      { title: "Supplier AP Reconciliation", url: "/reports/supplier-ap-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Checks" },
+      { title: "Supplier AP Head Audit", url: "/reports/supplier-ap-head-audit", icon: HistoryIcon, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Checks" },
+      { title: "Expense Ledger Reconciliation", url: "/reports/expense-ledger-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Checks" },
+      { title: "Invoice Ledger Reconciliation", url: "/reports/invoice-ledger-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Checks" },
+    ],
+  },
+  {
+    label: "Accounting",
+    items: [
       { title: t("nav.accounting"), url: "/accounting", icon: CircleDollarSign, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: t("nav.reports"), url: "/reports", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: t("app.salesItemBreakdown.title"), url: "/reports/sales-item-breakdown", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: t("app.salesJournal.title"), url: "/reports/sales-journal", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: t("app.cashCard.title"), url: "/reports/cash-card", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: t("app.zatcaInvoices.title", { defaultValue: "ZATCA Invoices" }), url: "/accounting/zatca-invoices", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: t("app.zatcaProvider.title", { defaultValue: "ZATCA Provider Application" }), url: "/accounting/zatca-provider", icon: BarChart3, cashierAllowed: false, accountantAllowed: false, ownerOnly: true },
+      { title: "Owner Capital", url: "/accounting/owner-capital", icon: Wallet, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
+      { title: "Fixed Assets", url: "/accounting/fixed-assets", icon: Building2, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
+      { title: "Asset Depreciation", url: "/reports/depreciation", icon: Building2, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
+      { title: "Projects", url: "/accounting/projects", icon: Building2, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
+      { title: t("app.profitLoss.title"), url: "/reports/profit-loss", icon: PieChart, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Statements" },
+      { title: "Balance Sheet", url: "/reports/balance-sheet", icon: BookOpenCheck, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Statements" },
+      { title: "Cash Flow", url: "/reports/cash-flow", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Statements" },
+      { title: "Trial Balance", url: "/reports/trial-balance", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Statements" },
+      { title: t("app.financialStatements.title"), url: "/reports/financial-statements", icon: LayoutGrid, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Statements" },
+      { title: "Branch Ledger", url: "/reports/branch-ledger", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, section: "Statements" },
+      { title: "Card Settlement Clearing", url: "/accounting/card-settlement-clearing", icon: CreditCard, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Bank & cards" },
+      { title: "Bank Statement Match", url: "/accounting/capital-statement-match", icon: Link2, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Bank & cards" },
+      { title: "Installments (BNPL)", url: "/accounting/installments", icon: CalendarClock, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Installments" },
+      { title: "BNPL Reporting", url: "/accounting/bnpl-report", icon: CalendarClock, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Installments" },
+      { title: "Installment Reconciliation", url: "/accounting/installment-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Installments" },
+      { title: "Ledger Mapping", url: "/reports/ledger-mapping", icon: ArrowRightLeft, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Setup & audit" },
+      { title: "Posting Rule Audit", url: "/accounting/posting-rule-audit", icon: ShieldAlert, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Setup & audit" },
+      { title: "CoA Migration", url: "/accounting/coa-migration", icon: ArrowRightLeft, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting", section: "Setup & audit" },
+    ],
+  },
+  {
+    label: "VAT & Compliance",
+    items: [
       { title: "VAT Return", url: "/reports/vat-return", icon: Percent, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
       { title: "VAT Audit", url: "/reports/vat-audit", icon: Percent, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Price Reconciliation", url: "/reports/price-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Trial Balance", url: "/reports/trial-balance", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: t("app.financialStatements.title"), url: "/reports/financial-statements", icon: LayoutGrid, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: t("app.profitLoss.title"), url: "/reports/profit-loss", icon: PieChart, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Balance Sheet", url: "/reports/balance-sheet", icon: BookOpenCheck, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Cash Flow", url: "/reports/cash-flow", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Ledger Mapping", url: "/reports/ledger-mapping", icon: ArrowRightLeft, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Supplier Ledger", url: "/reports/supplier-ledger", icon: BookOpen, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Supplier AP Reconciliation", url: "/reports/supplier-ap-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Expense Ledger Reconciliation", url: "/reports/expense-ledger-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Invoice Ledger Reconciliation", url: "/reports/invoice-ledger-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Supplier AP Head Audit", url: "/reports/supplier-ap-head-audit", icon: HistoryIcon, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Asset Depreciation", url: "/reports/depreciation", icon: Building2, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Card Sales by Branch", url: "/reports/card-sales-by-branch", icon: CreditCard, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Branch Ledger", url: "/reports/branch-ledger", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Owner Capital", url: "/accounting/owner-capital", icon: Wallet, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Installments (BNPL)", url: "/accounting/installments", icon: CalendarClock, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Fixed Assets", url: "/accounting/fixed-assets", icon: Building2, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Projects", url: "/accounting/projects", icon: Building2, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Installment Reconciliation", url: "/accounting/installment-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "BNPL Reporting", url: "/accounting/bnpl-report", icon: CalendarClock, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Card Settlement Clearing", url: "/accounting/card-settlement-clearing", icon: CreditCard, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "CoA Migration", url: "/accounting/coa-migration", icon: ArrowRightLeft, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Posting Rule Audit", url: "/accounting/posting-rule-audit", icon: ShieldAlert, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Daily Overhead Closing", url: "/accounting/daily-overhead", icon: Lock, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Bank Statement Match", url: "/accounting/capital-statement-match", icon: Link2, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
-      { title: "Overhead Audit", url: "/reports/overhead-audit", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Overhead Reconciliation", url: "/reports/overhead-reconciliation", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "accounting" },
+      { title: t("app.zatcaInvoices.title", { defaultValue: "ZATCA Invoices" }), url: "/accounting/zatca-invoices", icon: BarChart3, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
       { title: "ZATCA Compliance", url: "/zatca-compliance", icon: ShieldCheck, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Channel P&L", url: "/channel-pnl", icon: PieChart, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, flagKey: "channel_pnl_enabled" },
+      { title: t("app.zatcaProvider.title", { defaultValue: "ZATCA Provider Application" }), url: "/accounting/zatca-provider", icon: BarChart3, cashierAllowed: false, accountantAllowed: false, ownerOnly: true },
+      { title: "Balady & Compliance", url: "/compliance", icon: ShieldCheck, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: undefined as string | undefined },
     ],
   },
   {
-    label: "Team",
+    label: "Team & Payroll",
     items: [
+      { title: "Team", url: "/team", icon: Users, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
       { title: t("nav.staff"), url: "/staff", icon: UserCog, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, featureKey: "payroll" },
       { title: "Salary Calendar", url: "/staff/salary-calendar", icon: CalendarClock, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "payroll" },
       { title: "Payroll Journal", url: "/staff/payroll-journal", icon: BookOpenCheck, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "payroll" },
       { title: "Fines & Deductions History", url: "/staff/fines-history", icon: Scale, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: "payroll" },
       { title: t("nav.chat"), url: "/chat", icon: MessageCircle, cashierAllowed: true, accountantAllowed: true, ownerOnly: false, featureKey: "chat" },
-      { title: "Team", url: "/team", icon: Users, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
-      { title: "Riders", url: "/riders", icon: Users, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
     ],
   },
   {
-    label: "Compliance",
-    items: [
-      { title: "Balady & Compliance", url: "/compliance", icon: ShieldCheck, cashierAllowed: false, accountantAllowed: true, ownerOnly: false, featureKey: undefined as string | undefined },
-    ],
-  },
-  {
-    label: "Marketing",
+    label: "Online Presence",
     items: [
       { title: t("nav.webBuilder"), url: "/web-builder", icon: Globe, cashierAllowed: false, accountantAllowed: false, ownerOnly: false, featureKey: "web_builder" },
-      { title: "Loyalty", url: "/loyalty", icon: PieChart, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
       { title: "SEO Diagnostics", url: "/reports/seo-diagnostics", icon: Globe, cashierAllowed: false, accountantAllowed: false, ownerOnly: true },
-      { title: "Kiosk", url: "/kiosk", icon: Webhook, cashierAllowed: true, accountantAllowed: false, ownerOnly: false },
     ],
   },
   {
-    label: "Administration",
+    label: "Settings",
     items: [
-      { title: t("nav.auditLogs"), url: "/audit-logs", icon: ClipboardList, cashierAllowed: false, accountantAllowed: true, ownerOnly: true },
-      { title: t("nav.billing"), url: "/billing", icon: CreditCard, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
-      { title: "Aggregators", url: "/aggregators", icon: Webhook, cashierAllowed: false, accountantAllowed: false, ownerOnly: true, flagKey: "aggregators_enabled" },
-      { title: "Migration", url: "/migration", icon: Rocket, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
       { title: t("nav.settings"), url: "/settings", icon: Settings, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
+      { title: t("nav.billing"), url: "/billing", icon: CreditCard, cashierAllowed: false, accountantAllowed: true, ownerOnly: false },
+      { title: t("nav.auditLogs"), url: "/audit-logs", icon: ClipboardList, cashierAllowed: false, accountantAllowed: true, ownerOnly: true },
+      { title: "Migration", url: "/migration", icon: Rocket, cashierAllowed: false, accountantAllowed: false, ownerOnly: false },
     ],
   },
   ];
@@ -226,6 +253,7 @@ const getNavGroups = (t: (key: string, options?: { defaultValue?: string }) => s
     items: group.items.map((item) => ({
       ...item,
       title: t(`productNav.${item.title}`, { defaultValue: item.title }),
+      section: item.section ? t(`productNav.${item.section}`, { defaultValue: item.section }) : undefined,
     })),
   }));
 };
@@ -355,14 +383,18 @@ function AppSidebarBase({ onOpenCommandPalette }: AppSidebarProps) {
     // Restore the previous expand/collapse layout first — otherwise the nav is
     // shorter after a reload and the saved scroll offset can't be reached.
     try {
-      const saved = sessionStorage.getItem('matbex.sidebarExpandedGroups');
+      const saved = sessionStorage.getItem('matbex.sidebarExpandedGroups.v2');
       if (saved) {
         const parsed = JSON.parse(saved) as Record<string, boolean>;
         if (parsed && typeof parsed === 'object') {
-          return navGroups.reduce(
-            (acc, group) => ({ ...acc, [group.label]: !!parsed[group.label] }),
-            {},
-          );
+          const active = getActiveGroup();
+          return {
+            ...parsed,
+            ...navGroups.reduce(
+              (acc, group) => ({ ...acc, [group.label]: !!parsed[group.label] || group.label === active }),
+              {},
+            ),
+          };
         }
       }
     } catch {
@@ -379,7 +411,7 @@ function AppSidebarBase({ onOpenCommandPalette }: AppSidebarProps) {
     setExpandedGroups(prev => {
       const next = { ...prev, [label]: !prev[label] };
       try {
-        sessionStorage.setItem('matbex.sidebarExpandedGroups', JSON.stringify(next));
+        sessionStorage.setItem('matbex.sidebarExpandedGroups.v2', JSON.stringify(next));
       } catch {
         /* storage unavailable */
       }
@@ -517,6 +549,45 @@ function AppSidebarBase({ onOpenCommandPalette }: AppSidebarProps) {
     return linkContent;
   };
 
+  // A module's pages: the ones without a section first, then each sub-menu (collapsible, open when it
+  // holds the current page or the person opened it).
+  const renderGroupItems = (group: (typeof filteredGroups)[number]) => {
+    const top = group.items.filter((item: any) => !item.section);
+    const sections: { name: string; items: typeof group.items }[] = [];
+    for (const item of group.items as any[]) {
+      if (!item.section) continue;
+      const s = sections.find((x) => x.name === item.section);
+      if (s) s.items.push(item);
+      else sections.push({ name: item.section, items: [item] });
+    }
+    return (
+      <>
+        {top.map(renderNavItem)}
+        {sections.map((s) => {
+          const key = `${group.label}/${s.name}`;
+          const hasActive = s.items.some((i: any) => i.url === location.pathname);
+          const open = expandedGroups[key] ?? hasActive;
+          return (
+            <Collapsible key={key} open={open} onOpenChange={() => setExpandedGroups((prev) => {
+              const next = { ...prev, [key]: !open };
+              try { sessionStorage.setItem('matbex.sidebarExpandedGroups.v2', JSON.stringify(next)); } catch { /* storage unavailable */ }
+              return next;
+            })}>
+              <CollapsibleTrigger className="flex min-h-8 w-full items-center gap-2 rounded-md px-3 py-1 text-[13px] font-medium text-muted-foreground hover:bg-accent/50 hover:text-foreground transition-colors">
+                <ChevronRight className={cn("h-3 w-3 shrink-0 transition-transform duration-200 rtl-flip", open && "rotate-90")} />
+                <span className="flex-1 text-start">{s.name}</span>
+                <span className="text-[11px] text-muted-foreground/60 tabular-nums">{s.items.length}</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-0.5 ms-3 border-s border-border/60 ps-1">
+                {s.items.map(renderNavItem)}
+              </CollapsibleContent>
+            </Collapsible>
+          );
+        })}
+      </>
+    );
+  };
+
   // NOTE: this must stay a plain JSX value, not an inline component.
   // Roving arrow-key navigation inside the sidebar nav. Focus moves without
   // yanking the scroll container: we focus with preventScroll and only nudge
@@ -634,7 +705,9 @@ function AppSidebarBase({ onOpenCommandPalette }: AppSidebarProps) {
               groupIndex > 0 && <div className="mx-3 my-2 border-t border-border" />
             )}
             <CollapsibleContent className="space-y-0.5">
-              {group.items.map(renderNavItem)}
+              {collapsed && !isMobile
+                ? group.items.map(renderNavItem)
+                : renderGroupItems(group)}
             </CollapsibleContent>
           </Collapsible>
         ))}

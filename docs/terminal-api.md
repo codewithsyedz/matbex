@@ -5,7 +5,7 @@ Standalone REST API for Android / native POS terminals to record sales, manage s
 Base URL:
 
 ```
-https://tlkyubkbbqwmzjaogavb.supabase.co/functions/v1/terminal-api
+https://api.matbex.com/functions/v1/terminal-api
 ```
 
 ## Authentication

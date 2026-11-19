@@ -156,8 +156,7 @@ export function ProjectSetupDialog({ open, onOpenChange }: Props) {
   // addPartner from the hook binds to the currently-active project, so partners for a
   // freshly created project are inserted directly against its id.
   const addPartnerTo = async (projectId: string, p: PartnerDraft) => {
-    const { supabase } = await import("@/integrations/supabase/client");
-    const db = supabase as any;
+    const { db } = await import("@/integrations/db/client");
     const { data, error } = await db
       .from("project_partners")
       .insert({

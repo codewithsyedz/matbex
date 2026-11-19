@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -57,7 +57,7 @@ export function useKPIAlerts() {
     queryKey: ["kpi-alerts", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("kpi_alerts")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -88,7 +88,7 @@ export function useKPIAlerts() {
         };
       }
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("profit_targets")
         .select("*")
         .eq("restaurant_id", restaurant.id);
@@ -120,7 +120,7 @@ export function useKPIAlerts() {
       const windowDays = thresholds?.expense_spike_window_days || 7;
       const startDate = format(subDays(new Date(), windowDays), "yyyy-MM-dd");
       
-      let query = supabase
+      let query = db
         .from("expenses")
         .select("amount, expense_date")
         .eq("restaurant_id", restaurant.id)
@@ -138,7 +138,7 @@ export function useKPIAlerts() {
   // Acknowledge alert mutation
   const acknowledgeAlertMutation = useMutation({
     mutationFn: async (alertId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("kpi_alerts")
         .update({
           acknowledged_at: new Date().toISOString(),
@@ -158,7 +158,7 @@ export function useKPIAlerts() {
     mutationFn: async (alert: Omit<KPIAlert, "id" | "triggered_at" | "acknowledged_at" | "acknowledged_by">) => {
       // Check if similar alert already exists for today
       const today = format(new Date(), "yyyy-MM-dd");
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("kpi_alerts")
         .select("id")
         .eq("restaurant_id", alert.restaurant_id)
@@ -169,7 +169,7 @@ export function useKPIAlerts() {
       
       if (existing) return; // Don't duplicate
 
-      const { error } = await supabase
+      const { error } = await db
         .from("kpi_alerts")
         .insert({
           ...alert,

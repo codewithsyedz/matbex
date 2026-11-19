@@ -16,7 +16,6 @@ const quotaLabels: Record<keyof QuotaLimits, string> = {
   owner: "Owners",
   manager: "Managers",
   cashier: "Cashiers",
-  menu_items: "Menu Items",
   image_uploads: "Image Uploads",
   email_reminders: "Email Reminders",
 };
@@ -36,7 +35,6 @@ export function QuotaInfoCard({
     owner: "owner_count",
     manager: "manager_count",
     cashier: "cashier_count",
-    menu_items: "menu_item_count",
     image_uploads: "image_upload_count",
     email_reminders: "email_reminder_count",
   };

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { format as formatDate, startOfMonth, subMonths } from "date-fns";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -78,7 +78,7 @@ export default function FinesHistory() {
   const { data: staff = [] } = useQuery({
     queryKey: ["fines-history-staff", restaurant?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff")
         .select("id, name, role, branch_id")
         .eq("restaurant_id", restaurant!.id)

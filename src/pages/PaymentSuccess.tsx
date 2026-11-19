@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams, useNavigate, Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { MatbexLogo } from "@/components/brand/MatbexLogo";
 import { Check, AlertCircle, CreditCard } from "lucide-react";
@@ -23,21 +23,51 @@ export default function PaymentSuccess() {
   const [registration, setRegistration] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const sessionId = params.get("session_id");
+  const registrationPaymentId = params.get("registration");
+  // Moyasar replaces the return URL's query with its own; its invoice_id identifies the payment.
+  const moyasarInvoiceId = params.get("invoice_id");
+  const moyasarReturn = !!registrationPaymentId || (!!moyasarInvoiceId && !params.get("session_id"));
   const subscription = params.get("flow") === "subscription";
 
   useEffect(() => {
     let cancelled = false;
-    if (!sessionId) { setStatus("missing"); return; }
+    if (!sessionId && !moyasarReturn) { setStatus("missing"); return; }
     setStatus("verifying");
+    // Moyasar registration payment: the server confirms it with Moyasar and creates the account.
+    async function verifyRegistration() {
+      for (let i = 0; i < 8 && !cancelled; i++) {
+        const { data, error } = await db.functions.invoke("complete-registration-payment", {
+          body: registrationPaymentId ? { payment_id: registrationPaymentId } : { invoice_id: moyasarInvoiceId },
+        });
+        if (data?.success) {
+          if (!cancelled) { setRegistration(true); setStatus("success"); }
+          return;
+        }
+        let message = data?.error;
+        if (!message && error && (error as { context?: unknown }).context instanceof Response) {
+          message = (await ((error as { context: Response }).context.clone().json().catch(() => null)))?.error;
+        }
+        if (data?.status && data.status !== "pending") throw new Error("The payment did not go through. Use the payment link in your email to try again.");
+        if (error && !data) throw new Error(message || error.message);
+        await new Promise((r) => setTimeout(r, 3000));
+      }
+      throw new Error("Your payment is still being confirmed. You will receive your sign-in details by email shortly.");
+    }
     async function verify() {
+      if (moyasarReturn) {
+        try { await verifyRegistration(); } catch (error) {
+          if (!cancelled) { setErrorMessage(error instanceof Error ? error.message : "Payment verification failed"); setStatus("error"); }
+        }
+        return;
+      }
       try {
-        const { data: auth } = await supabase.auth.getSession();
+        const { data: auth } = await db.auth.getSession();
         const fn = subscription || auth.session ? "verify-subscription-payment" : "complete-registration-payment";
-        let result = await supabase.functions.invoke(fn, { body: { session_id: sessionId }, headers: auth.session ? { Authorization: `Bearer ${auth.session.access_token}` } : undefined });
+        let result = await db.functions.invoke(fn, { body: { session_id: sessionId }, headers: auth.session ? { Authorization: `Bearer ${auth.session.access_token}` } : undefined });
         let isRegistration = fn === "complete-registration-payment";
         if (result.data?.registration) {
           isRegistration = true;
-          result = await supabase.functions.invoke("complete-registration-payment", { body: { session_id: sessionId } });
+          result = await db.functions.invoke("complete-registration-payment", { body: { session_id: sessionId } });
         }
         if (result.error || !result.data?.success) {
           let message = result.data?.error;
@@ -59,7 +89,7 @@ export default function PaymentSuccess() {
     }
     void verify();
     return () => { cancelled = true; };
-  }, [sessionId, subscription, attempt]);
+  }, [sessionId, registrationPaymentId, moyasarInvoiceId, moyasarReturn, subscription, attempt]);
 
   return (
     <main dir={ar ? "rtl" : "ltr"} className="min-h-screen bg-background flex items-center justify-center p-4">

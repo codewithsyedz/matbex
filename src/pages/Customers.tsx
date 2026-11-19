@@ -47,7 +47,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { BranchSwitcher } from "@/components/layout/BranchSwitcher";
 import { useBranchUnpaidBalances } from "@/hooks/useBranchUnpaidBalances";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -107,7 +107,7 @@ export default function Customers() {
     queryKey: ["customers", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -135,7 +135,7 @@ export default function Customers() {
       const yesterday = subDays(startOfDay(new Date()), 1);
       const bounds = getRestaurantDayBoundsUTC(yesterday, timezone);
       
-      let query = supabase
+      let query = db
         .from("sales_transactions")
         .select("total")
         .eq("restaurant_id", restaurant.id)
@@ -195,7 +195,7 @@ export default function Customers() {
   const addCustomerMutation = useMutation({
     mutationFn: async () => {
       if (!restaurant?.id || !user?.id) throw new Error("Missing context");
-      const { error } = await supabase.from("customers").insert({
+      const { error } = await db.from("customers").insert({
         restaurant_id: restaurant.id,
         name: formData.name,
         email: formData.email || null,
@@ -224,7 +224,7 @@ export default function Customers() {
   const updateCustomerMutation = useMutation({
     mutationFn: async () => {
       if (!editingCustomer) throw new Error("No customer selected");
-      const { error } = await supabase
+      const { error } = await db
         .from("customers")
         .update({
           name: formData.name,

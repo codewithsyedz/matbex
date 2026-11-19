@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -63,7 +63,7 @@ export function useVarianceThresholds() {
     queryFn: async (): Promise<VarianceThreshold> => {
       if (!tenant?.id) return DEFAULT_THRESHOLDS as VarianceThreshold;
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('variance_thresholds')
         .select('*')
         .eq('tenant_id', tenant.id)
@@ -82,7 +82,7 @@ export function useVarianceThresholds() {
     mutationFn: async (data: Partial<VarianceThreshold>) => {
       if (!tenant?.id) throw new Error('No tenant');
 
-      const existing = await supabase
+      const existing = await db
         .from('variance_thresholds')
         .select('id')
         .eq('tenant_id', tenant.id)
@@ -90,13 +90,13 @@ export function useVarianceThresholds() {
         .maybeSingle();
 
       if (existing.data?.id) {
-        const { error } = await supabase
+        const { error } = await db
           .from('variance_thresholds')
           .update(data)
           .eq('id', existing.data.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from('variance_thresholds')
           .insert({
             tenant_id: tenant.id,
@@ -131,7 +131,7 @@ export function useShiftVarianceLogs(options?: { cashierId?: string; status?: st
     queryFn: async (): Promise<ShiftVarianceLog[]> => {
       if (!tenant?.id || !restaurant?.id) return [];
 
-      let query = supabase
+      let query = db
         .from('shift_variance_logs')
         .select('*')
         .eq('restaurant_id', restaurant.id)
@@ -165,7 +165,7 @@ export function useResolveVariance() {
     mutationFn: async ({ logId, resolutionNotes }: { logId: string; resolutionNotes: string }) => {
       if (!user?.id) throw new Error('Authentication required');
 
-      const { error } = await supabase
+      const { error } = await db
         .from('shift_variance_logs')
         .update({
           variance_status: 'resolved',

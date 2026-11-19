@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -23,7 +23,7 @@ export function ReverseExpenseVatDialog({ expense, onClose, onReversed }: {
   const mutation = useMutation({
     mutationFn: async () => {
       if (!expense) throw new Error("No expense selected");
-      const { error } = await supabase.rpc("reverse_expense_vat", { p_expense_id: expense.id, p_reason: reason.trim() });
+      const { error } = await db.rpc("reverse_expense_vat", { p_expense_id: expense.id, p_reason: reason.trim() });
       if (error) throw error;
     },
     onSuccess: () => {

@@ -5,7 +5,7 @@ import {
   type AdvanceFundingSelection,
 } from "./AdvanceFundingSourceField";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   advanceOutstanding,
@@ -172,7 +172,7 @@ export function StaffAdvances() {
     queryKey: ["staff-active", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff")
         .select("id, name, role")
         .eq("restaurant_id", restaurant.id)

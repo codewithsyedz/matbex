@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { BarChart3, Clock, UserCog } from "lucide-react";
 import { formatDistanceToNow } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Card,
@@ -57,7 +57,7 @@ export function ImpersonationAnalyticsCard({ days: defaultDays = 30 }: { days?: 
     queryKey: ["impersonation-analytics", tenant?.id, days],
     queryFn: async () => {
       if (!tenant?.id) return [] as AnalyticsRow[];
-      const { data, error } = await supabase.rpc("get_impersonation_analytics", {
+      const { data, error } = await db.rpc("get_impersonation_analytics", {
         _tenant_id: tenant.id,
         _days: days,
       });

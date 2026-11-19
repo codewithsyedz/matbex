@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery } from "@tanstack/react-query";
 import { useLoyaltySettings, useCustomerLoyalty, calcRedemptionValue } from "@/hooks/useLoyalty";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -42,7 +42,7 @@ export default function Loyalty() {
     enabled: !!restaurant?.id,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select("id,name,phone,email,points_balance,lifetime_points,tier,marketing_opt_in,last_engagement_at")
         .eq("restaurant_id", restaurant!.id)
@@ -356,7 +356,7 @@ function ReengagementPanel({ customers }: { customers: any[] }) {
     );
     const phone = c.phone.replace(/[^0-9]/g, "");
     window.open(`https://wa.me/${phone}?text=${msg}`, "_blank");
-    supabase
+    db
       .from("reengagement_messages" as any)
       .insert({
         restaurant_id: restaurant!.id,
@@ -371,14 +371,14 @@ function ReengagementPanel({ customers }: { customers: any[] }) {
 
   const sendEmail = async (c: any) => {
     if (!c.email) return toast.error("Customer has no email");
-    const { data, error } = await supabase.functions.invoke("send-loyalty-reengagement", {
+    const { data, error } = await db.functions.invoke("send-loyalty-reengagement", {
       body: { customerId: c.id },
     });
     if (error) return toast.error(error.message);
     if (data && data.sent === false) {
       return toast.error(`${c.email} has opted out of emails`);
     }
-    await supabase.from("reengagement_messages" as any).insert({
+    await db.from("reengagement_messages" as any).insert({
       restaurant_id: restaurant!.id,
       customer_id: c.id,
       channel: "email",

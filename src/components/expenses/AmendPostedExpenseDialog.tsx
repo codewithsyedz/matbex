@@ -15,7 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Checkbox } from "@/components/ui/checkbox";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { usePermissions, useProfile, useTenant } from "@/contexts/auth/AuthFacade";
 import {
   AMEND_PERMISSION_MESSAGE,
@@ -80,7 +80,7 @@ export function AmendPostedExpenseDialog({
     mutationFn: async () => {
       if (!payload) throw new Error("Nothing to amend");
       if (!canAmend) throw new Error(AMEND_PERMISSION_MESSAGE);
-      const { data, error } = await (supabase as any).rpc(
+      const { data, error } = await (db as any).rpc(
         "amend_posted_expense",
         {
           p_expense_id: payload.expenseId,

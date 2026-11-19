@@ -28,7 +28,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { BranchBadge } from "@/components/branch/BranchBadge";
 
 const ISSUE_LABEL: Record<string, string> = {
@@ -61,7 +61,7 @@ export function VatIncidentsPanel({ restaurantId, branchId, branchName, fmt }: P
     enabled: !!restaurantId,
     staleTime: 30_000,
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("vat_incidents")
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -78,7 +78,7 @@ export function VatIncidentsPanel({ restaurantId, branchId, branchName, fmt }: P
   // Realtime alert for newly detected incidents.
   useEffect(() => {
     if (!restaurantId) return;
-    const channel = supabase
+    const channel = db
       .channel(`vat-incidents-${restaurantId}`)
       .on(
         "postgres_changes",
@@ -103,14 +103,14 @@ export function VatIncidentsPanel({ restaurantId, branchId, branchName, fmt }: P
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [restaurantId, queryClient, branchName, fmt]);
 
   const updateStatus = useMutation({
     mutationFn: async ({ id, next }: { id: string; next: "resolved" | "ignored" | "open" }) => {
-      const { data: auth } = await supabase.auth.getUser();
-      const { error } = await (supabase as any)
+      const { data: auth } = await db.auth.getUser();
+      const { error } = await (db as any)
         .from("vat_incidents")
         .update({
           status: next,

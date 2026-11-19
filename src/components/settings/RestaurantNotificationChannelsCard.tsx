@@ -4,7 +4,7 @@ import { MessageSquare, Phone, Loader2, Power } from "lucide-react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -55,7 +55,7 @@ export function RestaurantNotificationChannelsCard() {
     queryKey: ["restaurant-notif-channels", restaurant?.id],
     enabled: !!restaurant?.id,
     queryFn: async (): Promise<ChannelRow[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("restaurant_notification_channels")
         .select("id, restaurant_id, channel, enabled, updated_at")
         .eq("restaurant_id", restaurant!.id);
@@ -73,7 +73,7 @@ export function RestaurantNotificationChannelsCard() {
   const toggle = useMutation({
     mutationFn: async (input: { channel: Channel; enabled: boolean }) => {
       if (!restaurant?.id) throw new Error("No restaurant selected");
-      const { error } = await supabase
+      const { error } = await db
         .from("restaurant_notification_channels")
         .upsert(
           {

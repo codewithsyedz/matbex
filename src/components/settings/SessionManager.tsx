@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Monitor, Smartphone, Globe, LogOut, Shield, Clock } from "lucide-react";
@@ -52,7 +52,7 @@ export function SessionManager() {
     if (!tenantId) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("user_sessions")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -64,7 +64,7 @@ export function SessionManager() {
       // Fetch profiles for users
       if (data && data.length > 0) {
         const userIds = [...new Set(data.map((s) => s.user_id))];
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds);
@@ -92,7 +92,7 @@ export function SessionManager() {
 
   const handleRevokeSession = async (sessionId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("user_sessions")
         .update({
           is_active: false,
@@ -111,7 +111,7 @@ export function SessionManager() {
 
   const handleRevokeAllSessions = async (userId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("user_sessions")
         .update({
           is_active: false,

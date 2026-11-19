@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +32,7 @@ export function SendProfitSummaryButton({ date }: SendProfitSummaryButtonProps) 
         throw new Error("Missing required data");
       }
 
-      const { data, error } = await supabase.functions.invoke("send-daily-profit-summary", {
+      const { data, error } = await db.functions.invoke("send-daily-profit-summary", {
         body: {
           restaurant_id: restaurant.id,
           email,

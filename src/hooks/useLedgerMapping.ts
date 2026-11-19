@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type TriggerEvent = "creation" | "payment" | "reversal" | "other";
@@ -89,7 +89,7 @@ export function useLedgerMapping({ from, to, branchId }: Args) {
     enabled: !!tenantId,
     staleTime: 1000 * 60 * 2,
     queryFn: async (): Promise<LedgerMappingRow[]> => {
-      let expQ = supabase
+      let expQ = db
         .from("expenses")
         .select(
           "id, description, amount, expense_date, status, payment_method, branch_id, supplier_id, category_id",
@@ -111,7 +111,7 @@ export function useLedgerMapping({ from, to, branchId }: Args) {
       const categoryIds = Array.from(new Set(rows.map((r: any) => r.category_id).filter(Boolean)));
 
       const [legsRes, suppliersRes, categoriesRes, branchesRes, accountsRes] = await Promise.all([
-        supabase
+        db
           .from("account_transactions")
           .select(
             "id, account_id, batch_id, reference_id, transaction_date, debit, credit, is_voided, created_at",
@@ -121,13 +121,13 @@ export function useLedgerMapping({ from, to, branchId }: Args) {
           .in("reference_id", ids)
           .order("transaction_date", { ascending: true }),
         supplierIds.length
-          ? supabase.from("suppliers").select("id, name").in("id", supplierIds)
+          ? db.from("suppliers").select("id, name").in("id", supplierIds)
           : Promise.resolve({ data: [] } as any),
         categoryIds.length
-          ? supabase.from("expense_categories").select("id, name").in("id", categoryIds)
+          ? db.from("expense_categories").select("id, name").in("id", categoryIds)
           : Promise.resolve({ data: [] } as any),
-        supabase.from("branches").select("id, name"),
-        supabase
+        db.from("branches").select("id, name"),
+        db
           .from("chart_of_accounts")
           .select("id, account_code, account_name")
           .eq("tenant_id", tenantId!),
@@ -136,7 +136,7 @@ export function useLedgerMapping({ from, to, branchId }: Args) {
       const legs = (legsRes.data ?? []) as any[];
       const batchIds = Array.from(new Set(legs.map((l) => l.batch_id).filter(Boolean)));
       const batchesRes = batchIds.length
-        ? await supabase
+        ? await db
             .from("journal_entry_batches")
             .select("id, reference_number, entry_type, batch_date")
             .in("id", batchIds)

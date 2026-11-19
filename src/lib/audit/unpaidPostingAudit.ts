@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type UnpaidPostingEvent =
   | "attempted"
@@ -47,7 +47,7 @@ export async function logUnpaidPosting(args: LogUnpaidPostingArgs): Promise<void
       }
     }
 
-    await (supabase as unknown as {
+    await (db as unknown as {
       from: (t: string) => {
         insert: (row: Record<string, unknown>) => Promise<{ error: unknown }>;
       };

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 
@@ -25,7 +25,7 @@ export function useComplianceDashboard(from: string, to: string) {
   return useQuery({
     queryKey: ["compliance-dashboard", restaurant?.id, activeBranchId, from, to],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("compliance_branch_score", {
+      const { data, error } = await db.rpc("compliance_branch_score", {
         _restaurant_id: restaurant!.id,
         _branch_id: activeBranchId,
         _from: from,
@@ -63,7 +63,7 @@ export function useEmployeeSopSummary(from: string, to: string) {
   return useQuery({
     queryKey: ["compliance-employee-sop", restaurant?.id, activeBranchId, from, to],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("compliance_violations")
         .select(
           "id, status, violation_date, violation_type_id, responsible_staff_id, is_municipality_fine, staff:staff!compliance_violations_responsible_staff_id_fkey(id,name)",

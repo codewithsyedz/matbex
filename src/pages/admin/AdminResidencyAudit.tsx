@@ -18,7 +18,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { format } from "date-fns";
 import { ArrowRight, Download, Globe, Lock, LockOpen, RefreshCw, Shield } from "lucide-react";
 import { toast } from "sonner";
@@ -45,7 +45,7 @@ export default function AdminResidencyAudit() {
 
   const fetchLogs = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("audit_logs")
       .select("id, created_at, tenant_id, user_id, old_data, new_data, ip_address")
       .eq("action", "tenant.data_region.changed")
@@ -64,10 +64,10 @@ export default function AdminResidencyAudit() {
 
     const [tenantsRes, profilesRes] = await Promise.all([
       tenantIds.length
-        ? supabase.from("tenants").select("id, name").in("id", tenantIds)
+        ? db.from("tenants").select("id, name").in("id", tenantIds)
         : Promise.resolve({ data: [] as { id: string; name: string }[] }),
       userIds.length
-        ? supabase.from("profiles").select("id, full_name").in("id", userIds)
+        ? db.from("profiles").select("id, full_name").in("id", userIds)
         : Promise.resolve({ data: [] as { id: string; full_name: string | null }[] }),
     ]);
 
@@ -181,7 +181,7 @@ export default function AdminResidencyAudit() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-start justify-between gap-4">
+      <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-primary" />
@@ -194,7 +194,7 @@ export default function AdminResidencyAudit() {
             originating IP. Records are immutable and written by the database trigger.
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={fetchLogs} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
             Refresh

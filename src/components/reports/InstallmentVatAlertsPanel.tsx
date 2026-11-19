@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Skeleton } from "@/components/ui/skeleton";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 interface Props {
   tenantId?: string;
@@ -34,7 +34,7 @@ export function InstallmentVatAlertsPanel({
     queryKey: ["installment-vat-alerts", tenantId, branchId],
     enabled: !!tenantId,
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("installment_vat_mismatch_alerts")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -49,7 +49,7 @@ export function InstallmentVatAlertsPanel({
 
   const dismiss = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from("installment_vat_mismatch_alerts")
         .update({ status: "resolved", resolved_at: new Date().toISOString() })
         .eq("id", id);

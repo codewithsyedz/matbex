@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   AlertTriangle, RefreshCw, CheckCircle2, Filter, ShieldCheck, RotateCw, Download, Trash2, Layers,
 } from "lucide-react";
@@ -132,7 +132,7 @@ export default function AdminDLQ() {
   const load = async () => {
     setLoading(true);
     try {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("failed_sync_items")
         .select("*")
         .order("created_at", { ascending: false })
@@ -210,14 +210,14 @@ export default function AdminDLQ() {
     try {
       let count: number;
       if (batchId && action === "retry") {
-        const { data, error } = await (supabase as any).rpc("reprocess_failed_sync_batch", {
+        const { data, error } = await (db as any).rpc("reprocess_failed_sync_batch", {
           _batch_id: batchId,
           _reason: reason.trim() || "batch reprocess",
         });
         if (error) throw error;
         count = Number(data ?? 0);
       } else {
-        const { data, error } = await (supabase as any).rpc("bulk_manage_failed_sync_items", {
+        const { data, error } = await (db as any).rpc("bulk_manage_failed_sync_items", {
           _ids: ids,
           _action: action,
           _reason: reason.trim() || null,

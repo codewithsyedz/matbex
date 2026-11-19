@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -60,7 +60,7 @@ export function useComplianceConfig() {
   const settings = useQuery({
     queryKey: ["compliance-settings", rid],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_settings")
         .select("*")
         .eq("restaurant_id", rid!)
@@ -74,7 +74,7 @@ export function useComplianceConfig() {
   const categories = useQuery({
     queryKey: ["compliance-categories", rid],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_violation_categories")
         .select("*")
         .eq("restaurant_id", rid!)
@@ -89,7 +89,7 @@ export function useComplianceConfig() {
   const types = useQuery({
     queryKey: ["compliance-types", rid],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_violation_types")
         .select("*")
         .eq("restaurant_id", rid!)
@@ -104,7 +104,7 @@ export function useComplianceConfig() {
   const escalationRules = useQuery({
     queryKey: ["compliance-escalation", rid],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_escalation_rules")
         .select("*")
         .eq("restaurant_id", rid!)
@@ -123,7 +123,7 @@ export function useComplianceConfig() {
 
   const seedDefaults = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.rpc("seed_compliance_defaults", {
+      const { error } = await db.rpc("seed_compliance_defaults", {
         _restaurant_id: rid!,
       });
       if (error) throw error;
@@ -137,7 +137,7 @@ export function useComplianceConfig() {
 
   const saveSettings = useMutation({
     mutationFn: async (input: Partial<ComplianceSettings>) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("compliance_settings")
         .upsert({ ...input, restaurant_id: rid! } as never, { onConflict: "restaurant_id" });
       if (error) throw error;
@@ -153,8 +153,8 @@ export function useComplianceConfig() {
     mutationFn: async (input: Partial<ComplianceType> & { category_id: string; name_en: string }) => {
       const payload = { ...input, restaurant_id: rid! };
       const { error } = input.id
-        ? await supabase.from("compliance_violation_types").update(payload as never).eq("id", input.id)
-        : await supabase.from("compliance_violation_types").insert(payload as never);
+        ? await db.from("compliance_violation_types").update(payload as never).eq("id", input.id)
+        : await db.from("compliance_violation_types").insert(payload as never);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -168,8 +168,8 @@ export function useComplianceConfig() {
     mutationFn: async (input: Partial<ComplianceCategory> & { name_en: string; code: string }) => {
       const payload = { ...input, restaurant_id: rid! };
       const { error } = input.id
-        ? await supabase.from("compliance_violation_categories").update(payload as never).eq("id", input.id)
-        : await supabase.from("compliance_violation_categories").insert(payload as never);
+        ? await db.from("compliance_violation_categories").update(payload as never).eq("id", input.id)
+        : await db.from("compliance_violation_categories").insert(payload as never);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -183,8 +183,8 @@ export function useComplianceConfig() {
     mutationFn: async (input: Partial<EscalationRule> & { occurrence_count: number; action_label: string }) => {
       const payload = { ...input, restaurant_id: rid! };
       const { error } = input.id
-        ? await supabase.from("compliance_escalation_rules").update(payload as never).eq("id", input.id)
-        : await supabase.from("compliance_escalation_rules").insert(payload as never);
+        ? await db.from("compliance_escalation_rules").update(payload as never).eq("id", input.id)
+        : await db.from("compliance_escalation_rules").insert(payload as never);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -196,7 +196,7 @@ export function useComplianceConfig() {
 
   const deleteEscalationRule = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("compliance_escalation_rules").delete().eq("id", id);
+      const { error } = await db.from("compliance_escalation_rules").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {

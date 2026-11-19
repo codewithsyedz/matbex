@@ -9,7 +9,7 @@
 // they never disagree.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   generateZatcaQrBase64,
   validateZatcaInput,
@@ -133,7 +133,7 @@ export async function generateZatcaPdf(
     throw new Error(`ZATCA validation failed: ${v.errors.join("; ")}`);
   }
 
-  const { data, error } = await supabase.functions.invoke(
+  const { data, error } = await db.functions.invoke(
     "generate-zatca-receipt",
     {
       body: input,

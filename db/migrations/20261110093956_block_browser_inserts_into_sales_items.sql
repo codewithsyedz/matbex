@@ -1,0 +1,12 @@
+-- Sale lines are written only by POST /api/v1/pos/sales (server/src/modules/pos), which runs
+-- as the table owner. Every POS screen (RecordSale, RecordSaleMobile, SalesRecorder) and the
+-- offline replay (pos-sync) now go through it, so a browser can no longer insert lines
+-- directly with its own prices, quantities or a transaction of another sale.
+--
+-- Inserting a line is what deducts recipe stock and posts provisional COGS (trigger
+-- trg_sales_items_after_insert_cogs), so this also closes the path where a browser could move
+-- stock and the ledger without a sale. Reading, editing and deleting lines (sales history,
+-- customer tabs) are unchanged and still governed by RLS.
+--
+-- TRUNCATE ignores RLS; nobody outside the owner should ever have it.
+REVOKE INSERT, TRUNCATE ON public.sales_items FROM anon, authenticated;

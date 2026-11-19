@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { qk } from "@/lib/query/queryKeys";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -43,7 +43,7 @@ export function InventoryUsageTracker({ selectedDate = new Date(), shiftId }: In
     queryKey: ["inventory-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -59,7 +59,7 @@ export function InventoryUsageTracker({ selectedDate = new Date(), shiftId }: In
     queryKey: ["inventory-usage", restaurant?.id, dateStr],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_usage")
         .select("*, inventory_items(name, unit)")
         .eq("restaurant_id", restaurant.id)
@@ -88,7 +88,7 @@ export function InventoryUsageTracker({ selectedDate = new Date(), shiftId }: In
         throw new Error(`Insufficient stock: Available ${currentStock} ${inventoryItem.unit}, requested ${item.quantity_used}`);
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_usage")
         .insert({
           restaurant_id: restaurant.id,
@@ -131,7 +131,7 @@ export function InventoryUsageTracker({ selectedDate = new Date(), shiftId }: In
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("inventory_usage")
         .delete()
         .eq("id", id);

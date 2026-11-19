@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -105,7 +105,7 @@ export function useAccountTransactions(accountId?: string) {
       const maxPages = 6;
       const rows: AccountTransaction[] = [];
       for (let page = 0; page < maxPages; page++) {
-        let query = supabase
+        let query = db
           .from('account_transactions')
           .select(`
             *,
@@ -164,7 +164,7 @@ export function useAccountTransactions(accountId?: string) {
         throw new Error(validationError.message);
       }
 
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from('account_transactions')
         .insert({
           ...data,
@@ -232,7 +232,7 @@ export function useAccountTransactions(accountId?: string) {
         throw new Error(`Journal entry is unbalanced. Debits (${totalDebits.toFixed(2)}) must equal Credits (${totalCredits.toFixed(2)}).`);
       }
 
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from('account_transactions')
         .insert(
           transactions.map(tx => ({

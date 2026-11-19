@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -60,7 +60,7 @@ export function useJournalEntries() {
     queryFn: async () => {
       if (!tenantId) return [];
 
-      let q = supabase
+      let q = db
         .from("journal_entry_batches")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -83,7 +83,7 @@ export function useJournalEntries() {
   // Realtime: refresh the batch list as entries are submitted/approved/rejected.
   useEffect(() => {
     if (!tenantId) return;
-    const channel = supabase
+    const channel = db
       .channel(`journal-entry-batches-${tenantId}`)
       .on(
         "postgres_changes",
@@ -100,7 +100,7 @@ export function useJournalEntries() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [tenantId, queryClient]);
 
@@ -135,7 +135,7 @@ export function useJournalEntries() {
       // Accountants (and any non-manager who is allowed to post journals)
       // route through the approval RPC so the entry lands in "pending" state.
       if (!isManager) {
-        const { data: batchId, error: rpcError } = await supabase.rpc(
+        const { data: batchId, error: rpcError } = await db.rpc(
           "submit_pending_journal_entry",
           {
             p_description: data.description,
@@ -156,7 +156,7 @@ export function useJournalEntries() {
         return { id: batchId, pending: true } as unknown as JournalEntryBatch;
       }
 
-      const { data: batch, error: batchError } = await supabase
+      const { data: batch, error: batchError } = await db
         .from("journal_entry_batches")
         .insert({
           tenant_id: tenantId,
@@ -191,13 +191,13 @@ export function useJournalEntries() {
         batch_id: batch.id,
       }));
 
-      const { error: txError } = await supabase
+      const { error: txError } = await db
         .from("account_transactions")
         .insert(transactions);
 
       if (txError) {
         // Rollback batch if transactions fail
-        await supabase.from("journal_entry_batches").delete().eq("id", batch.id);
+        await db.from("journal_entry_batches").delete().eq("id", batch.id);
         throw txError;
       }
 
@@ -227,7 +227,7 @@ export function useJournalEntries() {
   const approveBatch = useMutation({
     mutationFn: async (batchId: string) => {
       currentApproveBatchIdRef.current = batchId;
-      const { data, error } = await supabase.rpc("approve_journal_entry", {
+      const { data, error } = await db.rpc("approve_journal_entry", {
         p_batch_id: batchId,
       });
       if (error) throw error;
@@ -266,7 +266,7 @@ export function useJournalEntries() {
   // direct poster: clears pending status without re-posting anything.
   const acknowledgeBatch = useMutation({
     mutationFn: async (batchId: string) => {
-      const { data, error } = await supabase.rpc("acknowledge_posted_journal_entry" as any, {
+      const { data, error } = await db.rpc("acknowledge_posted_journal_entry" as any, {
         p_batch_id: batchId,
       });
       if (error) throw error;
@@ -285,7 +285,7 @@ export function useJournalEntries() {
 
   const rejectBatch = useMutation({
     mutationFn: async ({ batchId, reason }: { batchId: string; reason: string }) => {
-      const { data, error } = await supabase.rpc("reject_journal_entry", {
+      const { data, error } = await db.rpc("reject_journal_entry", {
         p_batch_id: batchId,
         p_reason: reason,
       });
@@ -308,7 +308,7 @@ export function useJournalEntries() {
       const failed: { id: string; message: string }[] = [];
       let succeeded = 0;
       for (const id of batchIds) {
-        const { error } = await supabase.rpc("approve_journal_entry", { p_batch_id: id });
+        const { error } = await db.rpc("approve_journal_entry", { p_batch_id: id });
         if (error) failed.push({ id, message: error.message });
         else succeeded += 1;
       }
@@ -337,7 +337,7 @@ export function useJournalEntries() {
       const failed: { id: string; message: string }[] = [];
       let succeeded = 0;
       for (const id of batchIds) {
-        const { error } = await supabase.rpc("reject_journal_entry", {
+        const { error } = await db.rpc("reject_journal_entry", {
           p_batch_id: id,
           p_reason: reason,
         });
@@ -364,7 +364,7 @@ export function useJournalEntries() {
 
   const voidTransaction = useMutation({
     mutationFn: async ({ transactionId, reason }: { transactionId: string; reason: string }) => {
-      const { data, error } = await supabase.rpc("void_transaction", {
+      const { data, error } = await db.rpc("void_transaction", {
         p_transaction_id: transactionId,
         p_reason: reason,
       });

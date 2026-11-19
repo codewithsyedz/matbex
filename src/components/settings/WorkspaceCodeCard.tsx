@@ -11,7 +11,7 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import { Checkbox } from "@/components/ui/checkbox";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 function slugify(name: string): string {
@@ -127,7 +127,7 @@ export function WorkspaceCodeCard() {
     if (!tenant?.id) return;
     setSaving(true);
     try {
-      const { data: conflict } = await supabase
+      const { data: conflict } = await db
         .from("tenants")
         .select("id")
         .eq("slug", clean)
@@ -137,7 +137,7 @@ export function WorkspaceCodeCard() {
         toast.error(`"${clean}" is already taken`);
         return;
       }
-      const { error } = await supabase
+      const { error } = await db
         .from("tenants")
         .update({ slug: clean })
         .eq("id", tenant.id);
