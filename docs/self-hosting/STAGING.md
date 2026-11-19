@@ -127,6 +127,25 @@ they can be downloaded by hand. The 123 `menu_items.image_url` links were then s
 old host to `https://staging-api.matbex.com` (on cutover day the data move's
 `--steps urls --rewrite-urls --yes` does this against the restored export).
 
+## Cutover rehearsal (production data, separate database)
+
+Runs the whole cutover path (empty schema → data move → repairs → smoke test) on a fresh export without
+touching staging's own database: `deploy/staging-cutover-rehearsal.sh` targets a database named `rehearsal`
+in the same Postgres and starts its own API and PostgREST (jobs off, no Redis, nothing sent).
+
+```sh
+ssh matbex-staging 'cd ~/matbex && bash server/scripts/restore-lovable-export.sh ~/export/<file>.backup'
+ssh matbex-staging 'bash ~/matbex/deploy/staging-cutover-rehearsal.sh setup'
+ssh matbex-staging 'bash ~/matbex/deploy/staging-cutover-rehearsal.sh move --skip files,urls'              # dry run
+ssh matbex-staging 'bash ~/matbex/deploy/staging-cutover-rehearsal.sh move --yes --fresh --skip files,urls'
+ssh matbex-staging 'bash ~/matbex/deploy/staging-cutover-rehearsal.sh smoke'
+ssh matbex-staging 'bash ~/matbex/deploy/staging-cutover-rehearsal.sh cleanup && rm ~/export/<file>.backup ~/export/.prodcopy-pw'
+```
+
+Done 2026-11-19 with the export of 2026-11-18 at commit 8f872fe: 687 migrations, no drift, 327/327 tables
+(651,604 rows) in 1 min 39 s, fixups seeded the chart of accounts for 4 tenants with 0 balance changes,
+**16 repairs applied**, smoke 27/27. Timings per step are in MIGRATION.md section 5, step 6.
+
 ## Backups
 
 Nightly encrypted database and file backups to Cloudflare R2, with a tested restore: see [BACKUPS.md](BACKUPS.md).

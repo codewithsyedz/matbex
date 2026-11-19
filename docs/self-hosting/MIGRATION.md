@@ -143,6 +143,18 @@ Do a full dry run on a staging server with a copy of production first; time each
    run `npm --prefix server run smoke` against the new API, log in as an owner, cashier and accountant, run a sale on a
    POS terminal, post a day-end, and run P&L and VAT reports. Check the cron job list the script printed against
    what you expect to run, and remove any that should not (`delete from cron.job where jobname = ...`).
+
+   **Done 2026-11-19** with the export of 2026-11-18 (7 tenants, 16 users, 51,111 sales), into a throwaway
+   `rehearsal` database on staging (`deploy/staging-cutover-rehearsal.sh`; STAGING.md, "Cutover rehearsal"):
+   schema from empty (687 migrations), dry run with no drift (8.9 s), then `--yes --fresh --skip files,urls`
+   in **1 min 39 s**: preflight 6.7 s, auth 0.3 s, data 87 s (324 tables), storage rows 0.2 s, cron 0.4 s
+   (20 jobs, all switched **on**), verify 2.8 s (**327/327 tables, 651,604 rows, 0 mismatches**), fixups 0.3 s
+   (chart of accounts seeded for 4 tenants, 0 balance changes), repairs 0.4 s (**16 applied**). Smoke test
+   27/27 against an API on that database. One harmless warning: the bulk truncate of the target hits a
+   foreign key and falls back to clearing table by table. Not covered: the `files` step (Lovable's export has
+   no files; 2,857 objects, 534 MB) and the hand checks above (roles, POS sale, day-end, reports).
+   Production also holds three buckets of old database exports (`database_export_10_11_26`, `_15_11_26`,
+   `_18_11_26`); they contain password hashes, so leave them out of the `files` step or delete them after.
 7. **On cutover day:** freeze writes (step 3), then run `--yes --fresh` against production's new database, then
    `--steps urls --rewrite-urls --yes`. Do not switch DNS until `verify` passes with 0 mismatches.
 
