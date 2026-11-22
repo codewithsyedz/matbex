@@ -114,7 +114,7 @@ export function ZatcaFailuresPanel() {
       const { data, error } = await db
         .from("sales_transactions")
         .select(
-          "id, receipt_number, created_at, total_amount, zatca_device_id, zatca_uuid, zatca_invoice_hash, zatca_signed_xml_url, zatca_clearance_status, zatca_clearance_response",
+          "id, receipt_number, created_at, total_amount:total, zatca_device_id, zatca_uuid, zatca_invoice_hash, zatca_signed_xml_url, zatca_clearance_status, zatca_clearance_response",
         )
         .not("zatca_uuid", "is", null)
         .in("zatca_clearance_status", ["REJECTED", "SCHEMA_INVALID", "PENDING"])

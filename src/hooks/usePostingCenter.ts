@@ -165,38 +165,36 @@ export function usePostingAudit(branchId: string | null, limit = 100) {
     queryKey: ["posting-audit", tenantId, branchId, limit],
     enabled: !!tenantId,
     queryFn: async () => {
+      // expense_posting_audit has no foreign keys to profiles or branches, so embeds fail (400);
+      // the names are looked up separately.
       let q = (db as any)
         .from("expense_posting_audit")
         .select(
           `id, expense_id, branch_id, action, outcome, reason_code, reason_detail,
            batch_id, transaction_ids, dr_total, cr_total, trigger_source,
-           triggered_by, created_at,
-           triggered_by_profile:profiles!expense_posting_audit_triggered_by_fkey(full_name),
-           branch:branches!expense_posting_audit_branch_id_fkey(name)`
+           triggered_by, created_at`
         )
         .eq("tenant_id", tenantId)
         .order("created_at", { ascending: false })
         .limit(limit);
       if (branchId) q = q.eq("branch_id", branchId);
       const { data, error } = await q;
-      if (error) {
-        // Fallback without foreign-key embeds (FK may not be declared explicitly)
-        let q2 = (db as any)
-          .from("expense_posting_audit")
-          .select(
-            `id, expense_id, branch_id, action, outcome, reason_code, reason_detail,
-             batch_id, transaction_ids, dr_total, cr_total, trigger_source,
-             triggered_by, created_at`
-          )
-          .eq("tenant_id", tenantId)
-          .order("created_at", { ascending: false })
-          .limit(limit);
-        if (branchId) q2 = q2.eq("branch_id", branchId);
-        const { data: d2, error: e2 } = await q2;
-        if (e2) throw e2;
-        return (d2 ?? []) as PostingAuditRow[];
-      }
-      return (data ?? []) as PostingAuditRow[];
+      if (error) throw error;
+      const rows = (data ?? []) as PostingAuditRow[];
+
+      const userIds = [...new Set(rows.map((r) => r.triggered_by).filter(Boolean))] as string[];
+      const branchIds = [...new Set(rows.map((r) => r.branch_id).filter(Boolean))] as string[];
+      const [profilesRes, branchesRes]: any[] = await Promise.all([
+        userIds.length ? (db as any).from("profiles").select("id, full_name").in("id", userIds) : { data: [] },
+        branchIds.length ? (db as any).from("branches").select("id, name").in("id", branchIds) : { data: [] },
+      ]);
+      const names = new Map<string, string | null>((profilesRes.data ?? []).map((p: any) => [p.id, p.full_name]));
+      const branches = new Map<string, string>((branchesRes.data ?? []).map((b: any) => [b.id, b.name]));
+      return rows.map((r) => ({
+        ...r,
+        triggered_by_profile: r.triggered_by && names.has(r.triggered_by) ? { full_name: names.get(r.triggered_by) ?? null } : null,
+        branch: r.branch_id && branches.has(r.branch_id) ? { name: branches.get(r.branch_id)! } : null,
+      }));
     },
     staleTime: 15_000,
   });

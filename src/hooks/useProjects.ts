@@ -342,7 +342,7 @@ export function useProjects(projectId?: string | null) {
       const { data, error } = await db
         .from("account_transactions")
         .select(
-          "id, transaction_date, debit, credit, description, reference_type, is_voided, batch_id, chart_of_accounts!inner(code, account_type), journal_entry_batches!inner(entry_type, approval_status, is_posted, project_id, description)",
+          "id, transaction_date, debit, credit, description, reference_type, is_voided, batch_id, chart_of_accounts!inner(account_code, account_type), journal_entry_batches!inner(entry_type, approval_status, is_posted, project_id, description)",
         )
         .eq("project_id", pid)
         .eq("is_voided", false);
@@ -359,7 +359,7 @@ export function useProjects(projectId?: string | null) {
             id: r.id as string,
             label: r.description || r.journal_entry_batches?.description || "Journal adjustment",
             date: r.transaction_date ?? null,
-            account_code: r.chart_of_accounts?.code ?? null,
+            account_code: r.chart_of_accounts?.account_code ?? null,
             side: isCostAccount ? "cost" : "funding",
             amount: isCostAccount ? debit - credit : credit - debit,
             approval_status: r.journal_entry_batches?.approval_status ?? "approved",

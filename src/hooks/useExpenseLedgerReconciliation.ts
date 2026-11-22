@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { fetchTenantRestaurantIds } from "@/lib/tenantRestaurants";
 
 export type ExpenseLedgerIssue =
   | "ok"
@@ -74,6 +75,8 @@ export function useExpenseLedgerReconciliation(filters: ExpenseLedgerReconFilter
     enabled: !!tenantId,
     staleTime: 1000 * 60,
     queryFn: async (): Promise<ExpenseLedgerReconRow[]> => {
+      // Branches and suppliers belong to restaurants; the business id is not a restaurant id.
+      const restaurantIds = await fetchTenantRestaurantIds(tenantId!);
       let expQ: any = (db as any)
         .from("expenses")
         .select(
@@ -89,8 +92,8 @@ export function useExpenseLedgerReconciliation(filters: ExpenseLedgerReconFilter
 
       const [expRes, branchRes, supplierRes]: any[] = await Promise.all([
         expQ,
-        (db as any).from("branches").select("id, name").eq("tenant_id", tenantId!),
-        (db as any).from("suppliers").select("id, name").eq("restaurant_id", tenantId!),
+        (db as any).from("branches").select("id, name").in("restaurant_id", restaurantIds),
+        (db as any).from("suppliers").select("id, name").in("restaurant_id", restaurantIds),
       ]);
       const expenses = expRes.data as any[] | null;
       const expErr = expRes.error;

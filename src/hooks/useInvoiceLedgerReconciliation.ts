@@ -3,6 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { fetchTenantRestaurantIds } from "@/lib/tenantRestaurants";
 import {
   evaluateInvoiceReconciliation,
   round2,
@@ -76,10 +77,13 @@ export function useInvoiceLedgerReconciliation(filters: InvoiceReconFilters) {
     enabled: !!tenantId,
     staleTime: 1000 * 60,
     queryFn: async (): Promise<InvoiceReconRow[]> => {
+      // Invoices, branches and suppliers belong to restaurants; the business id is not a restaurant id.
+      const restaurantIds = await fetchTenantRestaurantIds(tenantId!);
+      if (restaurantIds.length === 0) return [];
       let invQ: any = (db as any)
         .from("purchase_invoices")
         .select("id, invoice_number, invoice_date, subtotal, total_amount, tax_amount, supplier_id, branch_id")
-        .eq("restaurant_id", tenantId!)
+        .in("restaurant_id", restaurantIds)
         .order("invoice_date", { ascending: false })
         .limit(2000);
       if (branchKey) invQ = invQ.eq("branch_id", branchKey);
@@ -88,8 +92,8 @@ export function useInvoiceLedgerReconciliation(filters: InvoiceReconFilters) {
 
       const [invRes, branchRes, supplierRes]: any[] = await Promise.all([
         invQ,
-        (db as any).from("branches").select("id, name").eq("tenant_id", tenantId!),
-        (db as any).from("suppliers").select("id, name").eq("restaurant_id", tenantId!),
+        (db as any).from("branches").select("id, name").in("restaurant_id", restaurantIds),
+        (db as any).from("suppliers").select("id, name").in("restaurant_id", restaurantIds),
       ]);
       if (invRes.error) throw invRes.error;
       const invoices = (invRes.data ?? []) as any[];
