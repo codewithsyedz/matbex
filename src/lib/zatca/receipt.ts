@@ -88,6 +88,8 @@ export interface GenerateZatcaPdfInput {
   cashierName?: string | null;
   customerName?: string | null;
   paymentMethod: string;
+  /** Split tender: every tender (and cash change) is printed on the receipt. */
+  payments?: { method: string; amount: number; tendered?: number | null; change_given?: number | null }[] | null;
   header?: string | null;
   footer?: string | null;
   currencySymbol?: string | null;

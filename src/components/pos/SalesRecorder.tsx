@@ -28,16 +28,16 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Plus, Minus, ShoppingCart, Receipt, Trash2, CreditCard, Banknote, Wallet, QrCode, ImageIcon, Search, Info, UtensilsCrossed } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Receipt, Trash2, CreditCard, Banknote, Wallet, QrCode, ImageIcon, Search, Info, UtensilsCrossed, SplitSquareHorizontal } from "lucide-react";
 import { QRScanner } from "./QRScanner";
 import { usePOSHardware } from "@/hooks/usePOSHardware";
 import { recordOfflineSale } from "@/lib/offline/posService";
-import { quoteSale, recordSale, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize } from "@/lib/api/pos";
+import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize, type SaleTender } from "@/lib/api/pos";
 import { ApiError } from "@/lib/api/http";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
 import { useBranchVatRate } from "@/hooks/useBranchVatRate";
 import { PricingBranchBanner } from "@/components/pos/PricingBranchBanner";
-import { lineGross, splitListed, sumMoney } from "@/lib/vatInclusive";
+import { lineGross, roundMoney, splitListed, sumMoney } from "@/lib/vatInclusive";
 import { useTranslation } from "react-i18next";
 
 interface CartItem {
@@ -61,6 +61,22 @@ interface MenuItem {
   image_url?: string | null;
 }
 
+type TenderMethod = "cash" | "card" | "other";
+
+/** One tender of a split payment, as the cashier enters it. */
+interface DraftTender {
+  id: string;
+  method: TenderMethod;
+  /** Amount of the sale this tender pays (text input). */
+  amount: string;
+  /** Cash only: what the customer handed over (change = tendered - amount). */
+  tendered: string;
+  /** Set once the terminal approved this tender; it is not charged again on retry. */
+  approval?: CardTerminalApproval | null;
+}
+
+const money = (v: string) => roundMoney(parseFloat(v) || 0);
+
 interface QRData {
   restaurantId: string;
   menuItemId: string;
@@ -78,7 +94,8 @@ export function SalesRecorder() {
   const [isOpen, setIsOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "other">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<TenderMethod | "split">("cash");
+  const [tenders, setTenders] = useState<DraftTender[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
@@ -156,13 +173,29 @@ export function SalesRecorder() {
       const shiftId = activeShifts[0]?.id || null;
       // One key per checkout, shared by the online attempt and the offline queue.
       const saleKey = crypto.randomUUID();
+      const split = paymentMethod === "split";
       const order = {
         restaurantId: restaurant.id,
         branchId: priceBranchId ?? null,
         shiftId,
-        paymentMethod,
+        ...(split ? {} : { paymentMethod }),
         lines: cart.map((c) => ({ menuItemId: c.menuItemId, size: (c.size ?? "regular") as SaleLineSize, quantity: c.quantity, unitPrice: c.unitPrice })),
       };
+
+      // Split tender: the entered tenders must cover the total exactly before anything is charged.
+      const parts = split
+        ? tenders.map((d) => ({ ...d, amt: money(d.amount) })).filter((d) => d.amt > 0)
+        : [];
+      if (split && (parts.length < 2 || Math.abs(sumMoney(parts.map((p) => p.amt)) - total) >= 0.005)) {
+        throw new Error(t("app.pos.recorder.splitIncomplete"));
+      }
+      const toPayments = (): SaleTender[] =>
+        parts.map((p) => ({
+          method: p.method,
+          amount: p.amt,
+          tendered: p.method === "cash" && p.tendered.trim() ? money(p.tendered) : null,
+          cardTerminal: p.method === "card" ? p.approval ?? null : null,
+        }));
 
       const queueOffline = async () => {
         const result = await recordOfflineSale({
@@ -171,7 +204,15 @@ export function SalesRecorder() {
           idempotencyKey: saleKey,
           cashierId: user.id,
           shiftId,
-          paymentMethod,
+          paymentMethod: split ? "split" : paymentMethod,
+          payments: split
+            ? toPayments().map((p) => ({
+                method: p.method,
+                amount: p.amount,
+                tendered: p.tendered ?? null,
+                cardTerminal: p.cardTerminal?.provider === "hala" ? { ...p.cardTerminal, provider: "hala" as const } : null,
+              }))
+            : null,
           vatRate,
           pricesVatInclusive: pricesInclusive,
           branchName: activeBranch?.name ?? null,
@@ -208,7 +249,52 @@ export function SalesRecorder() {
       // first and only record the sale on an approved response, so the card and the receipt
       // always show the same amount.
       let cardTerminal: RecordSaleInput["cardTerminal"] = null;
-      if (paymentMethod === "card" && posSettings?.hala_enabled) {
+      if (split) {
+        // Each card tender is charged on the terminal for its own amount. A declined card
+        // stops here: tenders already approved keep their approval, the cashier changes the
+        // declined one and pays the rest.
+        const integrated = posSettings?.hala_enabled ? "hala" : moyasar.enabled ? "moyasar" : null;
+        const toCharge = integrated ? parts.filter((p) => p.method === "card" && !p.approval) : [];
+        if (toCharge.length) {
+          const quote = await quoteSale(order);
+          const stale = quote.lines
+            .map((q, i) => ({ menuItemId: q.menuItemId, size: q.size, shown: order.lines[i].unitPrice, current: q.unitPrice }))
+            .filter((l) => Math.abs(l.shown - l.current) >= 0.005);
+          if (stale.length) throw applyCurrentPrices(stale);
+          if (Math.abs(quote.total - total) >= 0.005) throw new Error(t("app.pos.recorder.splitIncomplete"));
+        }
+        for (const p of toCharge) {
+          let approval: CardTerminalApproval;
+          if (integrated === "hala") {
+            toast.info("Sending amount to Hala terminal...", { id: "hala-charge" });
+            const { data, error } = await db.functions.invoke("charge-hala-card", {
+              body: {
+                amount: p.amt,
+                currency: "SAR",
+                terminalId: posSettings!.hala_terminal_id,
+                receiptNumber: `POS-${saleKey.slice(0, 8)}-${p.id.slice(0, 4)}`,
+                mock: posSettings!.hala_mock_mode ?? true,
+                approveProbability: posSettings!.hala_approve_probability ?? 0.9,
+              },
+            });
+            toast.dismiss("hala-charge");
+            if (error) throw new Error(`Hala terminal error: ${error.message}`);
+            if (data?.status !== "approved") {
+              throw new Error(
+                data?.status === "declined"
+                  ? `Card declined for ${formatCurrency(p.amt)}${data?.message ? ` - ${data.message}` : ""}. Change that payment and pay the rest.`
+                  : `Hala terminal did not approve ${formatCurrency(p.amt)}`,
+              );
+            }
+            approval = { provider: "hala", status: data.status, reference: data.reference ?? null, response: data };
+          } else {
+            const intentId = await moyasar.charge({ amount: p.amt, branchId: activeBranchId ?? null, description: `${restaurant?.name ?? "Matbex"} POS` });
+            approval = { provider: "moyasar", status: "approved", reference: intentId };
+          }
+          p.approval = approval;
+          setTenders((prev) => prev.map((d) => (d.id === p.id ? { ...d, approval } : d)));
+        }
+      } else if (paymentMethod === "card" && posSettings?.hala_enabled) {
         const quote = await quoteSale(order);
         const stale = quote.lines
           .map((q, i) => ({ menuItemId: q.menuItemId, size: q.size, shown: order.lines[i].unitPrice, current: q.unitPrice }))
@@ -258,9 +344,14 @@ export function SalesRecorder() {
       // (database trigger, once), food-cost usage, reorder requests, kitchen ticket.
       let saved;
       try {
-        saved = await recordSale({ ...order, cardTerminal }, { idempotencyKey: saleKey });
+        saved = await recordSale(
+          split ? { ...order, payments: toPayments() } : { ...order, cardTerminal },
+          { idempotencyKey: saleKey },
+        );
       } catch (error) {
-        if (!(error instanceof ApiError) && !cardTerminal) return queueOffline();
+        // Online-only card approvals (Moyasar) cannot be queued; terminal (Hala) ones can.
+        const onlineOnly = split ? parts.some((p) => p.approval?.provider === "moyasar") : !!cardTerminal;
+        if (!(error instanceof ApiError) && !onlineOnly) return queueOffline();
         if (error instanceof ApiError && error.code === "price_changed") {
           throw applyCurrentPrices((error.details as PriceChangedDetails | undefined)?.lines ?? []);
         }
@@ -280,6 +371,7 @@ export function SalesRecorder() {
       queryClient.invalidateQueries({ queryKey: ["inventory-usage"] });
       queryClient.invalidateQueries({ queryKey: ["reorder-requests"] });
       setCart([]);
+      setTenders([]);
       setIsOpen(false);
       if (result?.offline) {
         toast.success(`Queued offline · ${result.receiptNumber}`, {
@@ -413,6 +505,20 @@ export function SalesRecorder() {
   const getCartItemKey = (item: CartItem) => `${item.menuItemId}-${item.size || "default"}`;
 
   const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  // What the guest pays (VAT-inclusive, same rounding as the server): split tenders add up to it.
+  const payTotal = useMemo(
+    () => splitListed(sumMoney(cart.map((item) => lineGross(item.unitPrice, item.quantity))), vatRate, pricesInclusive).gross,
+    [cart, vatRate, pricesInclusive],
+  );
+  const tenderSum = sumMoney(tenders.map((d) => money(d.amount)));
+  const remaining = roundMoney(payTotal - tenderSum);
+  const splitReady =
+    tenders.filter((d) => money(d.amount) > 0).length >= 2 && Math.abs(remaining) < 0.005 &&
+    tenders.every((d) => d.method !== "cash" || !d.tendered.trim() || money(d.tendered) >= money(d.amount));
+  const addTender = (method: TenderMethod, amount: number) =>
+    setTenders((prev) => [...prev, { id: crypto.randomUUID(), method, amount: amount > 0 ? amount.toFixed(2) : "", tendered: "" }]);
+  const updateTender = (id: string, patch: Partial<DraftTender>) =>
+    setTenders((prev) => prev.map((d) => (d.id === id ? { ...d, ...patch } : d)));
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   // Check if item has size variants
@@ -704,7 +810,7 @@ export function SalesRecorder() {
 
               <div className="space-y-2">
                 <label className="text-xs text-muted-foreground">{t("app.pos.mobile.paymentMethod")}</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant={paymentMethod === "cash" ? "default" : "outline"}
                     size="sm"
@@ -732,12 +838,110 @@ export function SalesRecorder() {
                     <Wallet className="h-4 w-4" />
                     {t("app.sales.paymentMethods.other")}
                   </Button>
+                  <Button
+                    variant={paymentMethod === "split" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPaymentMethod("split")}
+                    className="h-9 gap-1.5"
+                  >
+                    <SplitSquareHorizontal className="h-4 w-4" />
+                    {t("app.pos.recorder.split")}
+                  </Button>
                 </div>
               </div>
 
+              {paymentMethod === "split" && (
+                <div className="space-y-2 rounded-lg border border-border/60 bg-card p-2">
+                  <p className="text-xs text-muted-foreground">{t("app.pos.recorder.splitHelp")}</p>
+                  {tenders.map((d) => {
+                    const approved = !!d.approval;
+                    const change = d.method === "cash" && d.tendered.trim() ? roundMoney(money(d.tendered) - money(d.amount)) : null;
+                    return (
+                      <div key={d.id} className="space-y-1 rounded-md border border-border/40 p-2">
+                        <div className="flex items-center gap-1.5">
+                          <Select value={d.method} disabled={approved} onValueChange={(v) => updateTender(d.id, { method: v as TenderMethod, tendered: "" })}>
+                            <SelectTrigger className="h-8 w-24 text-xs" aria-label={t("app.pos.mobile.paymentMethod")}>
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="cash">{t("app.sales.paymentMethods.cash")}</SelectItem>
+                              <SelectItem value="card">{t("app.sales.paymentMethods.card")}</SelectItem>
+                              <SelectItem value="other">{t("app.sales.paymentMethods.other")}</SelectItem>
+                            </SelectContent>
+                          </Select>
+                          <Input
+                            type="number"
+                            inputMode="decimal"
+                            min={0}
+                            step="0.01"
+                            className="h-8 text-xs"
+                            aria-label={t("app.pos.recorder.amount")}
+                            placeholder={t("app.pos.recorder.amount")}
+                            value={d.amount}
+                            disabled={approved}
+                            onChange={(e) => updateTender(d.id, { amount: e.target.value })}
+                          />
+                          {approved ? (
+                            <Badge variant="secondary" className="text-[10px]">{t("app.pos.recorder.approved")}</Badge>
+                          ) : (
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-8 w-8 shrink-0 text-destructive hover:text-destructive"
+                              aria-label="Remove payment"
+                              onClick={() => setTenders((prev) => prev.filter((x) => x.id !== d.id))}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          )}
+                        </div>
+                        {d.method === "cash" && (
+                          <div className="flex items-center gap-1.5">
+                            <Input
+                              type="number"
+                              inputMode="decimal"
+                              min={0}
+                              step="0.01"
+                              className="h-8 text-xs"
+                              aria-label={t("app.pos.recorder.tendered")}
+                              placeholder={t("app.pos.recorder.tendered")}
+                              value={d.tendered}
+                              onChange={(e) => updateTender(d.id, { tendered: e.target.value })}
+                            />
+                            {change != null && (
+                              <span className={`whitespace-nowrap text-xs ${change < 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                                {t("app.pos.recorder.change")}: {formatCurrency(Math.max(0, change))}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-muted-foreground">{t("app.pos.recorder.remaining")}</span>
+                    <span className={`font-semibold ${Math.abs(remaining) < 0.005 ? "" : "text-destructive"}`}>{formatCurrency(remaining)}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" disabled={remaining <= 0} onClick={() => addTender("cash", remaining)}>
+                      <Banknote className="h-3.5 w-3.5" />
+                      {t("app.pos.recorder.restCash")}
+                    </Button>
+                    <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" disabled={remaining <= 0} onClick={() => addTender("card", remaining)}>
+                      <CreditCard className="h-3.5 w-3.5" />
+                      {t("app.pos.recorder.restCard")}
+                    </Button>
+                  </div>
+                  <Button variant="ghost" size="sm" className="h-8 w-full gap-1 text-xs" onClick={() => addTender("cash", 0)}>
+                    <Plus className="h-3.5 w-3.5" />
+                    {t("app.pos.recorder.addTender")}
+                  </Button>
+                </div>
+              )}
+
               <Button
                 className="w-full h-11 gap-2"
-                disabled={cart.length === 0 || recordSaleMutation.isPending}
+                disabled={cart.length === 0 || recordSaleMutation.isPending || (paymentMethod === "split" && !splitReady)}
                 onClick={() => recordSaleMutation.mutate()}
               >
                 <Receipt className="h-4 w-4" />

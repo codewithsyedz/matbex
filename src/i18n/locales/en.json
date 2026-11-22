@@ -1722,7 +1722,8 @@
       "paymentMethods": {
         "cash": "Cash",
         "card": "Card",
-        "other": "Other"
+        "other": "Other",
+        "split": "Split"
       },
       "table": {
         "receipt": "Receipt",
@@ -1886,7 +1887,19 @@
         "add": "Add",
         "emptyCart": "Cart is empty",
         "processing": "Processing...",
-        "pay": "Pay {{total}}"
+        "pay": "Pay {{total}}",
+        "split": "Split",
+        "splitTitle": "Split payment",
+        "remaining": "Remaining",
+        "change": "Change",
+        "tendered": "Cash given",
+        "amount": "Amount",
+        "restCash": "Rest in cash",
+        "restCard": "Rest by card",
+        "addTender": "Add payment",
+        "approved": "Approved",
+        "splitIncomplete": "Tenders must add up to the total before paying",
+        "splitHelp": "Add payments until the remaining balance is 0. Each card payment is charged on the terminal for its own amount."
       },
       "order": {
         "empty": "Cart is empty",

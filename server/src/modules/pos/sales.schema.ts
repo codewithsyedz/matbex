@@ -1,19 +1,45 @@
 /**
  * Request/response contract for POST /api/v1/pos/sales (validated by Fastify's AJV).
  */
+import type { CardTerminal, PaymentInput, TenderMethod } from "./tenders.js";
+
 const uuid = { type: "string", format: "uuid" } as const;
 
 export const createSaleBody = {
   type: "object",
   additionalProperties: false,
-  required: ["restaurantId", "paymentMethod", "lines"],
+  required: ["restaurantId", "lines"],
+  // How the sale was paid: `payments` (one or more tenders), or the original single
+  // `paymentMethod` (+ `cardTerminal`) that old builds and offline replays send.
+  anyOf: [{ required: ["paymentMethod"] }, { required: ["payments"] }],
   properties: {
     restaurantId: uuid,
     branchId: { ...uuid, nullable: true },
     shiftId: { ...uuid, nullable: true },
     customerId: { ...uuid, nullable: true },
     tableId: { ...uuid, nullable: true },
-    paymentMethod: { type: "string", enum: ["cash", "card", "other"] },
+    paymentMethod: { type: "string", enum: ["cash", "card", "other", "split"] },
+    /**
+     * Split tender: the tenders that pay the sale; amounts add up to the server-priced total.
+     * Only cash may carry `tendered` (what the customer handed over; change = tendered - amount).
+     * Each card tender charged on an integrated terminal carries its own approval.
+     */
+    payments: {
+      type: "array",
+      minItems: 1,
+      maxItems: 10,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["method", "amount"],
+        properties: {
+          method: { type: "string", enum: ["cash", "card", "other"] },
+          amount: { type: "number", exclusiveMinimum: 0, maximum: 10000000 },
+          tendered: { type: "number", minimum: 0, maximum: 10000000, nullable: true },
+          cardTerminal: { $ref: "#/definitions/cardTerminal" },
+        },
+      },
+    },
     settlement: { type: "string", enum: ["paid", "unpaid"], default: "paid" },
     /** Backdating is allowed for unpaid (credit) sales only. ISO 8601. */
     createdAt: { type: "string", format: "date-time", nullable: true },
@@ -66,17 +92,7 @@ export const createSaleBody = {
      * Approval from an integrated card payment, stored on the sale for audit. Hala: the terminal's
      * answer. Moyasar: reference = the payment intent id; the server checks that intent itself.
      */
-    cardTerminal: {
-      type: "object",
-      additionalProperties: false,
-      required: ["provider", "status"],
-      properties: {
-        provider: { type: "string", enum: ["hala", "moyasar"] },
-        status: { type: "string", maxLength: 40 },
-        reference: { type: "string", maxLength: 200, nullable: true },
-        response: { type: "object", nullable: true },
-      },
-    },
+    cardTerminal: { $ref: "#/definitions/cardTerminal" },
     invoice: {
       type: "object",
       additionalProperties: false,
@@ -86,6 +102,19 @@ export const createSaleBody = {
         buyerVat: { type: "string", maxLength: 30, nullable: true },
         buyerOtherId: { type: "string", maxLength: 60, nullable: true },
         buyerAddress: { type: "string", maxLength: 500, nullable: true },
+      },
+    },
+  },
+  definitions: {
+    cardTerminal: {
+      type: "object",
+      additionalProperties: false,
+      required: ["provider", "status"],
+      properties: {
+        provider: { type: "string", enum: ["hala", "moyasar"] },
+        status: { type: "string", maxLength: 40 },
+        reference: { type: "string", maxLength: 200, nullable: true },
+        response: { type: "object", nullable: true },
       },
     },
   },
@@ -102,14 +131,16 @@ export interface CreateSaleInput {
   shiftId?: string | null;
   customerId?: string | null;
   tableId?: string | null;
-  paymentMethod: "cash" | "card" | "other";
+  /** Single-method sales; 'split' only together with payments. */
+  paymentMethod?: "cash" | "card" | "other" | "split";
+  payments?: PaymentInput[] | null;
   settlement?: "paid" | "unpaid";
   createdAt?: string | null;
   lines: { menuItemId?: string; comboId?: string; size?: SaleLineSize; quantity: number; unitPrice?: number }[];
   offline?: { receiptNumber: string; createdAt: string } | null;
   documentDiscount?: number;
   documentSurcharge?: number;
-  cardTerminal?: { provider: "hala" | "moyasar"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
+  cardTerminal?: CardTerminal | null;
   invoice?: {
     subtype?: "SIMPLIFIED" | "STANDARD";
     buyerName?: string | null;
@@ -132,6 +163,8 @@ export interface CreateSaleResult {
     branch_id: string | null;
   };
   receiptNumber: string;
+  /** How the sale was paid, one entry per tender (cash change included). */
+  payments: { method: TenderMethod; amount: number; tendered: number | null; change_given: number | null; card_provider: string | null }[];
   salesItems: { menu_item_id: string; quantity: number; unit_price: number; total_price: number }[];
   /** Inventory items that reached their reorder level with this sale. */
   lowStock: { inventoryItemId: string; name: string; currentStock: number; reorderLevel: number }[];

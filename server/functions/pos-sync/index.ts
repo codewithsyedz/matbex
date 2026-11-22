@@ -350,12 +350,21 @@ async function syncOrder(item: BatchItem, restaurantId: string, terminalUid: str
   const sizes = new Set(["regular", "quarter", "half", "full"]);
   const methods = new Set(["cash", "card", "other"]);
   const items = Array.isArray(p.items) ? p.items : [];
+  // Split tender: the tenders taken at the till (newer builds); older payloads carry one method.
+  const tenders = Array.isArray(p.payments) && p.payments.length
+    ? p.payments.map((t: any) => ({
+        method: methods.has(t.method) ? t.method : "other",
+        amount: Number(t.amount ?? 0),
+        ...(t.tendered != null ? { tendered: Number(t.tendered) } : {}),
+        ...(t.card_terminal ? { cardTerminal: t.card_terminal } : {}),
+      }))
+    : null;
   const body = {
     restaurantId,
     branchId: p.branch_id ?? null,
     shiftId: p.shift_id ?? null,
     customerId: p.customer_id ?? null,
-    paymentMethod: methods.has(p.payment_method) ? p.payment_method : "other",
+    ...(tenders ? { payments: tenders } : { paymentMethod: methods.has(p.payment_method) ? p.payment_method : "other" }),
     settlement: p.settlement_status === "unpaid" ? "unpaid" : "paid",
     offline: { receiptNumber: String(p.receipt_number), createdAt: p.created_at ?? new Date().toISOString() },
     lines: items.map((it: any) =>

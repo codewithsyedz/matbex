@@ -8,13 +8,29 @@ export interface PriceChangedDetails {
   lines: { menuItemId: string; size: SaleLineSize; shown: number; current: number }[];
 }
 
+export type CardTerminalApproval = { provider: "hala" | "moyasar"; status: string; reference?: string | null; response?: Record<string, unknown> | null };
+
+export interface SaleTender {
+  method: "cash" | "card" | "other";
+  amount: number;
+  tendered?: number | null;
+  cardTerminal?: CardTerminalApproval | null;
+}
+
 export interface RecordSaleInput {
   restaurantId: string;
   branchId?: string | null;
   shiftId?: string | null;
   customerId?: string | null;
   tableId?: string | null;
-  paymentMethod: "cash" | "card" | "other";
+  /** One method for the whole sale (older shape; still accepted). */
+  paymentMethod?: "cash" | "card" | "other";
+  /**
+   * Split tender: the tenders that pay the sale; amounts add up to the server-priced total.
+   * Cash may carry `tendered` (change = tendered - amount); each card tender charged on an
+   * integrated terminal carries its own approval. Send either this or paymentMethod.
+   */
+  payments?: SaleTender[];
   settlement?: "paid" | "unpaid";
   createdAt?: string | null;
   /**
@@ -30,7 +46,7 @@ export interface RecordSaleInput {
   documentDiscount?: number;
   documentSurcharge?: number;
   /** Approval from the integrated card terminal (Hala) for a card sale. */
-  cardTerminal?: { provider: "hala" | "moyasar"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
+  cardTerminal?: CardTerminalApproval | null;
   invoice?: {
     subtype?: "SIMPLIFIED" | "STANDARD";
     buyerName?: string | null;
@@ -53,6 +69,8 @@ export interface RecordSaleResult {
     branch_id: string | null;
   };
   receiptNumber: string;
+  /** How the sale was paid, one entry per tender. */
+  payments: { method: "cash" | "card" | "other"; amount: number; tendered: number | null; change_given: number | null; card_provider: string | null }[];
   salesItems: { menu_item_id: string; quantity: number; unit_price: number; total_price: number }[];
   lowStock: { inventoryItemId: string; name: string; currentStock: number; reorderLevel: number }[];
 }

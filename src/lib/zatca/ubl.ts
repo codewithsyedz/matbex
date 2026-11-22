@@ -111,6 +111,11 @@ export interface BuildUblInput {
   /** Grand total (incl. VAT). */
   taxInclusiveAmount: number;
   paymentMeansCode?: string;
+  /**
+   * Split tender: one cac:PaymentMeans per tender (UNTDID 4461 codes, see
+   * paymentMeansCodeFor). Takes precedence over paymentMeansCode.
+   */
+  paymentMeans?: { code: string }[];
   /** Document-level allowances (discounts) and charges (surcharges). */
   allowanceCharges?: DocumentAllowanceCharge[];
   /**
@@ -169,12 +174,24 @@ function classifiedTaxCategoryXml(cat: "S" | "Z" | "E" | "O", reason?: string | 
  * InvoiceTypeCode 388 + name "0200000" (Simplified/B2C) or
  * "0100000" (Standard/B2B) per ZATCA.
  */
+/** UNTDID 4461 payment means code for a tender: 10 cash, 48 bank card, 1 not defined. */
+export function paymentMeansCodeFor(method: string): string {
+  return method === "cash" ? "10" : method === "card" ? "48" : "1";
+}
+
+/** One PaymentMeans per tender, in tender order. */
+export function paymentMeansForTenders(tenders: { method: string }[]): { code: string }[] {
+  return tenders.map((t) => ({ code: paymentMeansCodeFor(t.method) }));
+}
+
 export function buildSimplifiedTaxInvoiceUbl(input: BuildUblInput): string {
   const { date, time } = splitDateTime(input.issueDateTime);
   const currency = input.currency || "SAR";
   const taxCurrency = input.taxCurrency || currency;
   const country = input.seller.countryCode || "SA";
-  const pmc = input.paymentMeansCode || "10"; // 10 = cash
+  const pmcs = input.paymentMeans?.length
+    ? input.paymentMeans.map((p) => p.code || "10")
+    : [input.paymentMeansCode || "10"]; // 10 = cash
   const isStandard = input.invoiceSubtype === "STANDARD";
   const typeCodeName = isStandard ? "0100000" : "0200000";
   const vatRatePercent =
@@ -394,9 +411,9 @@ ${qrRef}
     </cac:Party>
   </cac:AccountingSupplierParty>
 ${customerXml}
-  <cac:PaymentMeans>
-    <cbc:PaymentMeansCode>${esc(pmc)}</cbc:PaymentMeansCode>
-  </cac:PaymentMeans>
+${pmcs.map((c) => `  <cac:PaymentMeans>
+    <cbc:PaymentMeansCode>${esc(c)}</cbc:PaymentMeansCode>
+  </cac:PaymentMeans>`).join("\n")}
 ${allowanceChargeXml ? allowanceChargeXml + "\n" : ""}  <cac:TaxTotal>
     <cbc:TaxAmount currencyID="${currency}">${money(input.taxAmount)}</cbc:TaxAmount>
 ${taxSubtotalsXml}

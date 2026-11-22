@@ -15,6 +15,22 @@ import {
   shifts,
 } from "../../db/generated/schema.js";
 
+export interface TenderRow {
+  saleId: string;
+  restaurantId: string;
+  branchId: string | null;
+  method: "cash" | "card" | "other";
+  amount: string;
+  tendered: string | null;
+  changeGiven: string | null;
+  cardProvider: string | null;
+  cardStatus: string | null;
+  cardReference: string | null;
+  cardResponse: unknown;
+  position: number;
+  createdAt: string;
+}
+
 export function salesRepository({ db, tx }: ServiceTx) {
   return {
     /** Branch VAT settings; falls back to the restaurant's primary branch. */
@@ -150,6 +166,30 @@ export function salesRepository({ db, tx }: ServiceTx) {
 
     async insertItems(values: (typeof salesItems.$inferInsert)[]) {
       return db.insert(salesItems).values(values).returning();
+    },
+
+    /** The tenders of a split sale (sale_payments). */
+    async insertTenders(rows: TenderRow[]) {
+      for (const r of rows) {
+        await tx`
+          insert into public.sale_payments
+            (sale_id, restaurant_id, branch_id, method, amount, tendered, change_given,
+             card_provider, card_status, card_reference, card_response, position, created_at)
+          values (${r.saleId}, ${r.restaurantId}, ${r.branchId}, ${r.method}::payment_method, ${r.amount}::numeric,
+                  ${r.tendered}::numeric, ${r.changeGiven}::numeric, ${r.cardProvider}, ${r.cardStatus}, ${r.cardReference},
+                  ${r.cardResponse == null ? null : JSON.stringify(r.cardResponse)}::jsonb, ${r.position}, ${r.createdAt}::timestamptz)`;
+      }
+    },
+
+    /**
+     * A single-method sale's one tender is written by the sync_single_sale_tender trigger from
+     * the sale row; this adds what the sale row does not hold (cash handed over and change).
+     */
+    async replaceSingleTender(r: TenderRow) {
+      if (r.tendered == null) return;
+      await tx`
+        update public.sale_payments set tendered = ${r.tendered}::numeric, change_given = ${r.changeGiven}::numeric
+         where sale_id = ${r.saleId} and restaurant_id = ${r.restaurantId} and method = 'cash'`;
     },
 
     async insertCashEvent(values: typeof cashEvents.$inferInsert) {

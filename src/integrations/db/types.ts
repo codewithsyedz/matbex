@@ -15755,6 +15755,72 @@ export type Database = {
             },
           ]
       }
+      sale_payments: {
+        Row: {
+          amount: number
+          branch_id: string | null
+          card_provider: string | null
+          card_reference: string | null
+          card_response: Json | null
+          card_status: string | null
+          change_given: number | null
+          created_at: string
+          id: string
+          method: Database["public"]["Enums"]["payment_method"]
+          position: number
+          restaurant_id: string
+          sale_id: string
+          tendered: number | null
+        }
+        Insert: {
+          amount: number
+          branch_id?: string | null
+          card_provider?: string | null
+          card_reference?: string | null
+          card_response?: Json | null
+          card_status?: string | null
+          change_given?: number | null
+          created_at?: string
+          id?: string
+          method: Database["public"]["Enums"]["payment_method"]
+          position?: number
+          restaurant_id: string
+          sale_id: string
+          tendered?: number | null
+        }
+        Update: {
+          amount?: number
+          branch_id?: string | null
+          card_provider?: string | null
+          card_reference?: string | null
+          card_response?: Json | null
+          card_status?: string | null
+          change_given?: number | null
+          created_at?: string
+          id?: string
+          method?: Database["public"]["Enums"]["payment_method"]
+          position?: number
+          restaurant_id?: string
+          sale_id?: string
+          tendered?: number | null
+        }
+        Relationships: [
+            {
+              foreignKeyName: "sale_payments_restaurant_id_fkey"
+              columns: ["restaurant_id"]
+              isOneToOne: false
+              referencedRelation: "restaurants"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "sale_payments_sale_id_fkey"
+              columns: ["sale_id"]
+              isOneToOne: false
+              referencedRelation: "sales_transactions"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       sale_posting_failures: {
         Row: {
           branch_id: string | null
@@ -23654,7 +23720,7 @@ export type Database = {
       payment_channel: "pos" | "online" | "both"
       payment_gateway: "hyperpay" | "stcpay" | "paymob" | "moyasar" | "amazon_ps" | "geidea" | "hala" | "stripe" | "checkout_com"
       payment_intent_status: "created" | "pending" | "authorized" | "captured" | "failed" | "expired" | "refunded" | "partial_refunded" | "canceled"
-      payment_method: "cash" | "card" | "other"
+      payment_method: "cash" | "card" | "other" | "split"
       payment_txn_kind: "charge" | "refund" | "void" | "external_card_recorded" | "cash"
       payment_txn_status: "success" | "failed" | "pending" | "reversed"
       profit_status: "excellent" | "healthy" | "attention" | "critical"
@@ -23714,7 +23780,7 @@ export const Constants = {
       payment_channel: ["pos", "online", "both"],
       payment_gateway: ["hyperpay", "stcpay", "paymob", "moyasar", "amazon_ps", "geidea", "hala", "stripe", "checkout_com"],
       payment_intent_status: ["created", "pending", "authorized", "captured", "failed", "expired", "refunded", "partial_refunded", "canceled"],
-      payment_method: ["cash", "card", "other"],
+      payment_method: ["cash", "card", "other", "split"],
       payment_txn_kind: ["charge", "refund", "void", "external_card_recorded", "cash"],
       payment_txn_status: ["success", "failed", "pending", "reversed"],
       profit_status: ["excellent", "healthy", "attention", "critical"],

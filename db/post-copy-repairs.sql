@@ -192,3 +192,18 @@ UPDATE public.plans p
      WHERE sp.name = 'starter' AND k.value = 'true'::jsonb
   ) s
  WHERE p.name IN ('trial', 'pro', 'enterprise');
+
+-- repairs: 20261122220454_sale_payments.sql
+-- One tender per copied sale that has none (the copy brings sales without sale_payments).
+INSERT INTO public.sale_payments
+  (sale_id, restaurant_id, branch_id, method, amount, card_provider, card_status, card_reference, card_response, created_at)
+SELECT st.id, st.restaurant_id, st.branch_id, st.payment_method, COALESCE(st.total, 0),
+       CASE WHEN st.payment_method = 'card' AND st.hala_status IS NOT NULL
+            THEN COALESCE(st.hala_response->>'provider', 'hala') END,
+       CASE WHEN st.payment_method = 'card' THEN st.hala_status END,
+       CASE WHEN st.payment_method = 'card' THEN st.hala_reference END,
+       CASE WHEN st.payment_method = 'card' THEN st.hala_response END,
+       st.created_at
+FROM public.sales_transactions st
+WHERE st.payment_method IS NOT NULL AND st.payment_method <> 'split'
+  AND NOT EXISTS (SELECT 1 FROM public.sale_payments sp WHERE sp.sale_id = st.id);

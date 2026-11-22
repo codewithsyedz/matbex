@@ -47,6 +47,8 @@ interface RequestBody {
   cashierName?: string | null;
   customerName?: string | null;
   paymentMethod: string;
+  /** Split tender: each tender with its amount (and cash change), printed under the total. */
+  payments?: { method: string; amount: number; tendered?: number | null; change_given?: number | null }[] | null;
   header?: string | null;
   footer?: string | null;
   currencySymbol?: string | null;
@@ -189,10 +191,20 @@ async function buildPdf(body: RequestBody, qrPngBase64: string | null): Promise<
   totalsRow("TOTAL", fmt(body.total, currency), true);
 
   doc.moveDown(0.3);
-  doc.font("Helvetica").fontSize(8).text(
-    `Paid by: ${body.paymentMethod.toUpperCase()}`,
-    { align: "center" }
-  );
+  const tenders = Array.isArray(body.payments) ? body.payments.filter((p) => p && typeof p.amount === "number") : [];
+  if (tenders.length > 1 || tenders.some((p) => p.tendered != null)) {
+    doc.font("Helvetica").fontSize(8);
+    for (const p of tenders) {
+      totalsRow(`Paid ${String(p.method).toUpperCase()}`, fmt(p.amount, currency));
+      if (p.tendered != null) totalsRow("  Cash given", fmt(p.tendered, currency));
+      if (p.change_given) totalsRow("  Change", fmt(p.change_given, currency));
+    }
+  } else {
+    doc.font("Helvetica").fontSize(8).text(
+      `Paid by: ${body.paymentMethod.toUpperCase()}`,
+      { align: "center" }
+    );
+  }
 
   // ZATCA QR
   if (qrPngBase64) {

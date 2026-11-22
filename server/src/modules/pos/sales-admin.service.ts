@@ -7,7 +7,8 @@
  * Rules shared by every change to an existing sale:
  * - a voided sale and a void entry are final;
  * - a sale already reported or cleared with ZATCA cannot change (issue a credit note);
- * - a credit sale on a settlement invoice cannot be voided (take it off the invoice first).
+ * - a credit sale on a settlement invoice cannot be voided (take it off the invoice first);
+ * - a split-tender sale keeps its amounts and tenders: void it and ring it again instead.
  */
 import { randomInt } from "node:crypto";
 import { badRequest, HttpError } from "../../lib/errors.js";
@@ -16,6 +17,7 @@ import { inServiceTx } from "../shared/db.js";
 import { requireRestaurantRole, type RestaurantRole } from "../shared/access.js";
 import { salesRepository } from "./sales.repository.js";
 import { salesAdminRepository, type LockedSale } from "./sales-admin.repository.js";
+import { mirrorTenders } from "./tenders.js";
 import type { EditInput, LineInput, SaleRow, SummaryInput, SummaryKind, VoidInput } from "./sales-admin.schema.js";
 import { lineGross, roundMoney, splitInclusive, splitListed, sumMoney, VAT_RATE, DEFAULT_PRICES_VAT_INCLUSIVE } from "../../../../src/lib/vatInclusive.ts";
 
@@ -32,6 +34,13 @@ function assertChangeable(sale: LockedSale) {
   if (sale.voided_at) throw conflict("This sale has been voided", "already_voided");
   if (sale.zatca_clearance_status && ZATCA_FINAL.has(sale.zatca_clearance_status)) {
     throw conflict("This invoice was reported to ZATCA; issue a credit note instead", "zatca_reported");
+  }
+}
+
+/** Amount, VAT, line and payment-method changes would leave a split sale's tenders wrong. */
+function assertNotSplit(sale: LockedSale) {
+  if (sale.payment_method === "split") {
+    throw conflict("This sale was paid by several methods; void it and ring it up again", "split_tender");
   }
 }
 
@@ -176,15 +185,25 @@ export async function voidSale(saleId: string, input: VoidInput, claims: Claims)
       createdAt: new Date().toISOString(),
       voidsTransactionId: sale.id,
     });
+    // The mirror repeats every tender negated (a single-method mirror gets its one tender
+    // from the database trigger).
+    const tenders = await repo.tenders(input.restaurantId, sale.id);
+    if (sale.payment_method === "split") {
+      await repo.insertTenders({ restaurantId: input.restaurantId, saleId: mirror.id, branchId: sale.branch_id, tenders: mirrorTenders(tenders) });
+    }
     await repo.markVoided(sale.id, claims.sub, reason, credit);
 
+    // The refund leaves the drawer the way the sale came in: one refund event per tender.
     const cashRefunded = !credit && sale.settlement_status === "paid" && !!refundShift;
     if (cashRefunded) {
-      await repo.insertCashEvent({
-        restaurantId: input.restaurantId, shiftId: refundShift!, type: "refund", amount: sale.total,
-        paymentMethod: sale.payment_method, userId: claims.sub,
-        description: `Void ${sale.receipt_number ?? sale.id} - ${reason}`, saleId: mirror.id,
-      });
+      const parts = tenders.length ? tenders : [{ method: sale.payment_method, amount: sale.total }];
+      for (const t of parts) {
+        await repo.insertCashEvent({
+          restaurantId: input.restaurantId, shiftId: refundShift!, type: "refund", amount: t.amount,
+          paymentMethod: t.method, userId: claims.sub,
+          description: `Void ${sale.receipt_number ?? sale.id}${parts.length > 1 ? ` (${t.method})` : ""} - ${reason}`, saleId: mirror.id,
+        });
+      }
     }
     await repo.cancelKitchenTickets(input.restaurantId, sale.id);
     await repo.emitEvent(input.restaurantId, sale.id, "pos.sale.voided", {
@@ -209,6 +228,7 @@ export async function editSale(saleId: string, input: EditInput, claims: Claims)
     if (Object.keys(input).some((k) => k !== "restaurantId" && k !== "branchId")) assertChangeable(sale);
 
     let row: SaleRow = sale;
+    if (input.total != null || input.vatPercent != null || input.paymentMethod) assertNotSplit(sale);
     if (input.total != null || input.vatPercent != null) {
       if (sale.line_count > 0) throw conflict("This sale has lines; change the lines instead", "has_lines");
       const gross = roundMoney(input.total ?? sale.total);
@@ -238,10 +258,14 @@ export async function editSale(saleId: string, input: EditInput, claims: Claims)
         if (existing.some((e) => e.event_type === "sale")) {
           await repo.updateSaleCashEvents(input.restaurantId, sale.id, { shiftId: input.shiftId });
         } else if (row.settlement_status === "paid") {
-          await repo.insertCashEvent({
-            restaurantId: input.restaurantId, shiftId: input.shiftId, type: "sale", amount: row.total,
-            paymentMethod: row.payment_method, userId: claims.sub, description: `Sale ${row.receipt_number ?? row.id}`, saleId: sale.id,
-          });
+          const tenders = await repo.tenders(input.restaurantId, sale.id);
+          const parts = tenders.length ? tenders : [{ method: row.payment_method, amount: row.total }];
+          for (const t of parts) {
+            await repo.insertCashEvent({
+              restaurantId: input.restaurantId, shiftId: input.shiftId, type: "sale", amount: t.amount,
+              paymentMethod: t.method, userId: claims.sub, description: `Sale ${row.receipt_number ?? row.id}`, saleId: sale.id,
+            });
+          }
         }
       } else {
         row = await repo.setSaleShift(sale.id, null);
@@ -275,6 +299,7 @@ export async function editLine(saleId: string, lineId: string, input: LineInput,
     await requireRestaurantRole(t.tx, claims.sub, input.restaurantId, MANAGERS);
     const sale = await loadSale(repo, input.restaurantId, saleId);
     assertChangeable(sale);
+    assertNotSplit(sale);
     const line = await repo.line(sale.id, lineId);
     if (!line) throw new HttpError(404, "Line not found on this sale", "line_not_found");
 
@@ -303,6 +328,7 @@ export async function deleteLine(saleId: string, lineId: string, restaurantId: s
     await requireRestaurantRole(t.tx, claims.sub, restaurantId, MANAGERS);
     const sale = await loadSale(repo, restaurantId, saleId);
     assertChangeable(sale);
+    assertNotSplit(sale);
     const line = await repo.line(sale.id, lineId);
     if (!line) throw new HttpError(404, "Line not found on this sale", "line_not_found");
     if (sale.line_count <= 1) throw conflict("This is the sale's only line; void the sale instead", "last_line");
@@ -353,6 +379,7 @@ export async function reconcileVat(saleId: string, restaurantId: string, claims:
     if (before.subtotal === after.subtotal && before.tax === after.tax && before.total === after.total) {
       return { changed: false, before, after };
     }
+    if (before.total !== after.total) assertNotSplit(sale);
     const row = await repo.updateSaleAmounts(sale.id, after);
     if (row.settlement_status === "paid" && before.total !== after.total) {
       await repo.updateSaleCashEvents(restaurantId, sale.id, { amount: after.total });

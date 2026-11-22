@@ -51,7 +51,24 @@ serve(async (req) => {
   const { data: prior } = await svc.from("payment_transactions").select("amount")
     .eq("intent_id", intent.id).eq("kind", "refund").eq("status", "success");
   const alreadyRefunded = (prior ?? []).reduce((s: number, r: any) => s + Math.abs(Number(r.amount)), 0);
-  if (Number(amount) > Number(intent.amount) - alreadyRefunded + 0.005) {
+  // A POS sale paid partly by card (split tender): only its card tender paid through this
+  // payment goes back to the card. The cash part is refunded from the drawer (sale void).
+  let refundable = Number(intent.amount);
+  if (intent.sales_transaction_id) {
+    const { data: tender } = await svc.from("sale_payments").select("amount")
+      .eq("sale_id", intent.sales_transaction_id).eq("method", "card")
+      .eq("card_provider", intent.gateway).eq("card_reference", intent.id)
+      .gt("amount", 0).maybeSingle();
+    const { data: sale } = await svc.from("sales_transactions").select("payment_method")
+      .eq("id", intent.sales_transaction_id).maybeSingle();
+    if (sale?.payment_method === "split" && !tender) {
+      return new Response(JSON.stringify({ error: "This payment is not a card tender of the sale" }), {
+        status: 409, headers: { ...cors, "Content-Type": "application/json" },
+      });
+    }
+    if (tender) refundable = Math.min(refundable, Number(tender.amount));
+  }
+  if (Number(amount) > refundable - alreadyRefunded + 0.005) {
     return new Response(JSON.stringify({ error: "Refund is more than what is left of this payment" }), {
       status: 400, headers: { ...cors, "Content-Type": "application/json" },
     });

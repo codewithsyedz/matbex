@@ -1,3 +1,4 @@
+import { tendersOf, type SaleWithTenders } from '@/lib/saleTenders';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
@@ -220,7 +221,7 @@ export function useDailySales(date?: string) {
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(`${date}T12:00:00Z`), tz);
       let q = db
         .from('sales_transactions')
-        .select('id,receipt_number,total,payment_method,created_at')
+        .select('id,receipt_number,total,payment_method,created_at,sale_payments(method,amount)')
         .eq('restaurant_id', restaurant.id)
         .gte('created_at', start.toISOString())
         .lt('created_at', endExclusive.toISOString())
@@ -242,21 +243,26 @@ export function useDailySales(date?: string) {
         timezone: tz,
       };
       for (const r of data || []) {
-        const amt = Number(r.total) || 0;
-        const bucket = bucketForPaymentMethod(r.payment_method as string, overrides, rules);
+        // A split sale counts each tender in its own bucket (cash part as cash, card part as card).
+        const parts = tendersOf(r as SaleWithTenders);
         // A tab sale's unpaid part was not taken at the till: it is not cash or card.
-        const owedPart = onAccount.get(r.id as string) ?? 0;
-        acc[bucket] += amt - owedPart;
+        let owedPart = onAccount.get(r.id as string) ?? 0;
         acc.account += owedPart;
-        acc.transactions.push({
-          id: r.id as string,
-          receipt_number: (r as { receipt_number: string | null }).receipt_number,
-          payment_method: (r.payment_method as string) ?? null,
-          total: amt,
-          created_at: r.created_at as string,
-          bucket,
-          on_account: owedPart,
-        });
+        for (const part of parts) {
+          const bucket = bucketForPaymentMethod(part.method, overrides, rules);
+          const owed = Math.min(owedPart, part.amount > 0 ? part.amount : owedPart);
+          owedPart -= owed;
+          acc[bucket] += part.amount - owed;
+          acc.transactions.push({
+            id: r.id as string,
+            receipt_number: (r as { receipt_number: string | null }).receipt_number,
+            payment_method: part.method,
+            total: part.amount,
+            created_at: r.created_at as string,
+            bucket,
+            on_account: owed,
+          });
+        }
       }
       return acc;
     },

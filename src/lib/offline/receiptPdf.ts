@@ -27,6 +27,8 @@ export interface OfflineReceiptInput {
   tax: number;
   total: number;
   paymentMethod: string;
+  /** Split tender: each tender (and cash given / change) is printed under the total. */
+  payments?: { method: string; amount: number; tendered?: number | null; change_given?: number | null }[] | null;
   cashierName?: string | null;
   customerName?: string | null;
   customerPhone?: string | null;
@@ -132,8 +134,26 @@ export function buildReceiptPdf(input: OfflineReceiptInput): Blob {
 
   doc.setFont("courier", "normal");
   doc.setFontSize(8);
-  doc.text(`Paid by: ${input.paymentMethod.toUpperCase()}`, W / 2, y, { align: "center" });
-  y += 5 * MM;
+  const tenders = (input.payments ?? []).filter((p) => p && Number.isFinite(Number(p.amount)));
+  if (tenders.length > 1 || tenders.some((p) => p.tendered != null)) {
+    for (const p of tenders) {
+      totalRow(doc, `Paid ${String(p.method).toUpperCase()}`, formatMoney(Number(p.amount), currency), y);
+      y += lineH;
+      if (p.tendered != null) {
+        const change = p.change_given ?? Math.max(0, Number(p.tendered) - Number(p.amount));
+        totalRow(doc, "  Cash given", formatMoney(Number(p.tendered), currency), y);
+        y += lineH;
+        if (change > 0) {
+          totalRow(doc, "  Change", formatMoney(change, currency), y);
+          y += lineH;
+        }
+      }
+    }
+    y += 2 * MM;
+  } else {
+    doc.text(`Paid by: ${input.paymentMethod.toUpperCase()}`, W / 2, y, { align: "center" });
+    y += 5 * MM;
+  }
 
   if (input.customerPhone) {
     doc.text(`Tel: ${input.customerPhone}`, W / 2, y, { align: "center" });
@@ -227,6 +247,7 @@ export async function buildReceiptPdfFromLocalId(opts: {
     tax: Number(payload.tax ?? 0),
     total: Number(payload.total ?? 0),
     paymentMethod: String(payload.payment_method ?? "cash"),
+    payments: Array.isArray(payload.payments) ? payload.payments : null,
     cashierName: opts.cashierName ?? null,
     customerName: payload.customer_name ?? null,
     customerPhone: payload.customer_phone ?? null,

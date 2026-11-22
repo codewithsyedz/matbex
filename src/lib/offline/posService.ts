@@ -44,6 +44,14 @@ export interface OfflineCartItem {
   unit_price: number;
 }
 
+export interface OfflineTender {
+  method: "cash" | "card" | "other";
+  amount: number;
+  tendered?: number | null;
+  /** Approval from the integrated terminal (Hala); online-only gateways cannot queue. */
+  cardTerminal?: { provider: "hala"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
+}
+
 export interface RecordOfflineSaleInput {
   /** Offline queue scope: the restaurant id (the sync engine drains by it). */
   branchId: string;
@@ -57,6 +65,11 @@ export interface RecordOfflineSaleInput {
   cashierId: string;
   shiftId: string | null;
   paymentMethod: string;
+  /**
+   * Split tender: the tenders that paid the sale (cash, and card approved on the terminal).
+   * Replayed as `payments` to POST /api/v1/pos/sales; amounts add up to the total.
+   */
+  payments?: OfflineTender[] | null;
   customerId?: string | null;
   customerPhone?: string | null;
   customerEmail?: string | null;
@@ -77,6 +90,8 @@ export interface RecordOfflineSaleResult {
   offline: boolean;
 }
 
+const nearMoney = (a: number, b: number) => Math.abs(a - b) < 0.005;
+
 export async function recordOfflineSale(
   input: RecordOfflineSaleInput,
 ): Promise<RecordOfflineSaleResult> {
@@ -95,9 +110,23 @@ export async function recordOfflineSale(
   const paymentLocalId = crypto.randomUUID();
   const invoiceLocalId = crypto.randomUUID();
 
+  const tenders = input.payments?.length ? input.payments : null;
+  const saleMethod = tenders && tenders.length > 1 ? "split" : tenders?.[0]?.method ?? input.paymentMethod;
+  if (tenders && !nearMoney(sumMoney(tenders.map((t) => t.amount)), total)) {
+    throw new Error(`Tenders add up to ${sumMoney(tenders.map((t) => t.amount)).toFixed(2)}, the sale total is ${total.toFixed(2)}`);
+  }
+
   const orderPayload = await protectPayload({
     receipt_number: receiptNumber,
-    payment_method: input.paymentMethod,
+    payment_method: saleMethod,
+    payments: tenders
+      ? tenders.map((t) => ({
+          method: t.method,
+          amount: t.amount,
+          tendered: t.tendered ?? null,
+          card_terminal: t.cardTerminal ?? null,
+        }))
+      : null,
     subtotal,
     tax,
     total,
@@ -150,7 +179,7 @@ export async function recordOfflineSale(
   // Payment record (cash drawer event when shift is open)
   const paymentPayload = await protectPayload({
     amount: total,
-    payment_method: input.paymentMethod,
+    payment_method: saleMethod,
     shift_id: input.shiftId,
     receipt_number: receiptNumber,
     description: `Offline POS Sale ${receiptNumber}`,

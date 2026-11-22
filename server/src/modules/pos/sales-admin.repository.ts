@@ -81,6 +81,26 @@ export function salesAdminRepository({ tx }: ServiceTx) {
         values (${v.shiftId}, ${v.restaurantId}, ${v.type}, ${v.amount}, ${v.paymentMethod}, ${v.userId}, ${v.description}, 'sales_transaction', ${v.saleId})`;
     },
 
+    /** How the sale was paid (sale_payments), in tender order. */
+    async tenders(restaurantId: string, saleId: string) {
+      return tx<{ method: "cash" | "card" | "other"; amount: number; card_provider: string | null; card_reference: string | null }[]>`
+        select method::text as method, amount::float8 as amount, card_provider, card_reference
+          from public.sale_payments
+         where restaurant_id = ${restaurantId} and sale_id = ${saleId}
+         order by position, created_at, id`;
+    },
+
+    /** Tenders of a split void mirror (a single-method mirror gets its tender from the trigger). */
+    async insertTenders(v: { restaurantId: string; saleId: string; branchId: string | null; tenders: { method: string; amount: number; cardProvider: string | null; cardReference: string | null }[] }) {
+      let position = 0;
+      for (const t of v.tenders) {
+        position += 1;
+        await tx`
+          insert into public.sale_payments (sale_id, restaurant_id, branch_id, method, amount, card_provider, card_reference, position)
+          values (${v.saleId}, ${v.restaurantId}, ${v.branchId}, ${t.method}::payment_method, ${t.amount}, ${t.cardProvider}, ${t.cardReference}, ${position})`;
+      }
+    },
+
     /** The drawer entry for a sale (API sales and summaries reference it). */
     async saleCashEvents(restaurantId: string, saleId: string) {
       return tx<{ id: string; shift_id: string; event_type: string }[]>`

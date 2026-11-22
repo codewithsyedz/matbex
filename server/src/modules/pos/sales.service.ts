@@ -1,6 +1,6 @@
 /**
  * POS sales: records a sale and everything that belongs to it in ONE transaction:
- * the sale, its lines, the shift cash event, reorder requests, the idempotency record and an
+ * the sale, its lines, its tenders (sale_payments), one shift cash event per tender, reorder requests, the idempotency record and an
  * outbox event. Database triggers keep doing their part in the same transaction:
  * on sales_transactions (credit limit, customer balance, receipt/ZATCA validation, kitchen
  * ticket) and on sales_items (recipe stock deduction and provisional COGS posting).
@@ -21,6 +21,7 @@ import { requireRestaurantRole } from "../shared/access.js";
 import { salesRepository } from "./sales.repository.js";
 import type { CreateSaleInput, CreateSaleResult, SaleLineSize, SaleQuote } from "./sales.schema.js";
 import { comboLines, priceFor, type PricedLine } from "./pricing.js";
+import { resolveTenders, saleMethod, type Tender } from "./tenders.js";
 export { comboLines, priceFor } from "./pricing.js";
 import { DEFAULT_PRICES_VAT_INCLUSIVE, lineGross, roundMoney, splitListed, sumMoney, VAT_RATE } from "../../../../src/lib/vatInclusive.ts";
 
@@ -154,6 +155,11 @@ export async function quoteSale(input: CreateSaleInput, opts: { claims: DbClaims
   });
 }
 
+/** Sum of the request's tenders; with the single-method shape there is nothing to sum yet. */
+function sumOfPayments(input: CreateSaleInput) {
+  return input.payments ? sumMoney(input.payments.map((p) => p.amount)) : 0;
+}
+
 export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions): Promise<{ result: CreateSaleResult; replayed: boolean }> {
   const userId = opts.claims.sub;
   const settlement = input.settlement ?? "paid";
@@ -162,10 +168,9 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
 
   // ---- input rules that need no database --------------------------------------------
   if (settlement === "unpaid" && !input.customerId) throw badRequest("Customer is required for unpaid sales", "customer_required");
-  if (input.cardTerminal) {
-    if (input.paymentMethod !== "card") throw badRequest("A card terminal approval needs payment method card", "card_terminal_mismatch");
-    if (input.cardTerminal.status !== "approved") throw badRequest("The card terminal did not approve the charge", "card_not_approved");
-  }
+  // Tender rules that need no total (shape, card approvals) fail before any database work;
+  // the sums are checked against the server-priced total below.
+  resolveTenders(input, sumOfPayments(input), { settlement });
   if (offline) {
     if (input.createdAt) throw badRequest("Use offline.createdAt for offline sales", "backdate_not_allowed");
     const at = new Date(offline.createdAt).getTime();
@@ -206,23 +211,35 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
 
     const { byId, branchId, day, created_at, lines, subtotal, tax, total, documentDiscount, documentSurcharge } = await priceSale(t, repo, input, { offline: !!offline, saleAt });
 
-    // A Moyasar card payment must be a captured payment of this business, for this total, not
-    // already used by another sale. The browser cannot write payment intents, so this is the
-    // gateway's verified answer (payments-confirm / payments-webhook).
-    let moyasarIntentId: string | null = null;
-    if (input.cardTerminal?.provider === "moyasar") {
+    const tenders = resolveTenders(input, total, { settlement });
+    const method = saleMethod(tenders);
+
+    // A Moyasar card tender must be a captured payment of this business, for exactly this
+    // tender's amount, not already used by another sale. The browser cannot write payment
+    // intents, so this is the gateway's verified answer (payments-confirm / payments-webhook).
+    const moyasarIntents = new Map<Tender, string>();
+    for (const tender of tenders) {
+      if (tender.cardTerminal?.provider !== "moyasar") continue;
       if (offline) throw badRequest("Online card payments cannot be replayed from offline sales", "card_terminal_mismatch");
-      const ref = input.cardTerminal.reference ?? "";
+      const ref = tender.cardTerminal.reference ?? "";
       if (!/^[0-9a-f-]{36}$/i.test(ref)) throw badRequest("Missing Moyasar payment reference", "card_not_approved");
       const intent = await repo.lockPaymentIntent(input.restaurantId, ref);
       if (!intent || intent.gateway !== "moyasar") throw badRequest("Unknown Moyasar payment", "card_not_approved");
       if (intent.status !== "captured") throw badRequest("The Moyasar payment is not paid", "card_not_approved");
       if (intent.salesTransactionId) throw badRequest("This Moyasar payment was already used for another sale", "card_already_used");
-      if (Math.abs(Number(intent.amount) - Number(total)) >= 0.005) {
-        throw badRequest(`The Moyasar payment (${Number(intent.amount).toFixed(2)}) does not match the sale total (${Number(total).toFixed(2)})`, "card_amount_mismatch");
+      if (Math.abs(Number(intent.amount) - tender.amount) >= 0.005) {
+        const what = tenders.length > 1 ? "card tender" : "sale total";
+        throw badRequest(`The Moyasar payment (${Number(intent.amount).toFixed(2)}) does not match the ${what} (${tender.amount.toFixed(2)})`, "card_amount_mismatch");
       }
-      moyasarIntentId = intent.id;
+      moyasarIntents.set(tender, intent.id);
     }
+    const cardResponse = (tender: Tender) =>
+      tender.cardTerminal?.provider === "moyasar"
+        ? { provider: "moyasar", intent_id: moyasarIntents.get(tender) ?? null }
+        : tender.cardTerminal?.response ?? null;
+    // The sale row keeps the approval when one tender carries it (readers of hala_*).
+    const approved = tenders.filter((t) => t.cardTerminal);
+    const saleCard = approved.length === 1 ? approved[0] : null;
 
     // ---- receipt number: the printed one for offline replays, else the next in sequence ----
     const receiptNumber = offline?.receiptNumber ?? (await repo.nextReceiptNumber(input.restaurantId, day));
@@ -232,7 +249,7 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
       restaurantId: input.restaurantId,
       branchId,
       shiftId: input.shiftId ?? null,
-      paymentMethod: input.paymentMethod,
+      paymentMethod: method,
       subtotal: String(subtotal),
       tax: String(tax),
       total: String(total),
@@ -247,19 +264,37 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
       tableId: input.tableId ?? null,
       documentDiscount: String(documentDiscount),
       documentSurcharge: String(documentSurcharge),
-      ...(input.cardTerminal
+      ...(saleCard
         ? {
-            halaStatus: input.cardTerminal.status,
-            halaReference: input.cardTerminal.reference ?? null,
-            halaResponse: input.cardTerminal.provider === "moyasar"
-              ? { provider: "moyasar", intent_id: moyasarIntentId }
-              : input.cardTerminal.response ?? null,
+            halaStatus: saleCard.cardTerminal!.status,
+            halaReference: saleCard.cardTerminal!.reference ?? null,
+            halaResponse: cardResponse(saleCard),
             halaChargedAt: new Date().toISOString(),
           }
         : {}),
     });
 
-    if (moyasarIntentId) await repo.linkPaymentIntent(moyasarIntentId, sale.id);
+    // Tenders: a single-method sale's one tender is written by the database
+    // (sync_single_sale_tender) and only gets the cash details here; a split sale's are
+    // written now. Either way they must add up to the total at commit (check_sale_tenders).
+    const tenderRows = tenders.map((t, i) => ({
+      saleId: sale.id,
+      restaurantId: input.restaurantId,
+      branchId: sale.branchId ?? null,
+      method: t.method,
+      amount: String(t.amount),
+      tendered: t.tendered == null ? null : String(t.tendered),
+      changeGiven: t.changeGiven == null ? null : String(t.changeGiven),
+      cardProvider: t.cardTerminal?.provider ?? null,
+      cardStatus: t.cardTerminal?.status ?? null,
+      cardReference: t.cardTerminal?.reference ?? null,
+      cardResponse: t.cardTerminal ? cardResponse(t) : null,
+      position: i + 1,
+      createdAt: created_at,
+    }));
+    if (method === "split") await repo.insertTenders(tenderRows);
+    else await repo.replaceSingleTender(tenderRows[0]);
+    for (const id of moyasarIntents.values()) await repo.linkPaymentIntent(id, sale.id);
 
     const saleItems = await repo.insertItems(
       lines.map((l) => ({
@@ -273,20 +308,24 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
       })),
     );
 
-    // The drawer receives what the customer paid: the VAT-inclusive total, and nothing for a
-    // credit (unpaid) sale. Shift close (CloseShiftModal) expects exactly these amounts.
+    // The drawer receives what the customer paid, one event per tender (so shift close counts
+    // the cash part as cash and the card part as card), and nothing for a credit (unpaid)
+    // sale. Change given back never enters the drawer. Shift close (CloseShiftModal) expects
+    // exactly these amounts.
     if (input.shiftId && settlement === "paid") {
-      await repo.insertCashEvent({
-        shiftId: input.shiftId,
-        restaurantId: input.restaurantId,
-        eventType: "sale",
-        amount: String(total),
-        paymentMethod: input.paymentMethod,
-        createdBy: userId,
-        description: `${offline ? "Offline POS Sale" : "POS Sale"} ${receiptNumber}`,
-        referenceType: "sales_transaction",
-        referenceId: sale.id,
-      });
+      for (const t of tenders) {
+        await repo.insertCashEvent({
+          shiftId: input.shiftId,
+          restaurantId: input.restaurantId,
+          eventType: "sale",
+          amount: String(t.amount),
+          paymentMethod: t.method,
+          createdBy: userId,
+          description: `${offline ? "Offline POS Sale" : "POS Sale"} ${receiptNumber}${tenders.length > 1 ? ` (${t.method})` : ""}`,
+          referenceType: "sales_transaction",
+          referenceId: sale.id,
+        });
+      }
     }
 
     await repo.recordSaleUsage({
@@ -311,11 +350,18 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
         tax,
         total,
         settlement_status: settlement,
-        payment_method: input.paymentMethod,
+        payment_method: method,
         created_at: sale.createdAt,
         branch_id: sale.branchId ?? null,
       },
       receiptNumber,
+      payments: tenders.map((t) => ({
+        method: t.method,
+        amount: t.amount,
+        tendered: t.tendered,
+        change_given: t.changeGiven,
+        card_provider: t.cardTerminal?.provider ?? null,
+      })),
       salesItems: saleItems.map((i) => ({
         menu_item_id: i.menuItemId,
         quantity: i.quantity,
@@ -326,7 +372,7 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
     };
 
     await repo.emitEvent(input.restaurantId, sale.id, {
-      sale: { id: sale.id, receipt_number: receiptNumber, total, payment_method: input.paymentMethod, settlement_status: settlement, branch_id: result.transaction.branch_id, offline: !!offline },
+      sale: { id: sale.id, receipt_number: receiptNumber, total, payment_method: method, payments: result.payments, settlement_status: settlement, branch_id: result.transaction.branch_id, offline: !!offline },
     });
     if (idemId) await repo.completeIdempotencyKey(idemId, result, input.shiftId ?? null);
     return { result, replayed: false };
