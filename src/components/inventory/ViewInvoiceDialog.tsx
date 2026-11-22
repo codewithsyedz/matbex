@@ -72,6 +72,9 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
   const [posting, setPosting] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string>(invoice.account_id || "");
   const [signedImageUrl, setSignedImageUrl] = useState<string | null>(null);
+  // An invoice saved as already paid posts its payment too, so it needs to know how.
+  const isPaid = invoice.status === "paid";
+  const [paymentMethod, setPaymentMethod] = useState<"" | "cash" | "bank">("");
 
   const hasAccounting = hasFeature("accounting");
   const canPost = (isManager || isOwner) && hasAccounting && !invoice.ledger_posted;
@@ -130,12 +133,17 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
       toast.error("Please select an account to post to");
       return;
     }
+    if (isPaid && !paymentMethod) {
+      toast.error("This invoice is marked paid. Choose how it was paid");
+      return;
+    }
 
     setPosting(true);
     try {
       const { error } = await db.rpc("post_purchase_invoice_to_ledger", {
         p_invoice_id: invoice.id,
         p_account_id: selectedAccountId,
+        ...(isPaid ? { p_payment_method: paymentMethod } : {}),
       });
 
       if (error) throw error;
@@ -312,7 +320,7 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
                   <span className="font-medium">{mappedAccount?.account_name}</span>
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  This invoice has been posted to the ledger. DR {mappedAccount?.account_name}, CR Accounts Payable.
+                  This invoice has been posted to the ledger: DR {mappedAccount?.account_name} (net) and Input VAT, CR supplier payable{isPaid ? ", then paid" : ""}.
                 </p>
               </div>
             ) : hasAccounting ? (
@@ -340,10 +348,30 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
                   </Select>
                 </div>
 
+                {isPaid && (
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-1 block">
+                      Paid from
+                    </label>
+                    <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as "cash" | "bank")}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Cash or bank" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash (1000)</SelectItem>
+                        <SelectItem value="bank">Bank (1010)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      The invoice is marked paid, so the payment is recorded on the invoice date and the supplier balance is cleared.
+                    </p>
+                  </div>
+                )}
+
                 {canPost && (
                   <Button
                     onClick={handlePostToLedger}
-                    disabled={posting || !selectedAccountId}
+                    disabled={posting || !selectedAccountId || (isPaid && !paymentMethod)}
                     className="w-full"
                   >
                     {posting ? (

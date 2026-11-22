@@ -22795,9 +22795,14 @@ export type Database = {
         Args: { _sale_item_id: string }
         Returns: undefined
       }
-      post_purchase_invoice_to_ledger:
+      post_purchase_invoice_payment_internal:
         | {
         Args: { p_invoice_id: unknown }
+        Returns: string
+      }
+      post_purchase_invoice_to_ledger:
+        | {
+        Args: { p_invoice_id?: unknown }
         Returns: string
       }
       post_purchase_to_cogs:
