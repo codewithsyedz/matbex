@@ -218,11 +218,14 @@ the functions that were open. It fails on the schema before this fix and passes 
 Left as they were (business-safe; roles within a business): any member, including a cashier, may
 apply fines to payroll (`apply_fines_to_payroll`), deduct advances (`deduct_advance_from_payroll`), post
 staff advances and weekly COGS. `activate_tenant_production` is called by the `activate-demo-tenant`
-function as the owner, by design. Known bugs found along the way, not changed: `explain_imbalance` reads a
-column that does not exist (`jb.batch_number`); `bulk_fix_invoice_divergence` compares a restaurant id
-with a business id, so it matches nothing; `remap_expenses_to_supplier_ap_head` and
-`request_terminal_state_refresh` fail for every non-superadmin. `undo_stock_adjustment` failed for
-everyone with a type error; that is fixed in the same migration.
+function as the owner, by design. Bugs found along the way, fixed in `20261122122538_fix_broken_definer_functions.sql` (each failed for
+every non-superadmin, and `check-definer-access.mjs` now runs each as an owner): `explain_imbalance` read
+journal batch columns that do not exist; `bulk_fix_invoice_divergence` compared a restaurant id with the
+business id (so it matched only where the two are equal) and had an ambiguous `invoice_id`;
+`remap_expenses_to_supplier_ap_head` checked posting rights on the user id instead of the business;
+`request_terminal_state_refresh` read a column that does not exist, returned the wrong type and wrote its
+audit row to columns that do not exist. `undo_stock_adjustment` failed with a type error; fixed in
+`20261122102225`.
 
 ## Rule for new functions
 

@@ -57,7 +57,7 @@ const id = () => crypto.randomUUID();
 const A = { user: id(), tenant: id(), restaurant: id() };
 const B = { user: id(), tenant: id(), restaurant: id() };
 const C = { user: id() }; // signed up, no business yet
-const fx = { accountA: id(), accountB: id(), expenseA: id(), staffA: id(), advanceA: id(), itemA: id(), movementA: id(), orderA: id() };
+const fx = { accountA: id(), accountB: id(), expenseA: id(), staffA: id(), advanceA: id(), itemA: id(), movementA: id(), orderA: id(), invoiceA: id() };
 
 class Rollback extends Error {}
 
@@ -102,6 +102,9 @@ try {
     await tx`insert into public.stock_movements (id, restaurant_id, tenant_id, inventory_item_id, quantity_change, stock_before, stock_after, movement_type)
       values (${fx.movementA}, ${A.restaurant}, ${A.tenant}, ${fx.itemA}, 1, 0, 1, 'adjustment')`;
     await tx`insert into public.online_orders (id, restaurant_id, order_number, order_type, customer_name, customer_phone) values (${fx.orderA}, ${A.restaurant}, 1, 'delivery', 'C', '0500000000')`;
+    await tx`insert into public.purchase_invoices (id, restaurant_id, invoice_number, created_by, total_amount) values (${fx.invoiceA}, ${A.restaurant}, 'CHK-1', ${A.user}, 20)`;
+    await tx`insert into public.invoice_items (invoice_id, description, quantity, unit_price, total_price) values
+      (${fx.invoiceA}, 'Dup', 1, 10, 10), (${fx.invoiceA}, 'Dup', 1, 10, 10)`;
 
     // Structural: a ledger line cannot use another business's account (any caller).
     try {
@@ -151,6 +154,22 @@ try {
     expect("log_audit (own business)", await as(tx, A.user, (sp) => sp`select public.log_audit('X', 'x', null, null, null, ${A.tenant})`), "ok");
     expect("auto_assign_rider (own order)", await as(tx, A.user, (sp) => sp`select public.auto_assign_rider(${fx.orderA})`), "ok");
     expect("lock_fiscal_period (own)", await as(tx, A.user, (sp) => sp`select public.lock_fiscal_period(${A.restaurant}, '2020-01-01', '2020-01-31')`), "ok");
+    // Functions that used to fail for every non-superadmin (20261122122538).
+    expect("explain_imbalance (own)", await as(tx, A.user, (sp) => sp`select public.explain_imbalance(${fx.expenseA})`), "ok");
+    expect("remap_expenses_to_supplier_ap_head (own)", await as(tx, A.user, (sp) => sp`select public.remap_expenses_to_supplier_ap_head()`), "ok");
+    expect("request_terminal_state_refresh (own)", await as(tx, A.user, (sp) => sp`select * from public.request_terminal_state_refresh(${A.restaurant})`), "ok");
+    expect("bulk_fix_invoice_divergence finds own invoice", await as(tx, A.user, async (sp) => {
+      const rows = await sp`select * from public.bulk_fix_invoice_divergence(${[fx.invoiceA]}::uuid[], true)`;
+      if (rows.length !== 1) throw new Error(`dry run returned ${rows.length} rows`);
+    }), "ok");
+    expect("bulk_fix_invoice_divergence applies a fix", await as(tx, A.user, async (sp) => {
+      const [r] = await sp`select * from public.bulk_fix_invoice_divergence(${[fx.invoiceA]}::uuid[], false)`;
+      if (!r || r.removed_lines !== 1 || Number(r.new_total) !== 10) throw new Error(`apply returned ${JSON.stringify(r)}`);
+    }), "ok");
+    expect("bulk_fix_invoice_divergence ignores other business", await as(tx, B.user, async (sp) => {
+      const rows = await sp`select * from public.bulk_fix_invoice_divergence(${[fx.invoiceA]}::uuid[], true)`;
+      if (rows.length !== 0) throw new Error(`returned ${rows.length} rows of another business`);
+    }), "ok");
     expect("undo_stock_adjustment (own)", await as(tx, A.user, (sp) => sp`select public.undo_stock_adjustment(${fx.movementA})`), "ok");
     expect("audit_logs insert (own business)",
       await as(tx, A.user, (sp) => sp`insert into public.audit_logs (user_id, tenant_id, action, entity_type) values (${A.user}, ${A.tenant}, 'X', 'x')`), "ok");
