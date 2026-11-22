@@ -21518,6 +21518,11 @@ export type Database = {
         Args: { _order_id: string }
         Returns: string
       }
+      auto_assign_rider_internal:
+        | {
+        Args: { _order_id: string }
+        Returns: string
+      }
       auto_reconcile_imbalanced_expenses:
         | {
         Args: { p_tenant_id?: unknown }
@@ -22433,6 +22438,11 @@ export type Database = {
       }
         | {
         Args: { _user_id: unknown }
+        Returns: boolean
+      }
+      has_role_in_tenant:
+        | {
+        Args: { _tenant_id: unknown }
         Returns: boolean
       }
       has_tenant_role:

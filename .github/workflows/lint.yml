@@ -86,6 +86,8 @@ jobs:
         run: node db/migrate.mjs
       - name: Tenant isolation audit (RLS on every tenant table, no unapproved open policies)
         run: node db/check-rls.mjs
+      - name: Caller checks in SECURITY DEFINER functions (no cross-business access)
+        run: node db/check-definer-access.mjs
       - name: Generated DB types are up to date
         run: node scripts/generate-db-types.mjs --check
       - name: Keys for CI
