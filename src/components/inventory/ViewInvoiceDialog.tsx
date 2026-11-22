@@ -63,7 +63,7 @@ interface ViewInvoiceDialogProps {
 }
 
 export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialogProps) {
-  const { restaurant, isManager, isOwner, hasFeature } = useAuth();
+  const { restaurant, canPostJournals, hasFeature } = useAuth();
   const { format: formatCurrency } = useCurrency();
   const { accounts } = useChartOfAccounts();
   const [open, setOpen] = useState(false);
@@ -77,11 +77,19 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
   const [paymentMethod, setPaymentMethod] = useState<"" | "cash" | "bank">("");
 
   const hasAccounting = hasFeature("accounting");
-  const canPost = (isManager || isOwner) && hasAccounting && !invoice.ledger_posted;
+  // Same rule as can_post_journal_entries(): owners, managers, and accountants
+  // when the business allows them to post journals.
+  const canPost = canPostJournals && hasAccounting && !invoice.ledger_posted;
 
-  // Get COGS and Expense accounts for selection
+  // Accounts a purchase can be posted to (same rule as post_purchase_invoice_to_ledger):
+  // expense, cost of sales, or inventory (1200-1299). Cash, bank, receivables and
+  // fixed assets are not valid targets.
   const cogsExpenseAccounts = accounts.filter(
-    (acc) => acc.is_active && (acc.account_type === "cogs" || acc.account_type === "expense" || acc.account_type === "asset")
+    (acc) =>
+      acc.is_active &&
+      (acc.account_type === "cogs" ||
+        acc.account_type === "expense" ||
+        (acc.account_type === "asset" && acc.account_code >= "1200" && acc.account_code < "1300"))
   );
 
   // Get the mapped account details
@@ -331,7 +339,7 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
                   </label>
                   <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select COGS/Expense/Asset account" />
+                      <SelectValue placeholder="Select expense, cost or inventory account" />
                     </SelectTrigger>
                     <SelectContent>
                       {cogsExpenseAccounts.map((account) => (

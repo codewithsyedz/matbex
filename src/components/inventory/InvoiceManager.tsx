@@ -89,7 +89,7 @@ interface Supplier {
 }
 
 export function InvoiceManager() {
-  const { restaurant, user, isManager } = useAuth();
+  const { restaurant, user, isManager, canPostJournals } = useAuth();
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -938,7 +938,7 @@ export function InvoiceManager() {
                           <Download className="h-4 w-4" />
                         )}
                       </Button>
-                      {invoice.status !== "paid" && (
+                      {invoice.status !== "paid" && canPostJournals && (
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>
