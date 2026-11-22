@@ -54,7 +54,7 @@ for (const f of fns) {
 // 2. Behaviour
 // ---------------------------------------------------------------------------------------------
 const id = () => crypto.randomUUID();
-const A = { user: id(), tenant: id(), restaurant: id() };
+const A = { user: id(), tenant: id(), restaurant: id(), restaurant2: id() };
 const B = { user: id(), tenant: id(), restaurant: id() };
 const C = { user: id() }; // signed up, no business yet
 const fx = { accountA: id(), accountB: id(), expenseA: id(), staffA: id(), advanceA: id(), itemA: id(), movementA: id(), orderA: id(), invoiceA: id() };
@@ -73,7 +73,7 @@ async function as(tx, user, fn) {
   } catch (e) {
     if (e instanceof Rollback) return "ok";
     // Refusals: 42501, or a function's own forbidden message (some keep their original raise).
-    if (e.code === "42501" || /forbid|not authori[sz]ed|not allowed|insufficient privileges/i.test(e.message)) return "denied";
+    if (e.code === "42501" || /forbid|not authori[sz]ed|not allowed|insufficient privileges|^only owners/i.test(e.message)) return "denied";
     return `${e.code}: ${e.message}`;
   }
 }
@@ -88,6 +88,8 @@ try {
     await tx`insert into auth.users (id, email) values (${A.user}, 'definer-a@check.test'), (${B.user}, 'definer-b@check.test'), (${C.user}, 'definer-c@check.test')`;
     await tx`insert into public.tenants (id, name, slug) values (${A.tenant}, 'Definer A', ${"definer-a-" + A.tenant.slice(0, 8)}), (${B.tenant}, 'Definer B', ${"definer-b-" + B.tenant.slice(0, 8)})`;
     await tx`insert into public.restaurants (id, name, tenant_id) values (${A.restaurant}, 'Rest A', ${A.tenant}), (${B.restaurant}, 'Rest B', ${B.tenant})`;
+    // Second restaurant of A where the owner has no per-restaurant role row (business-level owner).
+    await tx`insert into public.restaurants (id, name, tenant_id) values (${A.restaurant2}, 'Rest A2', ${A.tenant})`;
     for (const x of [A, B]) {
       await tx`insert into public.user_roles (user_id, restaurant_id, role) values (${x.user}, ${x.restaurant}, 'owner')`;
       await tx`insert into public.user_tenant_roles (user_id, tenant_id, role) values (${x.user}, ${x.tenant}, 'owner') on conflict do nothing`;
@@ -170,6 +172,9 @@ try {
       const rows = await sp`select * from public.bulk_fix_invoice_divergence(${[fx.invoiceA]}::uuid[], true)`;
       if (rows.length !== 0) throw new Error(`returned ${rows.length} rows of another business`);
     }), "ok");
+    expect("request_terminal_state_refresh (business-level owner)", await as(tx, A.user, (sp) => sp`select * from public.request_terminal_state_refresh(${A.restaurant2})`), "ok");
+    expect("request_terminal_state_refresh (other business)", await as(tx, B.user, (sp) => sp`select * from public.request_terminal_state_refresh(${A.restaurant2})`), denied);
+    expect("backfill_supplier_ap_accounts (business-level owner)", await as(tx, A.user, (sp) => sp`select public.backfill_supplier_ap_accounts(${A.restaurant2})`), "ok");
     expect("undo_stock_adjustment (own)", await as(tx, A.user, (sp) => sp`select public.undo_stock_adjustment(${fx.movementA})`), "ok");
     expect("audit_logs insert (own business)",
       await as(tx, A.user, (sp) => sp`insert into public.audit_logs (user_id, tenant_id, action, entity_type) values (${A.user}, ${A.tenant}, 'X', 'x')`), "ok");
