@@ -106,8 +106,10 @@ export const createSaleBody = {
     },
   },
   definitions: {
+    // Nullable: the POS sends `cardTerminal: null` for cash and "other" payments.
     cardTerminal: {
       type: "object",
+      nullable: true,
       additionalProperties: false,
       required: ["provider", "status"],
       properties: {
