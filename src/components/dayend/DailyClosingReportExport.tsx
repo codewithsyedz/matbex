@@ -71,7 +71,7 @@ export function DailyClosingReportExport() {
     queryFn: async () => {
       let txQ = db
         .from("sales_transactions")
-        .select("branch_id, created_at, total, subtotal, tax, payment_method, is_delivery")
+        .select("branch_id, created_at, total, subtotal, tax, payment_method, is_delivery, sale_payments(method,amount)")
         .eq("restaurant_id", restaurant!.id)
         .gte("created_at", fromIso!)
         .lte("created_at", toIso!);

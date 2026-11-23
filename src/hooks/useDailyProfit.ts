@@ -1,4 +1,5 @@
 import { useCachedQuery } from "@/lib/redisCache";
+import { amountsByMethod } from "@/lib/saleTenders";
 import { dashboardQueryOptions } from "@/lib/query/queryPolicy";
 import { qk } from "@/lib/query/queryKeys";
 import { db } from "@/integrations/db/client";
@@ -145,7 +146,7 @@ export function useDailyProfit(selectedDate?: Date) {
       const { data, error } = await withBranch(
         db
           .from("sales_transactions")
-          .select("total, payment_method, shift_id, created_at, branch_id, settlement_status")
+          .select("total, payment_method, shift_id, created_at, branch_id, settlement_status, sale_payments(method,amount)")
           .eq("restaurant_id", restaurant.id)
           .gte("created_at", start.toISOString())
           .lt("created_at", endExclusive.toISOString())
@@ -788,12 +789,10 @@ export function useDailyProfit(selectedDate?: Date) {
     const shiftSales = (salesData || []).filter((s) => s.shift_id === shift.id);
     const netSales = shiftSales.reduce((sum, s) => sum + Number(s.total), 0);
     // Tab sales (still unpaid) are not cash or card taken in the shift.
-    const cashSales = shiftSales
-      .filter((s) => s.payment_method === "cash" && s.settlement_status !== "unpaid")
-      .reduce((sum, s) => sum + Number(s.total), 0);
-    const cardSales = shiftSales
-      .filter((s) => s.payment_method === "card" && s.settlement_status !== "unpaid")
-      .reduce((sum, s) => sum + Number(s.total), 0);
+    // Split sales count their cash and card tenders separately.
+    const paid = amountsByMethod(shiftSales.filter((s) => s.settlement_status !== "unpaid"));
+    const cashSales = paid.cash ?? 0;
+    const cardSales = paid.card ?? 0;
     const otherSales = netSales - cashSales - cardSales;
 
     const estimatedFoodCost = netSales * FALLBACK_FOOD_COST_PERCENTAGE;

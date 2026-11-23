@@ -1,7 +1,7 @@
 import { format } from "date-fns";
 import QRCode from "qrcode";
 import { hardwareManager } from "./hardware/manager";
-import type { PrintJob, PrintReceiptPayload } from "./hardware/types";
+import type { PrintJob, PrintReceiptPayload, ReceiptTender } from "./hardware/types";
 import { renderHtmlToImageDataUrl } from "./printRaster";
 import { roundMoney, netFromListed, grossFromListed, formatMoneyAmount } from "./vatInclusive";
 
@@ -43,6 +43,8 @@ export interface ReceiptData {
   tax: number;
   total: number;
   paymentMethod: string;
+  /** Split tender: each tender is printed (with cash given and change). */
+  payments?: ReceiptTender[] | null;
   cashierName?: string;
   customerName?: string;
   header?: string;
@@ -172,6 +174,7 @@ function toPrintReceiptPayload(
     tax: data.tax,
     total: data.total,
     paymentMethod: data.paymentMethod,
+    payments: data.payments ?? null,
     header: data.header,
     footer: data.footer,
     orderType: data.orderType,
@@ -251,6 +254,7 @@ export function receiptPayloadToData(payload: PrintReceiptPayload): ReceiptData 
     tax: payload.tax,
     total: payload.total,
     paymentMethod: payload.paymentMethod,
+    payments: payload.payments ?? null,
     header: payload.header ?? undefined,
     footer: payload.footer ?? undefined,
     orderType: payload.orderType,
@@ -280,6 +284,25 @@ export function receiptPayloadToData(payload: PrintReceiptPayload): ReceiptData 
  * If a ZATCA snapshot is provided with a QR payload, the QR is rendered
  * inline as a PNG data URL so it survives the new-window print pipeline.
  */
+/** Payment line(s): one per tender for a split payment, with cash given and change. */
+function tenderRowsHtml(data: ReceiptData, label: string, formatPrice: (n: number) => string): string {
+  const tenders = (data.payments ?? []).filter((p) => p && Number.isFinite(Number(p.amount)));
+  const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  if (tenders.length > 1 || tenders.some((p) => p.tendered != null)) {
+    return tenders
+      .map((p) => {
+        const rows = [`<div class="totals-row"><span>${esc(label)}: ${esc(String(p.method))}</span><span class="amount">${formatPrice(Number(p.amount))}</span></div>`];
+        if (p.tendered != null) rows.push(`<div class="totals-row"><span>&nbsp;&nbsp;Cash given</span><span class="amount">${formatPrice(Number(p.tendered))}</span></div>`);
+        if (p.change_given) rows.push(`<div class="totals-row"><span>&nbsp;&nbsp;Change</span><span class="amount">${formatPrice(Number(p.change_given))}</span></div>`);
+        return rows.join("");
+      })
+      .join("");
+  }
+  return `<div class="payment-row">
+        <span>${esc(label)}: ${esc(String(data.paymentMethod))} 💳</span>
+      </div>`;
+}
+
 export async function generateReceiptHTML(data: ReceiptData): Promise<string> {
   // ZATCA-compliant thermal receipt - bilingual (Arabic RTL / English LTR).
   // Layout: logo + tagline → address → VAT + CR → bordered order # →
@@ -707,9 +730,7 @@ export async function generateReceiptHTML(data: ReceiptData): Promise<string> {
       </div>
       <div class="dashed"></div>
 
-      <div class="payment-row">
-        <span>${t.payment}: ${data.paymentMethod} 💳</span>
-      </div>
+      ${tenderRowsHtml(data, t.payment, formatPrice)}
       <div class="dashed"></div>
 
       <div class="footer-meta">

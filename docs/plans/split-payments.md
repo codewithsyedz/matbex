@@ -3,8 +3,9 @@
 Status: phase 1 built on custom-backend (2026-11-23): sale_payments + 'split', payments[] on
 POST /api/v1/pos/sales, per-tender cash events and void refunds, Split on the quick-sale POS dialog
 (SalesRecorder), offline replay, receipt PDFs, UBL PaymentMeans per tender, report functions.
-Not yet: Split on the full /record-sale page (RecordSale.tsx / RecordSaleMobile), and the other
-client screens that still read sales_transactions.payment_method (they show "split").
+Since then: Split on /record-sale (RecordSale.tsx, RecordSaleMobile) with one ZATCA PaymentMeans
+per tender and printed tenders; cash/card readers (day-end, dashboard, analytics, reports, card
+sales by branch, daily profit email) read tenders. Display-only screens show "split".
 
 ## Problem
 

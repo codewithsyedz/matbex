@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { amountsByMethod } from "@/lib/saleTenders";
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
@@ -65,7 +66,7 @@ export function DailySalesCard() {
       // Single batch query for all 7 days (raw POS — used for payment + shift breakdown)
       let rawSalesQuery = db
         .from("sales_transactions")
-        .select("total, created_at, payment_method, settlement_status, shift_id")
+        .select("total, created_at, payment_method, settlement_status, shift_id, sale_payments(method,amount)")
         .eq("restaurant_id", restaurant.id)
         .gte("created_at", rangeStart.toISOString())
         .lt("created_at", rangeEnd.toISOString());
@@ -132,10 +133,10 @@ export function DailySalesCard() {
 
       // Calculate RAW payment breakdowns from selected day POS rows
       // A sale still unpaid sits on a customer's tab: shown as unpaid, not as cash or card.
-      const rawCash = selectedDaySales.filter(s => s.payment_method === "cash" && s.settlement_status !== "unpaid")
-        .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
-      const rawCard = selectedDaySales.filter(s => s.payment_method === "card" && s.settlement_status !== "unpaid")
-        .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
+      // Split sales count their cash and card tenders separately.
+      const paidByMethod = amountsByMethod(selectedDaySales.filter(s => s.settlement_status !== "unpaid"));
+      const rawCash = paidByMethod.cash ?? 0;
+      const rawCard = paidByMethod.card ?? 0;
       const rawUnpaid = selectedDaySales.filter(s => s.settlement_status === "unpaid")
         .reduce((sum, s) => sum + (Number(s.total) || 0), 0);
 

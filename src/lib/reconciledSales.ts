@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { tendersOf } from "@/lib/saleTenders";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import { db } from "@/integrations/db/client";
 
@@ -262,7 +263,7 @@ export async function fetchReconciledSalesByDay({
       for (let page = 0; ; page++) {
         let q = db
           .from("sales_transactions")
-          .select("id, total, created_at, payment_method, is_delivery")
+          .select("id, total, created_at, payment_method, is_delivery, sale_payments(method,amount)")
           .eq("restaurant_id", restaurantId)
           .gte("created_at", startISO)
           .lte("created_at", endISO)
@@ -352,6 +353,14 @@ export async function fetchReconciledSalesByDay({
       d.other += tab;
       const paid = amount - tab;
       if (r.is_delivery) d.delivery += paid;
+      else if (r.payment_method === "split") {
+        // Split tender (never on a tab): each tender in its own bucket.
+        for (const part of tendersOf(r)) {
+          if (part.method === "cash") d.cash += part.amount;
+          else if (part.method === "card") d.card += part.amount;
+          else d.other += part.amount;
+        }
+      }
       else if (r.payment_method === "cash") d.cash += paid;
       else if (r.payment_method === "card") d.card += paid;
       else d.other += paid;

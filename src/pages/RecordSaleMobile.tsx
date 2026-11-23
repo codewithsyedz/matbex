@@ -33,6 +33,7 @@ import {
   AlertCircle,
   RefreshCw,
   Receipt,
+  SplitSquareHorizontal,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -57,7 +58,9 @@ import { AdminPinDialog } from "@/components/pos/AdminPinDialog";
 import { EmergencyKioskUnlockDialog } from "@/components/pos/EmergencyKioskUnlockDialog";
 import { KioskWifiDialog } from "@/components/pos/KioskWifiDialog";
 import { recordOfflineSale } from "@/lib/offline/posService";
-import { quoteSale, recordSale, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize } from "@/lib/api/pos";
+import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize } from "@/lib/api/pos";
+import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
+import { chargeCardTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders, type SplitTenders } from "@/lib/pos/splitTenders";
 import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { ApiError } from "@/lib/api/http";
 import { isOnline } from "@/lib/offline/connectivity";
@@ -198,6 +201,8 @@ export default function RecordSaleMobile() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
   const [unpaid, setUnpaid] = useState(false);
+  /** Split tender: the sale is paid by the tenders in splitTenders instead of `payment`. */
+  const [isSplit, setIsSplit] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -494,6 +499,8 @@ export default function RecordSaleMobile() {
     pricesInclusive,
   );
   const total = grossTotal;
+  const splitTenders = useSplitTenders(total);
+  const splitActive = isSplit && !unpaid;
 
   const sizeOf = (v: Variant): SaleLineSize => (v === "default" ? "regular" : v);
 
@@ -510,7 +517,10 @@ export default function RecordSaleMobile() {
       idempotencyKey,
       cashierId: user.id,
       shiftId: activeShift?.id || null,
-      paymentMethod: payment,
+      paymentMethod: splitActive ? "split" : payment,
+      payments: splitActive
+        ? toSalePayments(tenderParts(splitTenders.tenders)).map((p) => ({ method: p.method, amount: p.amount, tendered: p.tendered ?? null, cardTerminal: null }))
+        : null,
       customerId: unpaid ? selectedCustomer?.id ?? null : null,
       isUnpaid: unpaid,
       vatRate,
@@ -717,7 +727,15 @@ export default function RecordSaleMobile() {
       const browserOffline =
         typeof navigator !== "undefined" && navigator.onLine === false;
       const saleKey = crypto.randomUUID();
+      // Split tender: the tenders must pay the total exactly before anything is charged.
+      const splitParts = splitActive ? tenderParts(splitTenders.tenders) : [];
+      if (splitActive && !splitIsComplete(splitTenders.tenders, total)) {
+        throw new Error(t("app.pos.recorder.splitIncomplete"));
+      }
       if (browserOffline || !isOnline()) {
+        if (splitParts.some((p) => p.approval)) {
+          throw new Error("A card was already charged online; reconnect and press Charge again to record the sale.");
+        }
         return queueSaleOffline(saleKey);
       }
 
@@ -728,7 +746,7 @@ export default function RecordSaleMobile() {
         branchId: activeBranchId ?? null,
         shiftId: activeShift?.id ?? null,
         customerId: unpaid ? selectedCustomer?.id ?? null : null,
-        paymentMethod: payment,
+        ...(splitActive ? {} : { paymentMethod: payment }),
         settlement: unpaid ? "unpaid" : "paid",
         lines: cart.map((l) =>
           l.combo
@@ -741,7 +759,25 @@ export default function RecordSaleMobile() {
       // total by QR first; the sales API checks the payment again. A payment whose sale failed
       // to record is reused on the next try.
       let cardTerminal: RecordSaleInput["cardTerminal"] = null;
-      if (payment === "card" && !unpaid && moyasar.enabled) {
+      if (splitActive) {
+        // Each card tender is paid through Moyasar for its own amount (when enabled); without
+        // Moyasar, card tenders are taken on a standalone terminal.
+        const toCharge = moyasar.enabled ? splitParts.filter((p) => p.method === "card" && !p.approval) : [];
+        if (toCharge.length) {
+          const quote = await quoteSale(saleInput);
+          if (Math.abs(quote.total - total) >= 0.005) {
+            throw new Error("The total changed since the cart was loaded; check the cart and the payments, then charge again.");
+          }
+        }
+        await chargeCardTenders(
+          toCharge,
+          async (amount) => {
+            const intentId = await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` });
+            return { provider: "moyasar", status: "approved", reference: intentId } as CardTerminalApproval;
+          },
+          splitTenders.markApproved,
+        );
+      } else if (payment === "card" && !unpaid && moyasar.enabled) {
         const quote = await quoteSale(saleInput);
         const kept = moyasarPaidRef.current;
         const intentId = kept && Math.abs(kept.amount - quote.total) < 0.005
@@ -755,7 +791,7 @@ export default function RecordSaleMobile() {
       try {
         const saved = await withOnlineWriteTimeout(
           recordSale(
-            { ...saleInput, cardTerminal },
+            splitActive ? { ...saleInput, payments: toSalePayments(splitParts) } : { ...saleInput, cardTerminal },
             { idempotencyKey: saleKey },
           ),
           "Recording sale",
@@ -763,7 +799,7 @@ export default function RecordSaleMobile() {
         receiptNumber = saved.receiptNumber;
       } catch (error) {
         if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
-          if (cardTerminal) throw new Error("The card payment went through but the sale could not be saved. Check the connection and press Charge again; the customer will not be charged twice.");
+          if (cardTerminal || splitParts.some((p) => p.approval)) throw new Error("The card payment went through but the sale could not be saved. Check the connection and press Charge again; the customer will not be charged twice.");
           return queueSaleOffline(saleKey);
         }
         if (error instanceof ApiError && error.code === "price_changed") {
@@ -789,6 +825,8 @@ export default function RecordSaleMobile() {
       );
       setCart([]);
       setPayment("cash");
+      setIsSplit(false);
+      splitTenders.reset();
       setUnpaid(false);
       setSelectedCustomer(null);
       setCartOpen(false);
@@ -1158,6 +1196,7 @@ export default function RecordSaleMobile() {
           payment={payment}
           unpaid={unpaid}
           setPayment={setPayment}
+          split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders }}
           setUnpaid={toggleUnpaid}
           changeQty={changeQty}
           removeLine={removeLine}
@@ -1229,6 +1268,7 @@ export default function RecordSaleMobile() {
             payment={payment}
             unpaid={unpaid}
             setPayment={setPayment}
+            split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders }}
             setUnpaid={toggleUnpaid}
             changeQty={changeQty}
             removeLine={removeLine}
@@ -1595,6 +1635,7 @@ function OrderSummary({
   payment,
   unpaid,
   setPayment,
+  split,
   setUnpaid,
   changeQty,
   removeLine,
@@ -1617,6 +1658,8 @@ function OrderSummary({
   payment: PaymentMethod;
   unpaid: boolean;
   setPayment: (p: PaymentMethod) => void;
+  /** Split tender state (not offered for unpaid sales). */
+  split: { active: boolean; setActive: (v: boolean) => void; tenders: SplitTenders };
   setUnpaid: (v: boolean) => void;
   changeQty: (key: string, delta: number) => void;
   removeLine: (key: string) => void;
@@ -1766,26 +1809,37 @@ function OrderSummary({
           <p className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase mb-1">
              {t("app.pos.mobile.paymentMethod")}
           </p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             <PayButton
-              active={payment === "cash"}
-              onClick={() => setPayment("cash")}
+              active={!split.active && payment === "cash"}
+              onClick={() => { split.setActive(false); setPayment("cash"); }}
               icon={<Banknote className="h-4 w-4" />}
               label={t("app.sales.paymentMethods.cash")}
             />
             <PayButton
-              active={payment === "card"}
-              onClick={() => setPayment("card")}
+              active={!split.active && payment === "card"}
+              onClick={() => { split.setActive(false); setPayment("card"); }}
               icon={<CreditCard className="h-4 w-4" />}
               label={t("app.sales.paymentMethods.card")}
             />
             <PayButton
-              active={payment === "other"}
-              onClick={() => setPayment("other")}
+              active={!split.active && payment === "other"}
+              onClick={() => { split.setActive(false); setPayment("other"); }}
               icon={<MoreHorizontal className="h-4 w-4" />}
               label={t("app.sales.paymentMethods.other")}
             />
+            <PayButton
+              active={split.active}
+              onClick={() => { if (!unpaid) split.setActive(true); }}
+              icon={<SplitSquareHorizontal className="h-4 w-4" />}
+              label={t("app.pos.recorder.split")}
+            />
           </div>
+          {split.active && (
+            <div className="mt-2">
+              <SplitTenderPanel split={split.tenders} formatCurrency={formatCurrency} />
+            </div>
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -1825,7 +1879,7 @@ function OrderSummary({
 
         <Button
           onClick={submit}
-          disabled={submitting || empty}
+          disabled={submitting || empty || (split.active && !split.tenders.ready)}
           className="w-full h-14 rounded-2xl text-base font-semibold"
         >
           {submitting ? (

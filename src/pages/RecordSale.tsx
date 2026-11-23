@@ -3,7 +3,9 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { recordOfflineSale } from "@/lib/offline/posService";
-import { quoteSale, recordSale, type PriceChangedDetails, type RecordSaleInput, type RecordSaleResult, type SaleLineSize } from "@/lib/api/pos";
+import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type RecordSaleResult, type SaleLineSize } from "@/lib/api/pos";
+import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
+import { chargeCardTenders, receiptTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders } from "@/lib/pos/splitTenders";
 import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { ApiError } from "@/lib/api/http";
 import { toCdnUrl } from "@/lib/imageCdn";
@@ -79,6 +81,7 @@ import {
   ShoppingBag,
   Bike,
   PauseCircle,
+  SplitSquareHorizontal,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
@@ -116,6 +119,7 @@ import {
 import { stampZatcaChain } from "@/lib/api/zatca";
 import {
   buildSimplifiedTaxInvoiceUbl,
+  paymentMeansForTenders,
   uploadZatcaXml,
   writeXmlUrlToSale,
 } from "@/lib/zatca/ubl";
@@ -260,6 +264,8 @@ export default function RecordSale() {
   // Sales state
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  /** Split tender: the sale is paid by the tenders in `splitTenders` instead of paymentMethod. */
+  const [isSplit, setIsSplit] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isQRScannerOpen, setIsQRScannerOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("top-selling");
@@ -841,7 +847,15 @@ export default function RecordSale() {
       idempotencyKey,
       cashierId: user.id,
       shiftId: activeShift?.id ?? null,
-      paymentMethod,
+      paymentMethod: splitActive ? "split" : paymentMethod,
+      payments: splitActive
+        ? toSalePayments(tenderParts(splitTenders.tenders)).map((p) => ({
+            method: p.method,
+            amount: p.amount,
+            tendered: p.tendered ?? null,
+            cardTerminal: null,
+          }))
+        : null,
       customerId: isUnpaidSale ? selectedCustomer?.id ?? null : null,
       isUnpaid: isUnpaidSale,
       vatRate,
@@ -989,6 +1003,11 @@ export default function RecordSale() {
     };
   }, [cartTotal, docDiscount, docSurcharge, docCurrency, docFxRate, vatRate, pricesInclusive]);
 
+  // Split tender pays the SAR payable (what the server charges); not for credit or foreign-currency sales.
+  const splitTenders = useSplitTenders(zatcaTotals.payable);
+  const splitAllowed = !isUnpaidSale && (!docCurrency || docCurrency === "SAR");
+  const splitActive = isSplit && splitAllowed;
+
   // Build a UBL XML preview from current cart + ZATCA inputs. Uses
   // placeholder UUID/ICV/PIH so the operator can review structure
   // (allowance charges, buyer identification, totals) before submission.
@@ -1069,6 +1088,7 @@ export default function RecordSale() {
           : []),
       ],
       paymentMeansCode: paymentMethod === "cash" ? "10" : "30",
+      paymentMeans: splitActive ? paymentMeansForTenders(tenderParts(splitTenders.tenders)) : undefined,
     });
   };
 
@@ -1107,6 +1127,8 @@ export default function RecordSale() {
     docDiscount,
     docSurcharge,
     paymentMethod,
+    splitActive,
+    splitTenders.tenders,
     zatcaSettings,
     restaurant?.name,
   ]);
@@ -1263,7 +1285,15 @@ export default function RecordSale() {
       // connectivity watcher and immediately queue the sale when either says
       // offline.
       const saleKey = crypto.randomUUID();
+      // Split tender: the tenders must pay the total exactly before anything is charged.
+      const splitParts = splitActive ? tenderParts(splitTenders.tenders) : [];
+      if (splitActive && !splitIsComplete(splitTenders.tenders, zatcaTotals.payable)) {
+        throw new Error(t("app.pos.recorder.splitIncomplete"));
+      }
       if (browserOffline || !isPosOnline()) {
+        if (splitParts.some((p) => p.approval)) {
+          throw new Error("A card was already charged online; reconnect and press Charge again to record the sale.");
+        }
         return queueSaleOffline(saleKey);
       }
 
@@ -1323,7 +1353,7 @@ export default function RecordSale() {
         shiftId: activeShift?.id ?? null,
         customerId: selectedCustomer?.id ?? null,
         tableId: linkedTable?.id ?? null,
-        paymentMethod,
+        ...(splitActive ? {} : { paymentMethod }),
         settlement: isUnpaidSale ? "unpaid" : "paid",
         createdAt: isUnpaidSale && isBackdated ? transactionTimestamp : null,
         // Same amounts the receipt and the ZATCA invoice use (zatcaTotals).
@@ -1352,7 +1382,26 @@ export default function RecordSale() {
       // first and record the sale only once it is paid; the sales API checks the payment again.
       // A payment that went through but whose sale failed to record is reused on the next try.
       let cardTerminal: RecordSaleInput["cardTerminal"] = null;
-      if (paymentMethod === "card" && !isUnpaidSale && moyasar.enabled) {
+      if (splitActive) {
+        // Each card tender is paid through Moyasar for its own amount (when enabled); a card
+        // that fails stops here and keeps the tenders already paid. Without Moyasar, card
+        // tenders are taken on a standalone terminal, like a card sale today.
+        const toCharge = moyasar.enabled ? splitParts.filter((p) => p.method === "card" && !p.approval) : [];
+        if (toCharge.length) {
+          const quote = await quoteSale(saleInput);
+          if (Math.abs(quote.total - zatcaTotals.payable) >= 0.005) {
+            throw new Error("The total changed since the cart was loaded; check the cart and the payments, then charge again.");
+          }
+        }
+        await chargeCardTenders(
+          toCharge,
+          async (amount) => {
+            const intentId = await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` });
+            return { provider: "moyasar", status: "approved", reference: intentId } as CardTerminalApproval;
+          },
+          splitTenders.markApproved,
+        );
+      } else if (paymentMethod === "card" && !isUnpaidSale && moyasar.enabled) {
         const quote = await quoteSale(saleInput);
         const kept = moyasarPaidRef.current;
         const intentId = kept && Math.abs(kept.amount - quote.total) < 0.005
@@ -1366,14 +1415,14 @@ export default function RecordSale() {
       try {
         saved = await withOnlineWriteTimeout(
           recordSale(
-            { ...saleInput, cardTerminal },
+            splitActive ? { ...saleInput, payments: toSalePayments(splitParts) } : { ...saleInput, cardTerminal },
             { idempotencyKey: saleKey },
           ),
           "Recording sale",
         );
       } catch (error) {
         if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
-          if (cardTerminal) throw new Error("The card payment went through but the sale could not be saved. Check the connection and press Charge again; the customer will not be charged twice.");
+          if (cardTerminal || splitParts.some((p) => p.approval)) throw new Error("The card payment went through but the sale could not be saved. Check the connection and press Charge again; the customer will not be charged twice.");
           return queueSaleOffline(saleKey);
         }
         if (error instanceof ApiError && error.code === "price_changed") {
@@ -1396,6 +1445,11 @@ export default function RecordSale() {
       return { transaction: saved.transaction, receiptNumber: saved.receiptNumber, salesItems: saved.salesItems };
     },
     onSuccess: (data) => {
+      // What the receipt and the invoice say about payment: every tender of a split sale.
+      const printedTenders = splitActive ? receiptTenders(tenderParts(splitTenders.tenders)) : null;
+      const printedMethod = printedTenders ? "split" : paymentMethod;
+      // The drawer opens when cash was taken.
+      const drawerMethod = printedTenders ? (printedTenders.some((p) => p.method === "cash") ? "cash" : "card") : paymentMethod;
       if ("offlineReceiptNumber" in data) {
         // ── Auto-print queued receipt ──────────────────────────────
         // Cashier still gets a paper receipt for the customer even
@@ -1419,7 +1473,8 @@ export default function RecordSale() {
             subtotal: cartTotal,
             tax: 0,
             total: cartTotal,
-            paymentMethod,
+            paymentMethod: printedMethod,
+            payments: printedTenders,
             customerName: selectedCustomer?.name,
             header: posHardware.receipt_header || undefined,
             footer: (posHardware.receipt_footer || "") + "\n[OFFLINE · pending sync]",
@@ -1465,7 +1520,7 @@ export default function RecordSale() {
                   }
                 : undefined;
             })(),
-            paymentMethod,
+            paymentMethod: drawerMethod,
           });
         }
 
@@ -1474,6 +1529,8 @@ export default function RecordSale() {
         }
 
         setCart([]);
+        splitTenders.reset();
+        setIsSplit(false);
         setSelectedCustomer(null);
         setIsUnpaidSale(false);
         setCustomerSearchTerm("");
@@ -1552,7 +1609,8 @@ export default function RecordSale() {
           subtotal: cartTotal,
           tax: 0,
           total: cartTotal,
-          paymentMethod: paymentMethod,
+          paymentMethod: printedMethod,
+          payments: printedTenders,
           customerName: selectedCustomer?.name,
           header: posHardware.receipt_header || undefined,
           footer: posHardware.receipt_footer || undefined,
@@ -1639,7 +1697,7 @@ export default function RecordSale() {
                   : null,
             };
           })(),
-          paymentMethod: paymentMethod,
+          paymentMethod: drawerMethod,
         });
 
       }
@@ -1747,6 +1805,7 @@ export default function RecordSale() {
                         : []),
                     ],
                     paymentMeansCode: paymentMethod === "cash" ? "10" : "30",
+                    paymentMeans: printedTenders ? paymentMeansForTenders(printedTenders) : undefined,
                     vatRatePercent: vatPercent,
                   });
                   const xmlUrl = await uploadZatcaXml({
@@ -1804,7 +1863,8 @@ export default function RecordSale() {
           receiptNumber: data.receiptNumber,
           date: saleTimestamp,
           customerName: selectedCustomer?.name ?? null,
-          paymentMethod,
+          paymentMethod: printedMethod,
+          payments: printedTenders,
           header: posHardware.receipt_header || null,
           footer: posHardware.receipt_footer || null,
           currencySymbol: restaurant?.currency || "SAR",
@@ -1953,6 +2013,8 @@ export default function RecordSale() {
       }
       
       setCart([]);
+      splitTenders.reset();
+      setIsSplit(false);
       setSelectedCustomer(null);
       setIsUnpaidSale(false);
       setCustomerSearchTerm("");
@@ -2860,32 +2922,43 @@ export default function RecordSale() {
           {!isUnpaidSale && (
             <div className="space-y-2">
               <Label>{t("app.pos.order.paymentMethod")}</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <Button
-                  variant={paymentMethod === "cash" ? "default" : "outline"}
+                  variant={!splitActive && paymentMethod === "cash" ? "default" : "outline"}
                   className="gap-1 text-xs sm:text-sm sm:gap-2"
-                  onClick={() => setPaymentMethod("cash")}
+                  onClick={() => { setIsSplit(false); setPaymentMethod("cash"); }}
                 >
                   <Banknote className="h-4 w-4" />
                   <span className="hidden sm:inline">{t("app.pos.order.cash")}</span>
                 </Button>
                 <Button
-                  variant={paymentMethod === "card" ? "default" : "outline"}
+                  variant={!splitActive && paymentMethod === "card" ? "default" : "outline"}
                   className="gap-1 text-xs sm:text-sm sm:gap-2"
-                  onClick={() => setPaymentMethod("card")}
+                  onClick={() => { setIsSplit(false); setPaymentMethod("card"); }}
                 >
                   <CreditCard className="h-4 w-4" />
                   <span className="hidden sm:inline">{t("app.pos.order.card")}</span>
                 </Button>
                 <Button
-                  variant={paymentMethod === "other" ? "default" : "outline"}
+                  variant={!splitActive && paymentMethod === "other" ? "default" : "outline"}
                   className="gap-1 text-xs sm:text-sm sm:gap-2"
-                  onClick={() => setPaymentMethod("other")}
+                  onClick={() => { setIsSplit(false); setPaymentMethod("other"); }}
                 >
                   <Wallet className="h-4 w-4" />
                   <span className="hidden sm:inline">{t("app.pos.order.other")}</span>
                 </Button>
+                <Button
+                  variant={splitActive ? "default" : "outline"}
+                  className="gap-1 text-xs sm:text-sm sm:gap-2"
+                  disabled={!splitAllowed}
+                  aria-label={t("app.pos.recorder.split")}
+                  onClick={() => setIsSplit(true)}
+                >
+                  <SplitSquareHorizontal className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t("app.pos.recorder.split")}</span>
+                </Button>
               </div>
+              {splitActive && <SplitTenderPanel split={splitTenders} formatCurrency={formatCurrency} />}
             </div>
           )}
 
@@ -2902,7 +2975,7 @@ export default function RecordSale() {
           size="lg"
           className="w-full"
           variant="default"
-          disabled={cart.length === 0 || recordSaleMutation.isPending}
+          disabled={cart.length === 0 || recordSaleMutation.isPending || (splitActive && !splitTenders.ready)}
           onClick={async () => {
             // Reset any prior inline rejection so the alert only reflects
             // the outcome of *this* submit attempt.

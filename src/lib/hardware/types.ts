@@ -32,6 +32,13 @@ export interface PrinterDescriptor {
   raw?: unknown;
 }
 
+export interface ReceiptTender {
+  method: string;
+  amount: number;
+  tendered?: number | null;
+  change_given?: number | null;
+}
+
 export interface PrintReceiptPayload {
   receiptNumber: string;
   restaurantName: string;
@@ -49,6 +56,8 @@ export interface PrintReceiptPayload {
   tax: number;
   total: number;
   paymentMethod: string;
+  /** Split tender: each tender, with cash given and change. */
+  payments?: ReceiptTender[] | null;
   header?: string | null;
   footer?: string | null;
   orderType?: string | null;

@@ -1899,7 +1899,8 @@
         "addTender": "Add payment",
         "approved": "Approved",
         "splitIncomplete": "Tenders must add up to the total before paying",
-        "splitHelp": "Add payments until the remaining balance is 0. Each card payment is charged on the terminal for its own amount."
+        "splitHelp": "Add payments until the remaining balance is 0. Each card payment is charged on the terminal for its own amount.",
+        "removeTender": "Remove payment"
       },
       "order": {
         "empty": "Cart is empty",

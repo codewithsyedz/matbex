@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Loader2 } from "lucide-react";
+import { tendersOf, type SaleTenderRow } from "@/lib/saleTenders";
 import { bucketForPaymentMethod, fetchPaymentMap, fetchPaymentRules, type PaymentBucket } from "@/lib/posPaymentMapping";
 
 interface Props {
@@ -23,6 +24,7 @@ interface POSRow {
   payment_method: string | null;
   total: number | string | null;
   created_at: string;
+  sale_payments?: SaleTenderRow[] | null;
 }
 
 const BUCKET_VARIANT: Record<string, string> = {
@@ -56,7 +58,7 @@ export function POSDetailsDialog({ open, onOpenChange, restaurantId, date }: Pro
     queryFn: async (): Promise<POSRow[]> => {
       const { data, error } = await db
         .from("sales_transactions")
-        .select("id,receipt_number,payment_method,total,created_at")
+        .select("id,receipt_number,payment_method,total,created_at,sale_payments(method,amount)")
         .eq("restaurant_id", restaurantId)
         .gte("created_at", `${date}T00:00:00`)
         .lt("created_at", `${date}T23:59:59.999`)
@@ -69,9 +71,9 @@ export function POSDetailsDialog({ open, onOpenChange, restaurantId, date }: Pro
   const rows = data || [];
   const totals = rows.reduce(
     (acc, r) => {
-      const amt = Number(r.total) || 0;
-      acc[bucketOf(r.payment_method)] += amt;
-      acc.all += amt;
+      // A split sale counts each tender in its own bucket.
+      for (const part of tendersOf(r)) acc[bucketOf(part.method)] += part.amount;
+      acc.all += Number(r.total) || 0;
       return acc;
     },
     { cash: 0, card: 0, delivery: 0, other: 0, all: 0 },
@@ -117,7 +119,7 @@ export function POSDetailsDialog({ open, onOpenChange, restaurantId, date }: Pro
               </TableHeader>
               <TableBody>
                 {rows.map((r) => {
-                  const b = bucketOf(r.payment_method);
+                  const parts = tendersOf(r);
                   return (
                     <TableRow key={r.id}>
                       <TableCell className="font-mono text-xs">
@@ -127,9 +129,16 @@ export function POSDetailsDialog({ open, onOpenChange, restaurantId, date }: Pro
                         {r.receipt_number || "-"}
                       </TableCell>
                       <TableCell>
-                        <Badge className={BUCKET_VARIANT[b]} variant="secondary">
-                          {b}
-                        </Badge>
+                        <div className="flex flex-wrap gap-1">
+                          {parts.map((part, i) => {
+                            const b = bucketOf(part.method);
+                            return (
+                              <Badge key={i} className={BUCKET_VARIANT[b]} variant="secondary">
+                                {b}{parts.length > 1 ? ` ${formatCurrency(part.amount)}` : ""}
+                              </Badge>
+                            );
+                          })}
+                        </div>
                       </TableCell>
                       <TableCell className="text-right">
                         {formatCurrency(Number(r.total) || 0)}

@@ -1,4 +1,5 @@
 import { useCachedQuery } from "@/lib/redisCache";
+import { tendersOf, type SaleWithTenders } from "@/lib/saleTenders";
 import { dashboardQueryOptions } from "@/lib/query/queryPolicy";
 import { qk } from "@/lib/query/queryKeys";
 import { useAuth } from "@/contexts/AuthContext";
@@ -21,6 +22,8 @@ export interface AnalyticsRow {
   isoWeek: string; // YYYY-Www
   yearMonth: string; // YYYY-MM
   payment_method: string;
+  /** How the sale was paid; a split sale has several tenders. */
+  tenders: { method: string; amount: number }[];
 }
 
 export interface TopSeller {
@@ -110,7 +113,7 @@ export function useSalesAnalytics(from: Date, to: Date) {
       // 1) Transactions in window
       let txQuery = db
         .from("sales_transactions")
-        .select("id, total, created_at, payment_method")
+        .select("id, total, created_at, payment_method, sale_payments(method,amount)")
         .eq("restaurant_id", restaurantId!)
         .gte("created_at", startBounds.start.toISOString())
         .lt("created_at", endBounds.endExclusive.toISOString());
@@ -161,6 +164,7 @@ export function useSalesAnalytics(from: Date, to: Date) {
           isoWeek: isoWeekLabel(d),
           yearMonth: ymd.slice(0, 7),
           payment_method: String(t.payment_method ?? "other"),
+          tenders: tendersOf(t as SaleWithTenders),
         };
       });
 

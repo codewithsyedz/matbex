@@ -112,7 +112,7 @@ const handler = async (req: Request): Promise<Response> => {
     // Fetch current day data
     const { data: salesData } = await db
       .from("sales_transactions")
-      .select("total, payment_method")
+      .select("total, payment_method, sale_payments(method, amount)")
       .eq("restaurant_id", restaurant_id)
       .gte("created_at", startOfDay)
       .lte("created_at", endOfDay);
@@ -144,8 +144,16 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Calculate current day summary
     const totalSales = salesData?.reduce((sum, s) => sum + Number(s.total), 0) || 0;
-    const cashSales = salesData?.filter(s => s.payment_method === "cash").reduce((sum, s) => sum + Number(s.total), 0) || 0;
-    const cardSales = salesData?.filter(s => s.payment_method === "card").reduce((sum, s) => sum + Number(s.total), 0) || 0;
+    // Split sales count their cash and card tenders separately (sale_payments).
+    const paidBy = (method: string) =>
+      (salesData ?? []).reduce((sum: number, s: any) => {
+        const tenders = Array.isArray(s.sale_payments) && s.sale_payments.length
+          ? s.sale_payments
+          : [{ method: s.payment_method, amount: s.total }];
+        return sum + tenders.filter((t: any) => t.method === method).reduce((a: number, t: any) => a + Number(t.amount), 0);
+      }, 0);
+    const cashSales = paidBy("cash");
+    const cardSales = paidBy("card");
     const totalExpenses = expensesData?.reduce((sum, e) => sum + Number(e.amount), 0) || 0;
     const closedShifts = shiftsData?.filter(s => s.status === "closed").length || 0;
     const avgVariance = shiftsData?.length 

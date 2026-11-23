@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { tendersOf } from "@/lib/saleTenders";
 import { useTranslation } from "react-i18next";
 import { useFunnelTracker } from "@/hooks/useFunnelTracker";
 import { Button } from "@/components/ui/button";
@@ -134,7 +135,7 @@ export default function Reports() {
       if (!restaurant?.id) return [];
       let q = db
         .from("sales_transactions")
-        .select("*")
+        .select("*, sale_payments(method,amount)")
         .eq("restaurant_id", restaurant.id)
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString());
@@ -414,8 +415,8 @@ export default function Reports() {
   // Payment method breakdown
   const paymentBreakdown = salesData.reduce(
     (acc, sale) => {
-      const method = sale.payment_method || "other";
-      acc[method] = (acc[method] || 0) + Number(sale.total);
+      // Split sales count each tender under its own method.
+      for (const part of tendersOf(sale)) acc[part.method] = (acc[part.method] || 0) + part.amount;
       return acc;
     },
     {} as Record<string, number>
@@ -570,12 +571,13 @@ export default function Reports() {
   const paymentMethodsForTable = useMemo(() => {
     const methodMap: Record<string, { total: number; count: number }> = {};
     salesData.forEach((s) => {
-      const method = s.payment_method || "other";
-      if (!methodMap[method]) {
-        methodMap[method] = { total: 0, count: 0 };
+      for (const part of tendersOf(s)) {
+        if (!methodMap[part.method]) {
+          methodMap[part.method] = { total: 0, count: 0 };
+        }
+        methodMap[part.method].total += part.amount;
+        methodMap[part.method].count += 1;
       }
-      methodMap[method].total += Number(s.total);
-      methodMap[method].count += 1;
     });
     return Object.entries(methodMap).map(([method, data]) => ({
       method,
