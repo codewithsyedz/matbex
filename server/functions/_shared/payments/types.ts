@@ -101,6 +101,11 @@ export interface PaymentAdapter {
     req: Request,
     credentials: GatewayCredentials,
   ): Promise<WebhookResult>;
+  /** Close the payment page so it can no longer be paid (optional; best effort). */
+  cancelPayment?(
+    gatewayIntentId: string,
+    credentials: GatewayCredentials,
+  ): Promise<void>;
 }
 
 export class NotImplementedError extends Error {

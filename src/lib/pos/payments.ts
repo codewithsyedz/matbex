@@ -95,3 +95,21 @@ export async function confirmPayment(intentId: string): Promise<"captured" | "fa
   if (data.status === "failed" || data.status === "expired" || data.status === "canceled") return "failed";
   return "pending";
 }
+export interface CancelPaymentResult {
+  /** The customer paid before the cancel took effect: finish the sale with this intent. */
+  paid: boolean;
+  status: string;
+}
+
+/**
+ * The cashier cancelled the card screen: close the payment page on the gateway and the intent
+ * on the server. The server asks the gateway first, so a payment that went through comes back
+ * as `paid: true` instead of being lost.
+ */
+export async function cancelPayment(intentId: string): Promise<CancelPaymentResult> {
+  const { data, error } = await db.functions.invoke("payments-cancel", {
+    body: { intent_id: intentId },
+  });
+  if (error) throw await functionError(error);
+  return { paid: data?.paid === true, status: String(data?.status ?? "pending") };
+}

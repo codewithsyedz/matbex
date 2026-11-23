@@ -203,6 +203,7 @@ function buildNotificationActions(notification: Notification): NotificationActio
 
 const ACTION_LABELS: Record<string, string> = {
   expense_recorded: "New Expense",
+  payment_captured_after_cancel: "Paid After Cancel",
   SHIFT_TIMESTAMP_OVERRIDE: "Shift Override",
   DELETE: "Deletion",
   BULK_DELETE: "Bulk Delete",

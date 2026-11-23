@@ -5,7 +5,7 @@ import { Loader2, CheckCircle2, XCircle } from "lucide-react";
 import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { chargeOrder, confirmPayment } from "@/lib/pos/payments";
+import { cancelPayment, chargeOrder, confirmPayment } from "@/lib/pos/payments";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 
@@ -17,7 +17,7 @@ interface GatewayConfig {
   channel: string;
 }
 
-type Phase = "creating" | "waiting" | "paid" | "failed";
+type Phase = "creating" | "waiting" | "cancelling" | "paid" | "failed";
 
 interface Pending {
   amount: number;
@@ -37,6 +37,10 @@ export interface MoyasarChargeInput {
  * mada, Visa / Mastercard, Apple Pay or STC Pay, and the POS waits until Moyasar confirms.
  * `charge()` resolves with the payment intent id to send as the sale's cardTerminal reference;
  * the sales API checks that payment again before recording the sale.
+ *
+ * Cancelling (button, closing the dialog, leaving the page) cancels the intent on the server
+ * (payments-cancel), which closes Moyasar's page so the QR can no longer be paid. If the
+ * customer paid just before, the server says so and the sale is finished instead of lost.
  */
 export function useMoyasarCheckout(branchId?: string | null) {
   const { tenant } = useAuth();
@@ -68,6 +72,14 @@ export function useMoyasarCheckout(branchId?: string | null) {
   const [message, setMessage] = useState<string | null>(null);
   const pendingRef = useRef<Pending | null>(null);
   pendingRef.current = pending;
+  const phaseRef = useRef<Phase>(phase);
+  phaseRef.current = phase;
+  const intentIdRef = useRef<string | null>(intentId);
+  intentIdRef.current = intentId;
+  // Each charge() is a run; a cancel while the intent is still being created marks its run
+  // so the intent is cancelled as soon as it exists.
+  const runRef = useRef(0);
+  const abandonedRunRef = useRef(-1);
 
   const finish = useCallback((ok: boolean, value: string | Error) => {
     const p = pendingRef.current;
@@ -89,6 +101,7 @@ export function useMoyasarCheckout(branchId?: string | null) {
         setIntentId(null);
         setMessage(null);
         setPending({ amount: input.amount, resolve, reject });
+        const run = ++runRef.current;
         chargeOrder({
           amount: input.amount,
           method,
@@ -98,12 +111,17 @@ export function useMoyasarCheckout(branchId?: string | null) {
           metadata: input.description ? { description: input.description } : undefined,
         })
           .then((r) => {
+            if (abandonedRunRef.current === run) {
+              if (r.intentId) cancelPayment(r.intentId).catch(() => undefined);
+              return;
+            }
             if (!r.intentId || !(r.qrPayload || r.redirectUrl)) throw new Error("Moyasar did not return a payment page");
             setIntentId(r.intentId);
             setPayUrl(r.qrPayload ?? r.redirectUrl ?? null);
             setPhase("waiting");
           })
           .catch((e: Error) => {
+            if (abandonedRunRef.current === run) return;
             setPhase("failed");
             setMessage(e.message);
           });
@@ -141,7 +159,40 @@ export function useMoyasarCheckout(branchId?: string | null) {
     };
   }, [phase, intentId, finish]);
 
-  const cancel = () => finish(false, new Error(phase === "failed" && message ? message : "Card payment cancelled"));
+  const cancel = useCallback(async () => {
+    const current = phaseRef.current;
+    const id = intentIdRef.current;
+    if (current === "cancelling" || current === "paid") return;
+    if (current === "creating") {
+      abandonedRunRef.current = runRef.current;
+      finish(false, new Error("Card payment cancelled"));
+      return;
+    }
+    if (current === "waiting" && id) {
+      setPhase("cancelling");
+      try {
+        const r = await cancelPayment(id);
+        if (r.paid) {
+          // The customer paid before the cancel reached Moyasar: record the sale.
+          setPhase("paid");
+          setTimeout(() => finish(true, id), 700);
+          return;
+        }
+      } catch {
+        // Could not reach the server: the reconciler closes the intent later, and a late
+        // payment is flagged to the owner.
+      }
+      finish(false, new Error("Card payment cancelled"));
+      return;
+    }
+    finish(false, new Error(current === "failed" && message ? message : "Card payment cancelled"));
+  }, [finish, message]);
+
+  // Leaving the screen while waiting: cancel the intent so the QR cannot be paid unseen.
+  useEffect(() => () => {
+    const id = intentIdRef.current;
+    if (id && phaseRef.current === "waiting") cancelPayment(id).catch(() => undefined);
+  }, []);
 
   return {
     enabled: !!method,
@@ -153,7 +204,7 @@ export function useMoyasarCheckout(branchId?: string | null) {
         phase={phase}
         payUrl={payUrl}
         message={message}
-        onCancel={cancel}
+        onCancel={() => { void cancel(); }}
       />
     ),
   };
@@ -164,7 +215,7 @@ function MoyasarCheckoutDialog({
 }: { open: boolean; amount: number; phase: Phase; payUrl: string | null; message: string | null; onCancel: () => void }) {
   const { format: formatCurrency } = useCurrency();
   return (
-    <Dialog open={open} onOpenChange={(o) => { if (!o && phase !== "paid") onCancel(); }}>
+    <Dialog open={open} onOpenChange={(o) => { if (!o && phase !== "paid" && phase !== "cancelling") onCancel(); }}>
       <DialogContent className="sm:max-w-sm">
         <DialogHeader>
           <DialogTitle>Card payment · {formatCurrency(amount)}</DialogTitle>
@@ -181,13 +232,16 @@ function MoyasarCheckoutDialog({
               <a href={payUrl} target="_blank" rel="noreferrer" className="text-xs text-primary underline">Open the payment page on this device</a>
             </>
           )}
+          {phase === "cancelling" && (
+            <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> Cancelling the payment…</p>
+          )}
           {phase === "paid" && <p className="flex items-center gap-2 font-medium text-success"><CheckCircle2 className="h-6 w-6" /> Paid</p>}
           {phase === "failed" && (
             <p className="flex items-start gap-2 text-sm text-destructive"><XCircle className="h-5 w-5 shrink-0" /> {message ?? "The payment could not be started."}</p>
           )}
         </div>
         {phase !== "paid" && (
-          <Button variant="outline" onClick={onCancel}>{phase === "failed" ? "Close" : "Cancel payment"}</Button>
+          <Button variant="outline" onClick={onCancel} disabled={phase === "cancelling"}>{phase === "failed" ? "Close" : "Cancel payment"}</Button>
         )}
       </DialogContent>
     </Dialog>

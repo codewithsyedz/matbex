@@ -32,7 +32,7 @@ function secretKey(creds: GatewayCredentials): string {
   return key;
 }
 
-async function call<T>(creds: GatewayCredentials, method: "GET" | "POST", path: string, body?: unknown): Promise<T> {
+async function call<T>(creds: GatewayCredentials, method: "GET" | "POST" | "PUT", path: string, body?: unknown): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
     method,
     headers: {
@@ -128,6 +128,12 @@ export const moyasarAdapter: PaymentAdapter = {
         payment: p ? { id: p.id, status: p.status, source: p.source?.type, scheme: p.source?.company, reference_number: p.source?.reference_number, authorization_code: p.source?.authorization_code } : null,
       },
     };
+  },
+
+  /** PUT /invoices/:id/cancel: the invoice can no longer be paid. A paid invoice stays paid. */
+  async cancelPayment(gatewayIntentId: string, credentials: GatewayCredentials): Promise<void> {
+    if (!gatewayIntentId) throw new Error("No Moyasar invoice id");
+    await call<MoyasarInvoice>(credentials, "PUT", `/invoices/${encodeURIComponent(gatewayIntentId)}/cancel`);
   },
 
   async refundPayment(gatewayIntentId: string, amount: number, credentials: GatewayCredentials): Promise<RefundResult> {

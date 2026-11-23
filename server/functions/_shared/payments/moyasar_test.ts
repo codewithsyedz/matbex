@@ -86,3 +86,17 @@ test("webhook with a wrong secret token is refused", async () => {
   const req = new Request("https://x", { method: "POST", body: JSON.stringify({ type: "payment_paid", secret_token: "nope", data: { invoice_id: "inv_1" } }) });
   await rejects(moyasarAdapter.handleWebhook(req, { MOYASAR_WEBHOOK_SECRET: "right" }), /secret/);
 });
+
+test("cancel invoice PUTs /invoices/:id/cancel with the restaurant's key", async () => {
+  const calls = mockFetch(() => ({ body: { id: "inv_1", status: "canceled", amount: 100, currency: "SAR", url: "u" } }));
+  await moyasarAdapter.cancelPayment!("inv_1", creds);
+  eq(calls.length, 1);
+  eq(calls[0].url, "https://api.moyasar.com/v1/invoices/inv_1/cancel");
+  eq(calls[0].init.method, "PUT");
+  eq((calls[0].init.headers as Record<string, string>).Authorization, `Basic ${btoa("sk_test_abc:")}`);
+});
+
+test("cancel invoice refuses without a restaurant key", async () => {
+  mockFetch(() => ({ body: {} }));
+  await rejects(moyasarAdapter.cancelPayment!("inv_1", {}), /not set up/);
+});

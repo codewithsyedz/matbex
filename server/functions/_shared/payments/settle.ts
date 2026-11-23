@@ -83,3 +83,34 @@ export async function applyVerifiedStatus(intent: IntentRow, result: VerifyResul
   }
   return result.status;
 }
+
+/** IntentStore (lifecycle.ts) on the service client. */
+export function intentStore(): import("./lifecycle.ts").IntentStore {
+  const db = serviceClient();
+  const current = async (id: string) => {
+    const { data } = await db.from("payment_intents").select("status").eq("id", id).maybeSingle();
+    return (data?.status as string | undefined) ?? "unknown";
+  };
+  return {
+    apply: (intent, result) => applyVerifiedStatus(intent as unknown as IntentRow, result),
+    async close(intent, status, meta) {
+      const { data, error } = await db
+        .from("payment_intents")
+        .update({ status, metadata: { ...(intent.metadata ?? {}), ...meta }, updated_at: new Date().toISOString() })
+        .eq("id", intent.id)
+        .eq("tenant_id", intent.tenant_id)
+        .in("status", ["created", "pending", "authorized"])
+        .select("status");
+      if (error) throw new Error(error.message);
+      return data?.length ? status : current(intent.id);
+    },
+    async note(intent, meta) {
+      const { error } = await db
+        .from("payment_intents")
+        .update({ metadata: { ...(intent.metadata ?? {}), ...meta }, updated_at: new Date().toISOString() })
+        .eq("id", intent.id)
+        .eq("tenant_id", intent.tenant_id);
+      if (error) throw new Error(error.message);
+    },
+  };
+}
