@@ -124,8 +124,12 @@ export const createSaleBody = {
 
 export type SaleLineSize = "regular" | "quarter" | "half" | "full";
 
-/** POST /api/v1/pos/sales/quote takes the same order; prices sent are ignored. */
-export const quoteSaleBody = createSaleBody;
+/**
+ * POST /api/v1/pos/sales/quote takes the same order; prices sent are ignored. A quote is asked
+ * before the card is charged, often before any payment is chosen, so no payment is required.
+ */
+const { anyOf: _paymentRequired, ...quoteBody } = createSaleBody;
+export const quoteSaleBody = quoteBody;
 
 export interface CreateSaleInput {
   restaurantId: string;
