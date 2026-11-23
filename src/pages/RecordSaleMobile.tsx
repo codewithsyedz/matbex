@@ -716,6 +716,10 @@ export default function RecordSaleMobile() {
 
 
   const submit = useMutation({
+    // The browser may report offline: this mutation queues the sale itself (offline queue), so
+    // it must run anyway. React Query's default ("online") pauses it instead, leaving the
+    // button on "Processing…" and nothing queued.
+    networkMode: "always",
     mutationFn: async () => {
       if (!restaurant?.id || !user?.id || cart.length === 0) throw new Error("Cart is empty");
       if (unpaid && !selectedCustomer) throw new Error("Select a customer for unpaid sale");

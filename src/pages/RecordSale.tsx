@@ -1259,6 +1259,10 @@ export default function RecordSale() {
 
   // Record sale mutation
   const recordSaleMutation = useMutation({
+    // The browser may report offline: this mutation queues the sale itself (offline queue), so
+    // it must run anyway. React Query's default ("online") pauses it instead, leaving the
+    // button on "Processing…" and nothing queued.
+    networkMode: "always",
     mutationFn: async () => {
       if (!guardWrite("record a sale")) {
         throw new Error("Test mode is read-only");
