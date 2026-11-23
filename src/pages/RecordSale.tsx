@@ -6,6 +6,7 @@ import { recordOfflineSale } from "@/lib/offline/posService";
 import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type RecordSaleResult, type SaleLineSize } from "@/lib/api/pos";
 import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
 import { SplitBillSheet, type RecordedBillPart } from "@/components/pos/SplitBillSheet";
+import { receiptTotals } from "@/lib/pos/receiptTotals";
 import { chargeCardTenders, receiptTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders } from "@/lib/pos/splitTenders";
 import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { ApiError } from "@/lib/api/http";
@@ -1538,6 +1539,16 @@ export default function RecordSale() {
     const docDiscount = part ? String(part.documentDiscount) : wholeDocDiscount;
     const docSurcharge = part ? String(part.documentSurcharge) : wholeDocSurcharge;
     const paymentMethod = part ? (part.tenders.length > 1 ? "split" : part.tenders[0]?.method ?? "cash") : wholePaymentMethod;
+    // Receipt totals in SAR: a part's own amounts, else the whole sale's (zatcaTotals, FX applied).
+    const printedTotals = (recorded?: { tax?: number | null; total?: number | null }) =>
+      receiptTotals({
+        linesListed: part ? part.listed : zatcaTotals.subtotalSar,
+        documentDiscount: part ? part.documentDiscount : zatcaTotals.discountSar,
+        documentSurcharge: part ? part.documentSurcharge : zatcaTotals.surchargeSar,
+        vatRate,
+        pricesInclusive,
+        recorded,
+      });
     // What the receipt and the invoice say about payment: every tender of a split sale.
     const printedTenders = part ? (part.tenders.length > 1 ? part.tenders : null) : splitActive ? receiptTenders(tenderParts(splitTenders.tenders)) : null;
     const printedMethod = printedTenders ? "split" : paymentMethod;
@@ -1563,9 +1574,8 @@ export default function RecordSale() {
             price: item.price,
             total: item.price * item.quantity,
           })),
-          subtotal: cartTotal,
-          tax: 0,
-          total: cartTotal,
+          // What was charged: the document discount/surcharge and VAT are on the receipt.
+          ...printedTotals(),
           paymentMethod: printedMethod,
           payments: printedTenders,
           customerName: selectedCustomer?.name,
@@ -1700,9 +1710,8 @@ export default function RecordSale() {
           price: item.price,
           total: item.price * item.quantity,
         })),
-        subtotal: cartTotal,
-        tax: 0,
-        total: cartTotal,
+        // The recorded total and VAT, with the document discount shown.
+        ...printedTotals({ tax: qrTotals.tax, total: qrTotals.total }),
         paymentMethod: printedMethod,
         payments: printedTenders,
         customerName: selectedCustomer?.name,
