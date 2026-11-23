@@ -80,6 +80,7 @@ import { DayEndAdjustmentBreakdown } from "@/components/sales/DayEndAdjustmentBr
 import { useBranch } from "@/contexts/BranchContext";
 import { editSale, recordSummarySales, voidSale } from "@/lib/api/pos";
 import { VoidSaleDialog } from "@/components/sales/VoidSaleDialog";
+import { BillSiblings } from "@/components/sales/BillSiblings";
 import { useTranslation } from "react-i18next";
 import { splitInclusive } from "@/lib/vatInclusive";
 import { billPartLabels } from "@/lib/pos/billSplit";
@@ -2059,6 +2060,7 @@ export default function Sales() {
                                 <VoidSaleDialog
                                   receipt={transaction.receipt_number}
                                   saleId={transaction.payment_method === "card" ? transaction.id : null}
+                                  bill={{ saleId: transaction.id, billGroupId: (transaction as { bill_group_id?: string | null }).bill_group_id, restaurantId: restaurant?.id }}
                                   onConfirm={(reason) => handleDeleteSale(transaction.id, reason)}
                                 >
                                   <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title={t("app.sales.delete.confirm")}>
@@ -2370,6 +2372,14 @@ export default function Sales() {
                     </div>
                   )}
                 </div>
+
+                {/* Split bill: the other sales this cart was divided into */}
+                <BillSiblings
+                  restaurantId={restaurant?.id}
+                  billGroupId={(viewingTransaction as { bill_group_id?: string | null }).bill_group_id}
+                  currentId={viewingTransaction.id}
+                  enabled={viewDetailsDialogOpen}
+                />
 
                 {/* Payment Info */}
                 <div className="grid grid-cols-2 gap-4">

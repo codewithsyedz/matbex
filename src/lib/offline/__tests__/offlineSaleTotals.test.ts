@@ -27,7 +27,7 @@ import { recordOfflineSale } from "../posService";
 
 const item = (id: string, quantity: number, unit_price: number) => ({ menu_item_id: id, name: id, size: "regular", quantity, unit_price });
 
-describe("offline split bill", () => {
+describe("offline sales: split bills and document discounts", () => {
   beforeEach(() => {
     for (const m of Object.values(stores)) m.clear();
     seq = 0;
@@ -81,5 +81,30 @@ describe("offline split bill", () => {
       }),
     ).rejects.toThrow(/Guest 2/);
     expect(stores.orders.size).toBe(0);
+  });
+
+  it("an ordinary offline sale keeps its document discount and surcharge (replayed to the API)", async () => {
+    const res = await recordOfflineSale({
+      branchId: "r1",
+      cashierId: "u1",
+      shiftId: null,
+      paymentMethod: "cash",
+      vatRate: 0.15,
+      pricesVatInclusive: true,
+      documentDiscount: 6,
+      documentSurcharge: 1,
+      items: [item("burger", 2, 25)],
+    });
+    // 50 - 6 + 1 = 45 (prices include VAT)
+    expect(res.total).toBe(45);
+    const p = [...stores.orders.values()][0].payload;
+    expect([p.total, p.document_discount, p.document_surcharge]).toEqual([45, 6, 1]);
+    expect(p.bill_parts).toBeUndefined();
+  });
+
+  it("refuses a discount larger than the order", async () => {
+    await expect(
+      recordOfflineSale({ branchId: "r1", cashierId: "u1", shiftId: null, paymentMethod: "cash", documentDiscount: 60, items: [item("burger", 2, 25)] }),
+    ).rejects.toThrow(/larger than the order/);
   });
 });

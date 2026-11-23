@@ -395,6 +395,9 @@ async function syncOrder(item: BatchItem, restaurantId: string, terminalUid: str
           ...common,
           ...(toTenders(p.payments) ? { payments: toTenders(p.payments) } : { paymentMethod: methods.has(p.payment_method) ? p.payment_method : "other" }),
           settlement: p.settlement_status === "unpaid" ? "unpaid" : "paid",
+          // Older queued orders carry none (they could not be queued with one).
+          ...(Number(p.document_discount ?? 0) > 0 ? { documentDiscount: Number(p.document_discount) } : {}),
+          ...(Number(p.document_surcharge ?? 0) > 0 ? { documentSurcharge: Number(p.document_surcharge) } : {}),
           offline: { receiptNumber: String(p.receipt_number), createdAt },
           lines: toLines(items),
         },

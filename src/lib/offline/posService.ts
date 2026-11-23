@@ -14,7 +14,7 @@ import { isOnline } from "./connectivity";
 import { requestBackgroundSync } from "./backgroundSync";
 import { computeChecksum } from "./checksum";
 import { nextLamport } from "./lamport";
-import { lineGross, splitListed, sumMoney, VAT_RATE, DEFAULT_PRICES_VAT_INCLUSIVE } from "@/lib/vatInclusive";
+import { lineGross, roundMoney, splitListed, sumMoney, VAT_RATE, DEFAULT_PRICES_VAT_INCLUSIVE } from "@/lib/vatInclusive";
 
 /**
  * Build the { version, checksum } pair every new offline row must carry.
@@ -88,7 +88,11 @@ export interface RecordOfflineSaleInput {
    * and its payments add up to it.
    */
   billParts?: { items: OfflineCartItem[]; payments: OfflineTender[]; total: number }[] | null;
-  /** Split bill only: the cart's document discount / surcharge (spread over the parts by the server). */
+  /**
+   * Document discount / surcharge in listed amounts (same pricing mode as the lines), applied
+   * before VAT is split, as POST /api/v1/pos/sales does. For a split bill they are the cart's,
+   * spread over the parts by the server.
+   */
   documentDiscount?: number;
   documentSurcharge?: number;
 }
@@ -110,7 +114,11 @@ export async function recordOfflineSale(
   const terminalId = await getTerminalId();
   const now = new Date();
   const businessDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const listedTotal = sumMoney(input.items.map((i) => lineGross(i.unit_price, i.quantity)));
+  const documentDiscount = roundMoney(input.documentDiscount ?? 0);
+  const documentSurcharge = roundMoney(input.documentSurcharge ?? 0);
+  const linesTotal = sumMoney(input.items.map((i) => lineGross(i.unit_price, i.quantity)));
+  if (documentDiscount > linesTotal + documentSurcharge) throw new Error("Discount is larger than the order");
+  const listedTotal = roundMoney(linesTotal - documentDiscount + documentSurcharge);
   const { net: subtotal, vat: tax, gross: total } = splitListed(
     listedTotal,
     input.vatRate ?? VAT_RATE,
@@ -166,11 +174,11 @@ export async function recordOfflineSale(
     prices_vat_inclusive: input.pricesVatInclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE,
     created_at: now.toISOString(),
     branch_id: input.saleBranchId ?? null,
+    document_discount: documentDiscount,
+    document_surcharge: documentSurcharge,
     ...(billParts
       ? {
           total: billTotal,
-          document_discount: input.documentDiscount ?? 0,
-          document_surcharge: input.documentSurcharge ?? 0,
           bill_parts: billParts.map((part, i) => ({
             receipt_number: receiptNumbers[i],
             total: part.total,

@@ -18,6 +18,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { useCurrency } from "@/hooks/useCurrency";
 import { refundCardPayment, useCardPayment } from "@/lib/pos/cardRefund";
+import { BillSiblings } from "@/components/sales/BillSiblings";
 
 const MIN_REASON = 3;
 
@@ -30,9 +31,12 @@ export function VoidSaleDialog({
   receipt,
   saleId,
   onConfirm,
+  bill,
   children,
 }: {
   receipt: string | null;
+  /** Split bill: this sale's id and bill group, to list the other parts (they are not voided). */
+  bill?: { saleId: string; billGroupId: string | null | undefined; restaurantId: string | null | undefined } | null;
   /** When the sale was paid online by card (Moyasar), offer to refund the card too. */
   saleId?: string | null;
   /** Resolve false when the void failed (then no refund is attempted). */
@@ -86,6 +90,15 @@ export function VoidSaleDialog({
           <AlertDialogDescription>{t("app.sales.delete.desc", { receipt: receipt ?? "" })}</AlertDialogDescription>
         </AlertDialogHeader>
         <div className="space-y-2">
+          {bill?.billGroupId && (
+            <BillSiblings
+              restaurantId={bill.restaurantId}
+              billGroupId={bill.billGroupId}
+              currentId={bill.saleId}
+              enabled={open}
+              note={t("app.sales.billSiblings.voidNote")}
+            />
+          )}
           <Label htmlFor="void-reason">{t("app.sales.delete.reasonLabel")}</Label>
           <Textarea
             id="void-reason"

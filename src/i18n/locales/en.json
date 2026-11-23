@@ -1836,7 +1836,14 @@
         "includeUnassignedDesc": "Transactions not linked to any shift will be included in totals and breakdowns."
       },
       "billPart": "{{index}} of {{count}}",
-      "billPartTitle": "Part of a split bill"
+      "billPartTitle": "Part of a split bill",
+      "billSiblings": {
+        "title": "Part {{index}} of {{count}} of a split bill",
+        "titleShort": "Split bill · {{count}} sales",
+        "thisSale": "this sale",
+        "voided": "voided",
+        "voidNote": "Only this part is voided; the other parts stay as they are."
+      }
     },
     "pos": {
       "title": "Record Sale",

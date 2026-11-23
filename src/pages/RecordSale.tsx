@@ -845,8 +845,6 @@ export default function RecordSale() {
         ? "Standard (B2B) invoices require connectivity for ZATCA clearance."
         : docCurrency && docCurrency !== "SAR"
           ? "Foreign-currency sales require connectivity for FX validation."
-          : (parseFloat(docDiscount) || 0) > 0 || (parseFloat(docSurcharge) || 0) > 0
-            ? "Document discounts and surcharges require connectivity."
           : isUnpaidSale && !selectedCustomer
             ? "Unpaid (credit) sales require a customer - pick one first to queue offline."
             : null;
@@ -877,6 +875,9 @@ export default function RecordSale() {
       isUnpaid: isUnpaidSale,
       vatRate,
       pricesVatInclusive: pricesInclusive,
+      // Replayed to the API, which charges the same discount/surcharge (SAR only offline).
+      documentDiscount: zatcaTotals.discountSar,
+      documentSurcharge: zatcaTotals.surchargeSar,
       items: cart.map((c) => ({
         menu_item_id: c.menuItemId,
         combo_id: c.isCombo ? c.menuItemId : null,
