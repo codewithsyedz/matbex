@@ -103,7 +103,13 @@ export function useSplitTenders(total: number) {
     [],
   );
   const reset = useCallback(() => setTenders([]), []);
-  return { tenders, remaining, ready, addTender, updateTender, removeTender, markApproved, reset };
+  /** Split bill evenly / by amount: one tender per guest (cash by default; the cashier changes the method). */
+  const fill = useCallback(
+    (amounts: number[], method: TenderMethod = "cash") =>
+      setTenders(amounts.map((a) => ({ id: crypto.randomUUID(), method, amount: roundMoney(a).toFixed(2), tendered: "" }))),
+    [],
+  );
+  return { tenders, remaining, ready, addTender, updateTender, removeTender, markApproved, reset, fill };
 }
 
 export type SplitTenders = ReturnType<typeof useSplitTenders>;

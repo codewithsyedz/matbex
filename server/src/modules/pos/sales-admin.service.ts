@@ -13,7 +13,7 @@
 import { randomInt } from "node:crypto";
 import { badRequest, HttpError } from "../../lib/errors.js";
 import type { DbClaims } from "../../db.js";
-import { inServiceTx } from "../shared/db.js";
+import { inServiceTx, type ServiceTx } from "../shared/db.js";
 import { requireRestaurantRole, type RestaurantRole } from "../shared/access.js";
 import { salesRepository } from "./sales.repository.js";
 import { salesAdminRepository, type LockedSale } from "./sales-admin.repository.js";
@@ -152,7 +152,11 @@ export async function recordSummary(input: SummaryInput, claims: Claims) {
  * the customer's balance.
  */
 export async function voidSale(saleId: string, input: VoidInput, claims: Claims) {
-  return inServiceTx(claims, async (t) => {
+  return inServiceTx(claims, (t) => voidSaleTx(t, saleId, input, claims));
+}
+
+/** voidSale inside the caller's transaction (the database tests roll it back). */
+export async function voidSaleTx(t: ServiceTx, saleId: string, input: VoidInput, claims: Claims) {
     const repo = salesAdminRepository(t);
     await requireRestaurantRole(t.tx, claims.sub, input.restaurantId, MANAGERS);
     const sale = await loadSale(repo, input.restaurantId, saleId);
@@ -210,7 +214,6 @@ export async function voidSale(saleId: string, input: VoidInput, claims: Claims)
       sale: { id: sale.id, receipt_number: sale.receipt_number, total: sale.total, void_id: mirror.id },
     });
     return { void: mirror, cashRefunded, refundShiftId: cashRefunded ? refundShift : null };
-  });
 }
 
 /**

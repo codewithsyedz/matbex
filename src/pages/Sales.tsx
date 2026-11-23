@@ -82,6 +82,7 @@ import { editSale, recordSummarySales, voidSale } from "@/lib/api/pos";
 import { VoidSaleDialog } from "@/components/sales/VoidSaleDialog";
 import { useTranslation } from "react-i18next";
 import { splitInclusive } from "@/lib/vatInclusive";
+import { billPartLabels } from "@/lib/pos/billSplit";
 import { useTableChanges } from "@/hooks/useTableChanges";
 
 interface SalesItem {
@@ -526,6 +527,28 @@ export default function Sales() {
       closed: boolean;
     }>,
   };
+  // Split bill: "1 of 3" for sales recorded together from one cart. Siblings may sit on other
+  // pages, so they are looked up by bill_group_id.
+  const billGroupIds = useMemo(
+    () => [...new Set((transactions as { bill_group_id?: string | null }[]).map((tx) => tx.bill_group_id).filter((g): g is string => !!g))],
+    [transactions],
+  );
+  const { data: billSiblings = [] } = useQuery({
+    queryKey: ["sales-bill-groups", restaurant?.id, billGroupIds],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("sales_transactions")
+        .select("id, bill_group_id, receipt_number")
+        .eq("restaurant_id", restaurant!.id)
+        .in("bill_group_id", billGroupIds);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!restaurant?.id && billGroupIds.length > 0,
+    staleTime: 60_000,
+  });
+  const billParts = useMemo(() => billPartLabels(billSiblings), [billSiblings]);
+
   const { data: thisMonthSales = emptyMonthSales } = useQuery({
     queryKey: ["sales-this-month", restaurant?.id, monthStartDay, salesBranchFilter],
     queryFn: async () => {
@@ -1912,6 +1935,11 @@ export default function Sales() {
                         <TableCell className="font-mono text-xs">
                           <div className="flex items-center gap-1.5">
                             <span>{transaction.receipt_number || "-"}</span>
+                            {billParts.get(transaction.id) && (
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0" title={t("app.sales.billPartTitle")}>
+                                {t("app.sales.billPart", billParts.get(transaction.id))}
+                              </Badge>
+                            )}
                             {isManualEod && (
                               <Badge
                                 variant="outline"

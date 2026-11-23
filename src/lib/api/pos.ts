@@ -110,6 +110,56 @@ export async function quoteSale(input: RecordSaleInput, opts: { signal?: AbortSi
   return data;
 }
 
+// ---- Split bill by item (server/src/modules/pos/bill-split.*) --------------------------------
+
+export interface BillSplitInput {
+  restaurantId: string;
+  branchId?: string | null;
+  shiftId?: string | null;
+  customerId?: string | null;
+  tableId?: string | null;
+  /** The whole cart; the parts must add up to exactly these lines. */
+  lines: RecordSaleInput["lines"];
+  /** On the whole cart; the server spreads it over the parts by their lines totals. */
+  documentDiscount?: number;
+  documentSurcharge?: number;
+  /** One sale per guest, each paid by its own tenders (amounts add up to that part's total). */
+  parts: { lines: RecordSaleInput["lines"]; payments?: SaleTender[] }[];
+  offline?: { receiptNumbers: string[]; createdAt: string } | null;
+}
+
+export interface BillSplitResult {
+  billGroupId: string;
+  sales: (RecordSaleResult & { billPart: { groupId: string; index: number; count: number } })[];
+}
+
+export interface BillSplitQuote {
+  parts: { subtotal: number; tax: number; total: number; documentDiscount: number; documentSurcharge: number }[];
+  total: number;
+}
+
+/**
+ * Records a cart split between guests as one sale per guest, in one server transaction: every
+ * part is saved or none. Reuse `idempotencyKey` when retrying.
+ */
+export async function recordBillSplit(input: BillSplitInput, opts: { idempotencyKey: string; terminalId?: string; signal?: AbortSignal }) {
+  const { data } = await apiRequest<BillSplitResult>("/pos/sales/bill-split", {
+    body: input,
+    headers: {
+      "idempotency-key": opts.idempotencyKey,
+      ...(opts.terminalId ? { "x-terminal-id": opts.terminalId } : {}),
+    },
+    signal: opts.signal,
+  });
+  return data;
+}
+
+/** What each guest's part will be charged now (records nothing; parts need no payments). */
+export async function quoteBillSplit(input: BillSplitInput, opts: { signal?: AbortSignal } = {}) {
+  const { data } = await apiRequest<BillSplitQuote>("/pos/sales/bill-split/quote", { body: input, signal: opts.signal });
+  return data;
+}
+
 // ---- Back office (server/src/modules/pos/sales-admin.*) -------------------------------------
 
 export interface SaleRow {

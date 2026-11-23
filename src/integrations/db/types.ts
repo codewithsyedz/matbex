@@ -15955,6 +15955,7 @@ export type Database = {
       }
       sales_transactions: {
         Row: {
+          bill_group_id: string | null
           branch_id: string | null
           created_at: string
           customer_id: string | null
@@ -16011,6 +16012,7 @@ export type Database = {
           zatca_xml_url: string | null
         }
         Insert: {
+          bill_group_id?: string | null
           branch_id?: string | null
           created_at?: string
           customer_id?: string | null
@@ -16067,6 +16069,7 @@ export type Database = {
           zatca_xml_url?: string | null
         }
         Update: {
+          bill_group_id?: string | null
           branch_id?: string | null
           created_at?: string
           customer_id?: string | null

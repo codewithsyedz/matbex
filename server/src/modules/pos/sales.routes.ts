@@ -12,11 +12,22 @@
  *
  * POST /api/v1/pos/sales/quote: same body, records nothing.
  * 200 { lines, subtotal, tax, total, vatRate, pricesVatInclusive, branchId }
+ *
+ * POST /api/v1/pos/sales/bill-split: one cart split between guests by item; same headers.
+ * Body: the cart (lines, documentDiscount/Surcharge, shift, branch...) plus parts: [{ lines, payments }].
+ * 201 { billGroupId, sales: [one sale result per part, with billPart { groupId, index, count }] }
+ * 200 same + Idempotent-Replayed: true; 400 parts_not_cart / a part's sale rule (details.part).
+ * POST /api/v1/pos/sales/bill-split/quote: same body without payments; 200 { parts: [totals], total }.
  */
 import type { FastifyInstance } from "fastify";
 import { requireUser } from "../shared/auth.js";
 import { createSaleBody, quoteSaleBody, type CreateSaleInput } from "./sales.schema.js";
 import { createSale, quoteSale } from "./sales.service.js";
+import { billSplitBody, billSplitQuoteBody, type BillSplitInput } from "./bill-split.schema.js";
+import { createBillSplit, quoteBillSplit } from "./bill-split.service.js";
+
+const headerKey = (v: unknown) => (typeof v === "string" && v.length <= 200 ? v : null);
+const headerTerminal = (v: unknown) => (typeof v === "string" ? v.slice(0, 120) : null);
 
 export async function posSalesRoutes(app: FastifyInstance) {
   app.post<{ Body: CreateSaleInput }>(
@@ -44,5 +55,25 @@ export async function posSalesRoutes(app: FastifyInstance) {
     "/pos/sales/quote",
     { schema: { body: quoteSaleBody }, config: { rateLimit: { max: 240, timeWindow: "1 minute" } } },
     async (req) => quoteSale(req.body, { claims: await requireUser(req) }),
+  );
+
+  app.post<{ Body: BillSplitInput }>(
+    "/pos/sales/bill-split",
+    { schema: { body: billSplitBody }, config: { rateLimit: { max: 60, timeWindow: "1 minute" } } },
+    async (req, reply) => {
+      const { result, replayed } = await createBillSplit(req.body, {
+        claims: await requireUser(req),
+        idempotencyKey: headerKey(req.headers["idempotency-key"]),
+        terminal: headerTerminal(req.headers["x-terminal-id"]),
+      });
+      if (replayed) reply.header("Idempotent-Replayed", "true");
+      return reply.code(replayed ? 200 : 201).send(result);
+    },
+  );
+
+  app.post<{ Body: BillSplitInput }>(
+    "/pos/sales/bill-split/quote",
+    { schema: { body: billSplitQuoteBody }, config: { rateLimit: { max: 240, timeWindow: "1 minute" } } },
+    async (req) => quoteBillSplit(req.body, { claims: await requireUser(req) }),
   );
 }

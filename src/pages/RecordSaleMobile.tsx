@@ -34,6 +34,7 @@ import {
   RefreshCw,
   Receipt,
   SplitSquareHorizontal,
+  Users,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -60,6 +61,7 @@ import { KioskWifiDialog } from "@/components/pos/KioskWifiDialog";
 import { recordOfflineSale } from "@/lib/offline/posService";
 import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize } from "@/lib/api/pos";
 import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
+import { SplitBillSheet } from "@/components/pos/SplitBillSheet";
 import { chargeCardTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders, type SplitTenders } from "@/lib/pos/splitTenders";
 import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { ApiError } from "@/lib/api/http";
@@ -203,6 +205,7 @@ export default function RecordSaleMobile() {
   const [unpaid, setUnpaid] = useState(false);
   /** Split tender: the sale is paid by the tenders in splitTenders instead of `payment`. */
   const [isSplit, setIsSplit] = useState(false);
+  const [splitBillOpen, setSplitBillOpen] = useState(false);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -850,6 +853,51 @@ export default function RecordSaleMobile() {
   return (
     <div className="fixed inset-0 flex bg-muted/30 text-foreground overflow-hidden">
       {moyasar.dialog}
+      {restaurant?.id && user?.id && (
+        <SplitBillSheet
+          open={splitBillOpen}
+          onOpenChange={setSplitBillOpen}
+          lines={cart.map((l) => ({
+            key: l.key,
+            ...(l.combo ? { comboId: l.id } : { menuItemId: l.id }),
+            name: l.name,
+            size: l.combo ? "regular" : sizeOf(l.variant),
+            quantity: l.qty,
+            unitPrice: l.price,
+          }))}
+          total={total}
+          vatRate={vatRate}
+          pricesInclusive={pricesInclusive}
+          order={{ restaurantId: restaurant.id, branchId: activeBranchId ?? null, shiftId: activeShifts[0]?.id ?? null }}
+          offline={{ cashierId: user.id, branchName: activeBranch?.name ?? null }}
+          chargeCard={
+            moyasar.enabled
+              ? async (amount) => ({
+                  provider: "moyasar",
+                  status: "approved",
+                  reference: await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` }),
+                })
+              : null
+          }
+          onTenders={(amounts) => {
+            splitTenders.fill(amounts);
+            setIsSplit(true);
+          }}
+          onRecorded={(parts) => {
+            toast.success(t(parts[0]?.offline ? "app.pos.billSplit.queuedParts" : "app.pos.billSplit.recordedParts", { count: parts.length }), {
+              description: parts.map((p) => `${p.receiptNumber} · ${formatCurrency(p.totals.total)}`).join("\n"),
+            });
+            setCart([]);
+            setPayment("cash");
+            setIsSplit(false);
+            splitTenders.reset();
+            setCartOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
+          }}
+          formatCurrency={formatCurrency}
+          restaurantName={restaurant.name}
+        />
+      )}
       {/* ============== LEFT: MENU ============== */}
       <div className="flex-1 min-w-0 flex flex-col bg-background">
         {/* Top bar */}
@@ -1196,7 +1244,7 @@ export default function RecordSaleMobile() {
           payment={payment}
           unpaid={unpaid}
           setPayment={setPayment}
-          split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders }}
+          split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true) }}
           setUnpaid={toggleUnpaid}
           changeQty={changeQty}
           removeLine={removeLine}
@@ -1268,7 +1316,7 @@ export default function RecordSaleMobile() {
             payment={payment}
             unpaid={unpaid}
             setPayment={setPayment}
-            split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders }}
+            split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true) }}
             setUnpaid={toggleUnpaid}
             changeQty={changeQty}
             removeLine={removeLine}
@@ -1659,7 +1707,7 @@ function OrderSummary({
   unpaid: boolean;
   setPayment: (p: PaymentMethod) => void;
   /** Split tender state (not offered for unpaid sales). */
-  split: { active: boolean; setActive: (v: boolean) => void; tenders: SplitTenders };
+  split: { active: boolean; setActive: (v: boolean) => void; tenders: SplitTenders; openBill: () => void };
   setUnpaid: (v: boolean) => void;
   changeQty: (key: string, delta: number) => void;
   removeLine: (key: string) => void;
@@ -1840,6 +1888,15 @@ function OrderSummary({
               <SplitTenderPanel split={split.tenders} formatCurrency={formatCurrency} />
             </div>
           )}
+          <button
+            type="button"
+            onClick={split.openBill}
+            disabled={empty || unpaid}
+            className="mt-2 h-10 w-full rounded-xl border-2 border-border bg-card text-sm font-semibold flex items-center justify-center gap-2 hover:border-primary/40 disabled:opacity-50"
+          >
+            <Users className="h-4 w-4" />
+            {t("app.pos.billSplit.open")}
+          </button>
         </div>
 
         <div className="space-y-1.5">

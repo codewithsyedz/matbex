@@ -121,10 +121,10 @@ export function salesRepository({ db, tx }: ServiceTx) {
      * Claims an idempotency key. Returns the stored response when the key was already used;
      * a concurrent request with the same key waits on the unique index until the first commits.
      */
-    async claimIdempotencyKey(restaurantId: string, key: string, terminal: string) {
+    async claimIdempotencyKey(restaurantId: string, key: string, terminal: string, entityType = "api.pos.sale") {
       const inserted = await db
         .insert(posIdempotencyKeys)
-        .values({ restaurantId, idempotencyKey: key, terminalUid: terminal, entityType: "api.pos.sale", status: "processing" })
+        .values({ restaurantId, idempotencyKey: key, terminalUid: terminal, entityType, status: "processing" })
         .onConflictDoNothing()
         .returning({ id: posIdempotencyKeys.id });
       if (inserted.length) return { claimed: true as const, id: inserted[0].id };

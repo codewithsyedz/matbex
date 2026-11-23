@@ -7,6 +7,16 @@ Since then: Split on /record-sale (RecordSale.tsx, RecordSaleMobile) with one ZA
 per tender and printed tenders; cash/card readers (day-end, dashboard, analytics, reports, card
 sales by branch, daily profit email) read tenders. Display-only screens show "split".
 
+Phase 2a (split bill at checkout) built on custom-backend (2026-11-23, not yet on staging):
+`sales_transactions.bill_group_id`; POST /api/v1/pos/sales/bill-split (+ /quote) records one sale
+per guest in one transaction, parts must equal the cart, discount/surcharge spread by lines total
+(last part takes the rounding); offline split bills replay as one request keeping each part's
+receipt number; "Split bill" sheet (by item / evenly / by amount) on SalesRecorder, /record-sale
+and RecordSaleMobile; "1 of N" badge on the Sales list. As built: by item, each guest pays with
+one method (cash, card or other; split tender per guest is supported by the API, not the sheet),
+and receipts print in guest order once the last guest has paid (all parts are saved together).
+Each part gets its own kitchen ticket. Still to do: staging click-through as the QA cashier.
+
 ## Problem
 
 A POS sale holds exactly one payment method (`sales_transactions.payment_method`:
@@ -102,10 +112,80 @@ Staging copy of production: 49,822 sales (33,604 cash, 16,200 card, 18 other).
 
 ## Phase 2 — split bill between guests
 
-For table orders (PosTables / Waiter): split by item, by seat, or evenly into N
-parts. Each part becomes its own sale with its own receipt and ZATCA invoice, and
-each can use split tender. Needs a look at how open table orders are held before
-sales are written; plan separately once phase 1 is live.
+### What exists today (checked 2026-11-23)
+
+Matbex has **no open table orders**. Every sale is rung up and paid in one go:
+
+- `PosTables` / `Waiter` manage tables, QR codes and *guest QR orders*
+  (`pos_table_orders`, items as JSON). Marking one "paid" only sets its status;
+  it records no sale. The Waiter page's comment about cart and send-to-kitchen
+  is wrong: PosTables has neither.
+- `/record-sale` can be opened with a table id (`tableId` on the sale), and has an
+  order-type picker (dine-in, takeaway, delivery, **held**). The picker is
+  cosmetic: "held" doesn't hold anything.
+- Staging copy of production: 0 sales with a table, 1 table, 0 guest QR orders.
+
+So "split the bill" can only happen at checkout, on the cart the cashier has in
+front of them. Running tabs (order now, send rounds to the kitchen, pay later)
+are a separate, larger feature; see below.
+
+### 2a — split at checkout (build this)
+
+In the payment step, next to "Split" (several payment methods), add
+**"Split bill"** with three ways to split:
+
+1. **By item:** the cashier assigns cart lines (or units of a line) to guests
+   1..N. Each guest's part becomes **its own sale**: its own receipt number,
+   receipt and ZATCA simplified invoice, priced and VAT-split on the server like
+   any sale. Each part can be paid by any method, including split tender.
+2. **Evenly into N:** one sale, one invoice, paid by N equal payments (phase 1
+   split tender, amounts rounded so they add up to the total, the last one taking
+   the remainder). Each guest gets a payment slip showing their share. Splitting
+   item lines into fractions would make invoice lines meaningless, so evenly
+   never creates separate invoices.
+3. **By amount:** the same as evenly, with amounts typed in, for when guests pay
+   unequal shares.
+
+Server (by item):
+
+- `POST /api/v1/pos/sales/bill-split`: the cart plus `parts: [{ lines,
+  payments }]`. It prices everything, checks that the parts together are exactly
+  the cart (same items, same quantities), then records every part in **one
+  transaction** with one idempotency key. Either all parts are saved or none.
+  It reuses `createSale` internals; it doesn't call the endpoint N times from
+  the browser.
+- New column `sales_transactions.bill_group_id` (uuid, nullable) shared by the
+  parts, so reports, receipts ("1 of 3") and voids can find the siblings.
+- Document discount or surcharge: spread over the parts in proportion to their
+  subtotal, rounding on the last part.
+- Card parts: each needs its own approved terminal or Moyasar charge (as in
+  phase 1). If a card is declined part-way, nothing is recorded yet; the parts
+  already paid by card keep their approval, and the cashier retries or changes
+  the declined part. This is the same rule as phase 1's split tender.
+- Void: voiding one part voids only that part (it's its own sale); the Sales page
+  shows its siblings.
+- Offline: an offline by-item split queues as one bill-split request and replays
+  through the same endpoint (keeps the printed receipt numbers).
+
+POS screen: a "Split bill" sheet with guest columns. The cashier taps a line to
+move it to a guest; "Split evenly" and "By amount" are tabs. Each guest pays in
+turn, and their receipt prints as they pay.
+
+Reports: no change for by-item parts (they're ordinary sales). The sales list
+gets a small "1 of 3" badge from `bill_group_id`.
+
+Tests: the parts must add up to the cart (missing, extra or changed lines are
+refused); all parts are saved or none (a failure on part 3 saves nothing);
+discount spreading; evenly-split rounding; offline replay; one void doesn't
+touch the siblings. Then a staging click-through as the QA cashier.
+
+### 2b — open checks / running tabs (separate feature, plan later)
+
+Order now, send rounds to the kitchen, add items, move or merge tables, pay at the
+end (then split with 2a). This needs a new "open check" record (draft lines held
+on the server, kitchen tickets per round, table status), and it changes the
+waiter and kitchen flow. It's the bigger dine-in gap and deserves its own plan.
+2a doesn't depend on it, and works on an open check later without changes.
 
 ## Out of scope for phase 1
 

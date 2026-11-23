@@ -40,7 +40,7 @@ export interface CreateSaleOptions {
  * shift, customer, table, branch; the business day; line prices (server price list unless
  * `offline`); totals with the branch's VAT settings. Reads only.
  */
-async function priceSale(
+export async function priceSale(
   t: ServiceTx,
   repo: ReturnType<typeof salesRepository>,
   input: CreateSaleInput,
@@ -128,7 +128,7 @@ async function priceSale(
     const listed = roundMoney(linesTotal - documentDiscount + documentSurcharge);
     const { net: subtotal, vat: tax, gross: total } = splitListed(listed, rate, inclusive);
 
-    return { byId, branchId, day, created_at, lines, subtotal, tax, total, rate, inclusive, documentDiscount, documentSurcharge };
+    return { byId, branchId, day, created_at, lines, linesTotal, subtotal, tax, total, rate, inclusive, documentDiscount, documentSurcharge };
 }
 
 /**
@@ -160,13 +160,23 @@ function sumOfPayments(input: CreateSaleInput) {
   return input.payments ? sumMoney(input.payments.map((p) => p.amount)) : 0;
 }
 
-export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions): Promise<{ result: CreateSaleResult; replayed: boolean }> {
-  const userId = opts.claims.sub;
+/** What createSale decided from the request alone, before any database work. */
+export interface SaleContext {
+  userId: string;
+  settlement: "paid" | "unpaid";
+  offline: CreateSaleInput["offline"] | null;
+  subtype: "SIMPLIFIED" | "STANDARD";
+  saleAt: string | null;
+  /** Split bill: shared by the sales one cart was divided into. */
+  billGroupId?: string | null;
+}
+
+/** Input rules that need no database; throws 400 on the first broken one. */
+export function checkSaleInput(input: CreateSaleInput, userId: string): SaleContext {
   const settlement = input.settlement ?? "paid";
   const offline = input.offline ?? null;
   const subtype = input.invoice?.subtype ?? "SIMPLIFIED";
 
-  // ---- input rules that need no database --------------------------------------------
   if (settlement === "unpaid" && !input.customerId) throw badRequest("Customer is required for unpaid sales", "customer_required");
   // Tender rules that need no total (shape, card approvals) fail before any database work;
   // the sums are checked against the server-priced total below.
@@ -191,6 +201,12 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
     if (vat && !/^\d{15}$/.test(vat)) throw badRequest("Buyer VAT number must be exactly 15 digits", "buyer_vat_invalid");
     if (!vat && !other) throw badRequest("Standard (B2B) invoices need a 15-digit VAT number or another buyer ID", "buyer_id_required");
   }
+  return { userId, settlement, offline, subtype, saleAt };
+}
+
+export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions): Promise<{ result: CreateSaleResult; replayed: boolean }> {
+  const userId = opts.claims.sub;
+  const ctx = checkSaleInput(input, userId);
 
   return inServiceTx(opts.claims, async (t) => {
     const repo = salesRepository(t);
@@ -209,6 +225,19 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
       idemId = claim.id;
     }
 
+    const result = await recordSale(t, repo, input, ctx);
+    if (idemId) await repo.completeIdempotencyKey(idemId, result, input.shiftId ?? null);
+    return { result, replayed: false };
+  });
+}
+
+/**
+ * Prices and writes one sale inside the caller's transaction: the caller has checked the
+ * caller's role on input.restaurantId and claimed the idempotency key. Used by createSale and,
+ * once per part, by the split-bill endpoint (bill-split.service.ts).
+ */
+export async function recordSale(t: ServiceTx, repo: ReturnType<typeof salesRepository>, input: CreateSaleInput, ctx: SaleContext): Promise<CreateSaleResult> {
+    const { userId, settlement, offline, subtype, saleAt } = ctx;
     const { byId, branchId, day, created_at, lines, subtotal, tax, total, documentDiscount, documentSurcharge } = await priceSale(t, repo, input, { offline: !!offline, saleAt });
 
     const tenders = resolveTenders(input, total, { settlement });
@@ -264,6 +293,7 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
       tableId: input.tableId ?? null,
       documentDiscount: String(documentDiscount),
       documentSurcharge: String(documentSurcharge),
+      billGroupId: ctx.billGroupId ?? null,
       ...(saleCard
         ? {
             halaStatus: saleCard.cardTerminal!.status,
@@ -372,9 +402,7 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
     };
 
     await repo.emitEvent(input.restaurantId, sale.id, {
-      sale: { id: sale.id, receipt_number: receiptNumber, total, payment_method: method, payments: result.payments, settlement_status: settlement, branch_id: result.transaction.branch_id, offline: !!offline },
+      sale: { id: sale.id, receipt_number: receiptNumber, total, payment_method: method, payments: result.payments, settlement_status: settlement, branch_id: result.transaction.branch_id, offline: !!offline, bill_group_id: ctx.billGroupId ?? null },
     });
-    if (idemId) await repo.completeIdempotencyKey(idemId, result, input.shiftId ?? null);
-    return { result, replayed: false };
-  });
+    return result;
 }

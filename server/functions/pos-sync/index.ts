@@ -254,7 +254,7 @@ async function processItem(args: {
   if (existing) {
     // ORDER keys written by POST /api/v1/pos/sales store the sale response instead.
     const resp = existing.response as any;
-    const serverId = resp?.server_id ?? resp?.transaction?.id ?? null;
+    const serverId = resp?.server_id ?? resp?.transaction?.id ?? resp?.sales?.[0]?.transaction?.id ?? null;
     if (serverId) localToServer[item.idempotency_key] = serverId;
     // Count the replay so posting monitors can surface terminals whose acks
     // never landed. Never fail the sync because of monitoring.
@@ -349,25 +349,8 @@ async function syncOrder(item: BatchItem, restaurantId: string, terminalUid: str
   const p = item.payload as any;
   const sizes = new Set(["regular", "quarter", "half", "full"]);
   const methods = new Set(["cash", "card", "other"]);
-  const items = Array.isArray(p.items) ? p.items : [];
-  // Split tender: the tenders taken at the till (newer builds); older payloads carry one method.
-  const tenders = Array.isArray(p.payments) && p.payments.length
-    ? p.payments.map((t: any) => ({
-        method: methods.has(t.method) ? t.method : "other",
-        amount: Number(t.amount ?? 0),
-        ...(t.tendered != null ? { tendered: Number(t.tendered) } : {}),
-        ...(t.card_terminal ? { cardTerminal: t.card_terminal } : {}),
-      }))
-    : null;
-  const body = {
-    restaurantId,
-    branchId: p.branch_id ?? null,
-    shiftId: p.shift_id ?? null,
-    customerId: p.customer_id ?? null,
-    ...(tenders ? { payments: tenders } : { paymentMethod: methods.has(p.payment_method) ? p.payment_method : "other" }),
-    settlement: p.settlement_status === "unpaid" ? "unpaid" : "paid",
-    offline: { receiptNumber: String(p.receipt_number), createdAt: p.created_at ?? new Date().toISOString() },
-    lines: items.map((it: any) =>
+  const toLines = (items: any[]) =>
+    items.map((it: any) =>
       it.combo_id
         ? { comboId: it.combo_id, quantity: Number(it.quantity ?? 1), unitPrice: Number(it.unit_price ?? 0) }
         : {
@@ -376,9 +359,47 @@ async function syncOrder(item: BatchItem, restaurantId: string, terminalUid: str
             quantity: Number(it.quantity ?? 1),
             unitPrice: Number(it.unit_price ?? 0),
           },
-    ),
-  };
-  const res = await fetch(`${API_URL}/api/v1/pos/sales`, {
+    );
+  // Split tender: the tenders taken at the till (newer builds); older payloads carry one method.
+  const toTenders = (payments: unknown) =>
+    Array.isArray(payments) && payments.length
+      ? payments.map((t: any) => ({
+          method: methods.has(t.method) ? t.method : "other",
+          amount: Number(t.amount ?? 0),
+          ...(t.tendered != null ? { tendered: Number(t.tendered) } : {}),
+          ...(t.card_terminal ? { cardTerminal: t.card_terminal } : {}),
+        }))
+      : null;
+  const items = Array.isArray(p.items) ? p.items : [];
+  const createdAt = p.created_at ?? new Date().toISOString();
+  const common = { restaurantId, branchId: p.branch_id ?? null, shiftId: p.shift_id ?? null, customerId: p.customer_id ?? null };
+
+  // Split bill by item (one cart, one sale per guest): replays as ONE request to the bill-split
+  // endpoint, so every part is saved or none, each with the receipt number printed for it.
+  const billParts = Array.isArray(p.bill_parts) && p.bill_parts.length ? p.bill_parts : null;
+  const [path, body] = billParts
+    ? [
+        "/api/v1/pos/sales/bill-split",
+        {
+          ...common,
+          lines: toLines(items),
+          documentDiscount: Number(p.document_discount ?? 0),
+          documentSurcharge: Number(p.document_surcharge ?? 0),
+          parts: billParts.map((bp: any) => ({ lines: toLines(Array.isArray(bp.items) ? bp.items : []), payments: toTenders(bp.payments) ?? [] })),
+          offline: { receiptNumbers: billParts.map((bp: any) => String(bp.receipt_number)), createdAt },
+        },
+      ]
+    : [
+        "/api/v1/pos/sales",
+        {
+          ...common,
+          ...(toTenders(p.payments) ? { payments: toTenders(p.payments) } : { paymentMethod: methods.has(p.payment_method) ? p.payment_method : "other" }),
+          settlement: p.settlement_status === "unpaid" ? "unpaid" : "paid",
+          offline: { receiptNumber: String(p.receipt_number), createdAt },
+          lines: toLines(items),
+        },
+      ];
+  const res = await fetch(`${API_URL}${path}`, {
     method: "POST",
     headers: {
       Authorization: authHeader,
@@ -395,7 +416,8 @@ async function syncOrder(item: BatchItem, restaurantId: string, terminalUid: str
     const prefix = [400, 403, 404, 409, 422].includes(res.status) ? "VALIDATION_ERROR: " : "";
     throw new Error(`${prefix}order: ${json?.message ?? res.statusText} (${json?.error_code ?? res.status})`);
   }
-  return json.transaction.id as string;
+  // A split bill answers with every part; the first part's id stands for the queued order.
+  return (billParts ? json.sales[0].transaction.id : json.transaction.id) as string;
 }
 
 async function syncPayment(

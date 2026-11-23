@@ -81,11 +81,23 @@ export interface RecordOfflineSaleInput {
   pricesVatInclusive?: boolean;
   /** Resolved pricing branch label, printed on the receipt. */
   branchName?: string | null;
+  /**
+   * Split bill by item: the cart (`items`) divided between guests, one sale per part. Queued as
+   * ONE order and replayed through POST /api/v1/pos/sales/bill-split, which keeps the receipt
+   * number printed for each part. `total` is the part's total at these prices (localPartTotals),
+   * and its payments add up to it.
+   */
+  billParts?: { items: OfflineCartItem[]; payments: OfflineTender[]; total: number }[] | null;
+  /** Split bill only: the cart's document discount / surcharge (spread over the parts by the server). */
+  documentDiscount?: number;
+  documentSurcharge?: number;
 }
 
 export interface RecordOfflineSaleResult {
   localOrderId: string;
   receiptNumber: string;
+  /** Split bill: the receipt number printed for each part, in part order. */
+  receiptNumbers?: string[];
   total: number;
   offline: boolean;
 }
@@ -104,7 +116,18 @@ export async function recordOfflineSale(
     input.vatRate ?? VAT_RATE,
     input.pricesVatInclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE,
   );
-  const receiptNumber = await generateLocalReceiptNumber(now);
+  const billParts = input.billParts?.length ? input.billParts : null;
+  const receiptNumbers: string[] = [];
+  if (billParts) {
+    for (const [i, part] of billParts.entries()) {
+      if (!nearMoney(sumMoney(part.payments.map((t) => t.amount)), part.total)) {
+        throw new Error(`Guest ${i + 1}: payments add up to ${sumMoney(part.payments.map((t) => t.amount)).toFixed(2)}, their part is ${part.total.toFixed(2)}`);
+      }
+      receiptNumbers.push(await generateLocalReceiptNumber(now));
+    }
+  }
+  const receiptNumber = receiptNumbers[0] ?? (await generateLocalReceiptNumber(now));
+  const billTotal = billParts ? sumMoney(billParts.map((p) => p.total)) : null;
 
   const orderLocalId = crypto.randomUUID();
   const paymentLocalId = crypto.randomUUID();
@@ -143,6 +166,30 @@ export async function recordOfflineSale(
     prices_vat_inclusive: input.pricesVatInclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE,
     created_at: now.toISOString(),
     branch_id: input.saleBranchId ?? null,
+    ...(billParts
+      ? {
+          total: billTotal,
+          document_discount: input.documentDiscount ?? 0,
+          document_surcharge: input.documentSurcharge ?? 0,
+          bill_parts: billParts.map((part, i) => ({
+            receipt_number: receiptNumbers[i],
+            total: part.total,
+            items: part.items.map((it) => ({
+              menu_item_id: it.menu_item_id,
+              combo_id: it.combo_id ?? null,
+              size: it.size ?? null,
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+            })),
+            payments: part.payments.map((t) => ({
+              method: t.method,
+              amount: t.amount,
+              tendered: t.tendered ?? null,
+              card_terminal: t.cardTerminal ?? null,
+            })),
+          })),
+        }
+      : {}),
     items: input.items.map((it) => ({
       menu_item_id: it.menu_item_id,
       combo_id: it.combo_id ?? null,
@@ -178,7 +225,7 @@ export async function recordOfflineSale(
 
   // Payment record (cash drawer event when shift is open)
   const paymentPayload = await protectPayload({
-    amount: total,
+    amount: billTotal ?? total,
     payment_method: saleMethod,
     shift_id: input.shiftId,
     receipt_number: receiptNumber,
@@ -260,7 +307,8 @@ export async function recordOfflineSale(
   return {
     localOrderId: orderLocalId,
     receiptNumber,
-    total,
+    ...(billParts ? { receiptNumbers } : {}),
+    total: billTotal ?? total,
     offline: !isOnline(),
   };
 }

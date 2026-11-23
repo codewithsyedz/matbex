@@ -1834,7 +1834,9 @@
         "detailedTxDesc": "Per-shift breakdown plus a full transaction list.",
         "includeUnassigned": "Include unassigned transactions",
         "includeUnassignedDesc": "Transactions not linked to any shift will be included in totals and breakdowns."
-      }
+      },
+      "billPart": "{{index}} of {{count}}",
+      "billPartTitle": "Part of a split bill"
     },
     "pos": {
       "title": "Record Sale",
@@ -2123,6 +2125,47 @@
         "missingTotalsDescription": "Day-end adjustments attach to the day's sales summary.",
         "closedHelp": "Today is closed — adjustments are recorded against the closed day",
         "openHelp": "Record a day-end adjustment and close the day"
+      },
+      "billSplit": {
+        "title": "Split bill",
+        "open": "Split bill",
+        "total": "Bill total {{total}}",
+        "byItem": "By item",
+        "evenly": "Evenly",
+        "byAmount": "By amount",
+        "guests": "Guests",
+        "fewerGuests": "One guest fewer",
+        "moreGuests": "One guest more",
+        "guestN": "Guest {{n}}",
+        "guestShort": "G{{n}}",
+        "guestOf": "Guest {{n}} of {{count}}",
+        "byItemHelp": "Pick a guest, then tap items to give them one unit. Tap a guest tag to take it back.",
+        "left": "{{n}} left",
+        "giveOne": "Give one {{item}} to guest {{guest}}",
+        "giveAll": "All to guest {{guest}}",
+        "takeBack": "Take one {{item}} back from guest {{guest}}",
+        "assignAll": "Give every item to a guest",
+        "toPayment": "Continue to payment",
+        "payHelp": "Each guest pays their own part, in turn. Every part is its own sale and receipt; they are saved together when the last guest has paid.",
+        "discountShare": "incl. discount −{{amount}}",
+        "paidBy": "Paid · {{method}}",
+        "chargeGuest": "Charge guest {{n}} · {{amount}}",
+        "takePayment": "Guest {{n}} paid {{amount}}",
+        "cashShort": "Guest {{guest}}: the cash given is less than their part",
+        "cardFailed": "Guest {{guest}}: card not charged ({{message}}). Try again or choose another method.",
+        "recording": "Saving the bill…",
+        "retryRecord": "Save the bill",
+        "backToItems": "Back to items",
+        "onlineCardOffline": "A guest paid by online card; reconnect and press Save the bill. Nobody is charged twice.",
+        "pricesChanged": "Prices changed since the menu was loaded. Close this, check the cart and split again.",
+        "evenHelp": "One sale and one invoice, paid in equal parts; the last part takes the rounding.",
+        "amountHelp": "One sale and one invoice; type what each guest pays. The amounts must add up to the total.",
+        "addRest": "Add the rest",
+        "printSlips": "Print slips",
+        "slipTitle": "Your share",
+        "payInParts": "Pay in {{n}} parts",
+        "recordedParts": "Bill split into {{count}} sales",
+        "queuedParts": "Bill split into {{count}} sales · queued offline"
       }
     },
     "expenses": {

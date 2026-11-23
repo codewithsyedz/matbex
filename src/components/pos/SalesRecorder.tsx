@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Plus, Minus, ShoppingCart, Receipt, Trash2, CreditCard, Banknote, Wallet, QrCode, ImageIcon, Search, Info, UtensilsCrossed, SplitSquareHorizontal } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Receipt, Trash2, CreditCard, Banknote, Wallet, QrCode, ImageIcon, Search, Info, UtensilsCrossed, SplitSquareHorizontal, Users } from "lucide-react";
 import { QRScanner } from "./QRScanner";
 import { usePOSHardware } from "@/hooks/usePOSHardware";
 import { recordOfflineSale } from "@/lib/offline/posService";
@@ -38,6 +38,7 @@ import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
 import { useBranchVatRate } from "@/hooks/useBranchVatRate";
 import { PricingBranchBanner } from "@/components/pos/PricingBranchBanner";
 import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
+import { SplitBillSheet } from "@/components/pos/SplitBillSheet";
 import { chargeCardTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders, type TenderMethod } from "@/lib/pos/splitTenders";
 import { lineGross, roundMoney, splitListed, sumMoney } from "@/lib/vatInclusive";
 import { useTranslation } from "react-i18next";
@@ -143,6 +144,38 @@ export function SalesRecorder() {
     staleTime: 30 * 1000,
   });
 
+  // Card on the integrated terminal (Hala) or gateway (Moyasar) for one amount; used by split
+  // tender and split bill. Throws when the card is declined.
+  const integratedCard = posSettings?.hala_enabled ? "hala" : moyasar.enabled ? "moyasar" : null;
+  const chargeCard = async (amount: number, reference: string): Promise<CardTerminalApproval> => {
+    if (integratedCard === "hala") {
+      toast.info("Sending amount to Hala terminal...", { id: "hala-charge" });
+      const { data, error } = await db.functions.invoke("charge-hala-card", {
+        body: {
+          amount,
+          currency: "SAR",
+          terminalId: posSettings!.hala_terminal_id,
+          receiptNumber: reference,
+          mock: posSettings!.hala_mock_mode ?? true,
+          approveProbability: posSettings!.hala_approve_probability ?? 0.9,
+        },
+      });
+      toast.dismiss("hala-charge");
+      if (error) throw new Error(`Hala terminal error: ${error.message}`);
+      if (data?.status !== "approved") {
+        throw new Error(
+          data?.status === "declined"
+            ? `Card declined for ${formatCurrency(amount)}${data?.message ? ` - ${data.message}` : ""}. Change that payment and pay the rest.`
+            : `Hala terminal did not approve ${formatCurrency(amount)}`,
+        );
+      }
+      return { provider: "hala", status: data.status, reference: data.reference ?? null, response: data } as CardTerminalApproval;
+    }
+    const intentId = await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant?.name ?? "Matbex"} POS` });
+    return { provider: "moyasar", status: "approved", reference: intentId } as CardTerminalApproval;
+  };
+  const [splitBillOpen, setSplitBillOpen] = useState(false);
+
   // Record sale mutation with inventory auto-deduction
   const recordSaleMutation = useMutation({
     mutationFn: async () => {
@@ -231,8 +264,7 @@ export function SalesRecorder() {
         // Each card tender is charged on the terminal for its own amount. A declined card
         // stops here: tenders already approved keep their approval, the cashier changes the
         // declined one and pays the rest.
-        const integrated = posSettings?.hala_enabled ? "hala" : moyasar.enabled ? "moyasar" : null;
-        const toCharge = integrated ? parts.filter((p) => p.method === "card" && !p.approval) : [];
+        const toCharge = integratedCard ? parts.filter((p) => p.method === "card" && !p.approval) : [];
         if (toCharge.length) {
           const quote = await quoteSale(order);
           const stale = quote.lines
@@ -241,33 +273,7 @@ export function SalesRecorder() {
           if (stale.length) throw applyCurrentPrices(stale);
           if (Math.abs(quote.total - total) >= 0.005) throw new Error(t("app.pos.recorder.splitIncomplete"));
         }
-        await chargeCardTenders(toCharge, async (amount, p) => {
-          if (integrated === "hala") {
-            toast.info("Sending amount to Hala terminal...", { id: "hala-charge" });
-            const { data, error } = await db.functions.invoke("charge-hala-card", {
-              body: {
-                amount,
-                currency: "SAR",
-                terminalId: posSettings!.hala_terminal_id,
-                receiptNumber: `POS-${saleKey.slice(0, 8)}-${p.id.slice(0, 4)}`,
-                mock: posSettings!.hala_mock_mode ?? true,
-                approveProbability: posSettings!.hala_approve_probability ?? 0.9,
-              },
-            });
-            toast.dismiss("hala-charge");
-            if (error) throw new Error(`Hala terminal error: ${error.message}`);
-            if (data?.status !== "approved") {
-              throw new Error(
-                data?.status === "declined"
-                  ? `Card declined for ${formatCurrency(amount)}${data?.message ? ` - ${data.message}` : ""}. Change that payment and pay the rest.`
-                  : `Hala terminal did not approve ${formatCurrency(amount)}`,
-              );
-            }
-            return { provider: "hala", status: data.status, reference: data.reference ?? null, response: data } as CardTerminalApproval;
-          }
-          const intentId = await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant?.name ?? "Matbex"} POS` });
-          return { provider: "moyasar", status: "approved", reference: intentId } as CardTerminalApproval;
-        }, splitTenders.markApproved);
+        await chargeCardTenders(toCharge, (amount, p) => chargeCard(amount, `POS-${saleKey.slice(0, 8)}-${p.id.slice(0, 4)}`), splitTenders.markApproved);
       } else if (paymentMethod === "card" && posSettings?.hala_enabled) {
         const quote = await quoteSale(order);
         const stale = quote.lines
@@ -821,6 +827,17 @@ export function SalesRecorder() {
               )}
 
               <Button
+                variant="outline"
+                size="sm"
+                className="h-9 w-full gap-1.5"
+                disabled={cart.length === 0 || recordSaleMutation.isPending}
+                onClick={() => setSplitBillOpen(true)}
+              >
+                <Users className="h-4 w-4" />
+                {t("app.pos.billSplit.open")}
+              </Button>
+
+              <Button
                 className="w-full h-11 gap-2"
                 disabled={cart.length === 0 || recordSaleMutation.isPending || (paymentMethod === "split" && !splitTenders.ready)}
                 onClick={() => recordSaleMutation.mutate()}
@@ -833,6 +850,39 @@ export function SalesRecorder() {
             </div>
           </div>
         </div>
+
+        {restaurant?.id && user?.id && (
+          <SplitBillSheet
+            open={splitBillOpen}
+            onOpenChange={setSplitBillOpen}
+            lines={cart.map((c) => ({ key: getCartItemKey(c), menuItemId: c.menuItemId, name: c.name, size: (c.size ?? "regular") as SaleLineSize, quantity: c.quantity, unitPrice: c.unitPrice }))}
+            total={payTotal}
+            vatRate={vatRate}
+            pricesInclusive={pricesInclusive}
+            order={{ restaurantId: restaurant.id, branchId: priceBranchId ?? null, shiftId: activeShifts[0]?.id ?? null }}
+            offline={{ cashierId: user.id, branchName: activeBranch?.name ?? null }}
+            chargeCard={integratedCard ? (amount) => chargeCard(amount, `POS-BILL-${crypto.randomUUID().slice(0, 8)}`) : null}
+            onTenders={(amounts) => {
+              splitTenders.fill(amounts);
+              setPaymentMethod("split");
+            }}
+            onRecorded={(parts) => {
+              queryClient.invalidateQueries({ queryKey: qk.dailyProfit.entityAll("sales") });
+              queryClient.invalidateQueries({ queryKey: qk.dailyProfit.entityAll("sales-items") });
+              queryClient.invalidateQueries({ queryKey: ["reports-sales"] });
+              queryClient.invalidateQueries({ queryKey: ["inventory-items"] });
+              setCart([]);
+              splitTenders.reset();
+              setPaymentMethod("cash");
+              setIsOpen(false);
+              toast.success(t(parts[0]?.offline ? "app.pos.billSplit.queuedParts" : "app.pos.billSplit.recordedParts", { count: parts.length }), {
+                description: parts.map((p) => `${p.receiptNumber} · ${formatCurrency(p.totals.total)}`).join("\n"),
+              });
+            }}
+            formatCurrency={formatCurrency}
+            restaurantName={restaurant.name}
+          />
+        )}
 
         {/* QR Scanner */}
         {restaurant?.id && (

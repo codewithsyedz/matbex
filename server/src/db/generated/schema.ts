@@ -40,7 +40,11 @@ export const tenantAddonSource = pgEnum("tenant_addon_source", ['purchase', 'man
 export const tenantAddonStatus = pgEnum("tenant_addon_status", ['active', 'pending', 'cancelled', 'expired'])
 export const transactionSettlementStatus = pgEnum("transaction_settlement_status", ['paid', 'unpaid', 'settled'])
 
+export const subscriptionInvoiceSeq = pgSequence("subscription_invoice_seq", {  startWith: "1", increment: "1", minValue: "1", maxValue: "9223372036854775807", cache: "1", cycle: false })
+export const subscriptionCreditNoteSeq = pgSequence("subscription_credit_note_seq", {  startWith: "1", increment: "1", minValue: "1", maxValue: "9223372036854775807", cache: "1", cycle: false })
 export const emailQueueMsgIdSeq = pgSequence("email_queue_msg_id_seq", {  startWith: "1", increment: "1", minValue: "1", maxValue: "9223372036854775807", cache: "1", cycle: false })
+export const jobRunsIdSeq = pgSequence("job_runs_id_seq", {  startWith: "1", increment: "1", minValue: "1", maxValue: "9223372036854775807", cache: "1", cycle: false })
+export const supportRequestsNumberSeq = pgSequence("support_requests_number_seq", {  startWith: "1001", increment: "1", minValue: "1", maxValue: "9223372036854775807", cache: "1", cycle: false })
 
 export const userRoles = pgTable("user_roles", {
 	id: uuid().defaultRandom().primaryKey().notNull(),
@@ -371,6 +375,7 @@ export const salesTransactions = pgTable("sales_transactions", {
 	voidsTransactionId: uuid("voids_transaction_id"),
 	documentDiscount: numeric("document_discount", { precision: 12, scale:  2 }).default('0').notNull(),
 	documentSurcharge: numeric("document_surcharge", { precision: 12, scale:  2 }).default('0').notNull(),
+	billGroupId: uuid("bill_group_id"),
 }, (table) => [
 	index("idx_sales_legal_retention").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.legalRetentionUntil.asc().nullsLast().op("uuid_ops")),
 	index("idx_sales_transactions_customer").using("btree", table.customerId.asc().nullsLast().op("uuid_ops")),
@@ -384,6 +389,7 @@ export const salesTransactions = pgTable("sales_transactions", {
 	index("idx_sales_tx_restaurant_created_at").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.createdAt.desc().nullsFirst().op("timestamptz_ops")),
 	index("idx_sales_zatca_clearance").using("btree", table.restaurantId.asc().nullsLast().op("text_ops"), table.zatcaClearanceStatus.asc().nullsLast().op("uuid_ops")).where(sql`(zatca_clearance_status IS NOT NULL)`),
 	index("idx_sales_zatca_device").using("btree", table.zatcaDeviceId.asc().nullsLast().op("uuid_ops")),
+	index("sales_transactions_bill_group_id_idx").using("btree", table.billGroupId.asc().nullsLast().op("uuid_ops")).where(sql`(bill_group_id IS NOT NULL)`),
 	uniqueIndex("sales_transactions_voids_uidx").using("btree", table.voidsTransactionId.asc().nullsLast().op("uuid_ops")).where(sql`(voids_transaction_id IS NOT NULL)`),
 	check("sales_transactions_document_discount_check", sql`document_discount >= (0)::numeric`),
 	check("sales_transactions_document_surcharge_check", sql`document_surcharge >= (0)::numeric`),
