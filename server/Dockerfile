@@ -7,6 +7,8 @@ COPY server server
 COPY packages packages
 # Shared VAT math used by both the POS screen and the API (server/src/modules/pos).
 COPY src/lib/vatInclusive.ts src/lib/vatInclusive.ts
+# Split-bill rounding shared by the POS screen and the API (server/src/modules/pos/bill-split.ts).
+COPY src/lib/pos/billSplit.ts src/lib/pos/billSplit.ts
 RUN cd server && node scripts/build.mjs && npm prune --omit=dev
 
 FROM node:22-alpine
