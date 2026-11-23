@@ -4,7 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Info, Image as ImageIcon } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 
-import { Plus, Receipt, CreditCard, Banknote, MoreHorizontal, CalendarPlus, Trash2, Pencil, ShoppingCart, TrendingUp, TrendingDown, Clock, ArrowRightLeft, FileDown, BarChart3, Eye, Store, FileText, Settings2, Scale, ArrowUp, Wallet, ChevronDown } from "lucide-react";
+import { Plus, Receipt, CreditCard, Banknote, MoreHorizontal, CalendarPlus, Trash2, Pencil, ShoppingCart, TrendingUp, TrendingDown, Clock, ArrowRightLeft, FileDown, BarChart3, Eye, Store, FileText, Settings2, Scale, ArrowUp, Wallet, ChevronDown, Split } from "lucide-react";
 import { BranchBadge } from "@/components/branch/BranchBadge";
 import { exportToCSV, prepareSalesExportData } from "@/lib/exportUtils";
 import { exportSalesPdf, DEFAULT_PDF_OPTIONS, type SalesPdfOptions, type BreakdownDetail } from "@/lib/salesPdfExport";
@@ -133,6 +133,8 @@ const paymentMethodConfig = {
   cash: { label: "Cash", icon: Banknote, color: "bg-emerald-500/10 text-emerald-600" },
   card: { label: "Card", icon: CreditCard, color: "bg-primary/10 text-primary" },
   other: { label: "Other", icon: MoreHorizontal, color: "bg-muted text-muted-foreground" },
+  // One sale paid by several methods; the tenders are in sale_payments.
+  split: { label: "Split", icon: Split, color: "bg-amber-500/10 text-amber-700" },
 };
 
 // Sales page component
