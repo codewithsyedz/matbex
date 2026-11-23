@@ -99,7 +99,7 @@ interface SaleTransaction {
   subtotal: number;
   tax: number;
   total: number;
-  payment_method: "cash" | "card" | "other";
+  payment_method: "cash" | "card" | "other" | "split";
   created_at: string;
   shift_id: string | null;
   branch_id?: string | null;
@@ -218,6 +218,21 @@ export default function Sales() {
       resizeObserver.disconnect();
     };
   }, [viewDetailsDialogOpen, viewingTransaction?.id]);
+
+  // Tenders of a split sale (one row per payment method), for the details dialog.
+  const { data: viewingTenders = [] } = useQuery({
+    queryKey: ["sale-tenders", viewingTransaction?.id],
+    enabled: viewDetailsDialogOpen && viewingTransaction?.payment_method === "split",
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("sale_payments")
+        .select("id, method, amount, tendered, change_given")
+        .eq("sale_id", viewingTransaction!.id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+  });
 
   // Payment history for the currently viewed transaction's settlement invoice
   const { data: paymentHistory = [], isLoading: paymentHistoryLoading } = useQuery({
@@ -817,7 +832,7 @@ export default function Sales() {
       
       let query = db
         .from("sales_transactions")
-        .select("*, shift:shifts(id, drawer_id, drawers(name))")
+        .select("*, shift:shifts(id, drawer_id, drawers(name)), sale_payments(method, amount)")
         .eq("restaurant_id", restaurant.id);
 
       query = applyBranchFilter(query);
@@ -992,7 +1007,8 @@ export default function Sales() {
       ? ((transaction.tax / transaction.subtotal) * 100).toFixed(0)
       : "15";
     setTaxRate(calculatedTaxRate);
-    setPaymentMethod(transaction.payment_method);
+    // Split sales cannot be edited (the edit button is disabled); the server refuses it too.
+    setPaymentMethod(transaction.payment_method === "split" ? "other" : transaction.payment_method);
     setEditDialogOpen(true);
   };
 
@@ -1874,7 +1890,7 @@ export default function Sales() {
                 </TableHeader>
                 <TableBody>
                   {transactions.map((transaction) => {
-                    const config = paymentMethodConfig[transaction.payment_method];
+                    const config = paymentMethodConfig[transaction.payment_method] ?? paymentMethodConfig.other;
                     const items = transaction.sales_items || [];
                     const itemsSummary = items.length > 0 
                       ? items.map(item => `${item.quantity}x ${(item.menu_item as any)?.name || 'Item'}`).join(', ')
@@ -1996,7 +2012,8 @@ export default function Sales() {
                                   size="icon" 
                                   className="h-8 w-8"
                                   onClick={() => openEditDialog(transaction)}
-                                  title={t("app.sales.actions.editSale")}
+                                  disabled={transaction.payment_method === "split"}
+                                  title={transaction.payment_method === "split" ? t("app.sales.actions.splitNotEditable") : t("app.sales.actions.editSale")}
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </Button>
@@ -2330,9 +2347,26 @@ export default function Sales() {
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t("app.sales.details.paymentMethod")}</p>
-                    <Badge variant="secondary" className={paymentMethodConfig[viewingTransaction.payment_method].color}>
+                    <Badge variant="secondary" className={paymentMethodConfig[viewingTransaction.payment_method]?.color}>
                       {t(`app.sales.paymentMethods.${viewingTransaction.payment_method}`)}
                     </Badge>
+                    {viewingTenders.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 text-xs">
+                        {viewingTenders.map((p) => (
+                          <li key={p.id} className="flex justify-between gap-2">
+                            <span>{t(`app.sales.paymentMethods.${p.method}`)}</span>
+                            <span className="tabular-nums">
+                              {formatCurrency(Number(p.amount))}
+                              {p.change_given != null && Number(p.change_given) > 0 && (
+                                <span className="text-muted-foreground">
+                                  {" "}({t("app.sales.details.changeGiven", { amount: formatCurrency(Number(p.change_given)) })})
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t("app.sales.details.shift")}</p>

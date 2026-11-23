@@ -1753,7 +1753,8 @@
         "reassignShift": "إعادة تعيين الوردية",
         "delete": "حذف",
         "cancel": "إلغاء",
-        "pdfSettings": "إعدادات تصدير PDF"
+        "pdfSettings": "إعدادات تصدير PDF",
+        "splitNotEditable": "لا يمكن تعديل عملية بيع مدفوعة بعدة طرق؛ ألغِها وسجّلها من جديد."
       },
       "delete": {
         "title": "إلغاء عملية البيع",
@@ -1820,7 +1821,8 @@
         "paymentHistory": "سجل الدفعات",
         "loadingDots": "جاري التحميل…",
         "noPaymentsYet": "لم يتم تسجيل دفعات بعد.",
-        "customerPaymentHistory": "سجل دفعات العميل"
+        "customerPaymentHistory": "سجل دفعات العميل",
+        "changeGiven": "الباقي {{amount}}"
       },
       "pdf": {
         "breakdownDetail": "تفصيل النقد / البطاقة",

@@ -1753,7 +1753,8 @@
         "reassignShift": "Reassign shift",
         "delete": "Delete",
         "cancel": "Cancel",
-        "pdfSettings": "PDF export settings"
+        "pdfSettings": "PDF export settings",
+        "splitNotEditable": "A sale paid by several methods can't be edited; void it and ring it up again."
       },
       "delete": {
         "title": "Void Sale Transaction",
@@ -1820,7 +1821,8 @@
         "paymentHistory": "Payment History",
         "loadingDots": "Loading…",
         "noPaymentsYet": "No payments recorded yet.",
-        "customerPaymentHistory": "Customer Payment History"
+        "customerPaymentHistory": "Customer Payment History",
+        "changeGiven": "change {{amount}}"
       },
       "pdf": {
         "breakdownDetail": "Cash / Card breakdown detail",
