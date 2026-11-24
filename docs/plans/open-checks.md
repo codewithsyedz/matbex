@@ -1,6 +1,8 @@
 # Open checks (running tabs) — plan
 
-Status: proposed (2026-11-24). Nothing built. Phase 2b of docs/plans/split-payments.md.
+Status: proposed (2026-11-24), owner decisions 1, 3, 4, 5 taken (see the end). Nothing
+built. Phase 2b of docs/plans/split-payments.md. Dine-in is a priority even though no
+customer uses tables yet.
 
 ## Problem
 
@@ -110,8 +112,18 @@ gets a `priceLocked` context flag for this instead of `offline`.
 
 Unchanged: they happen when the check is paid, through the sale (sales_items
 trigger, cash events, receipt, ZATCA invoice). An open check is not a sale and not
-an invoice. Items voided after being sent don't deduct stock. Recording them as
-waste is a later option, with a reason report for now.
+an invoice.
+
+**Voided items that were already sent are recorded as waste** (owner decision): the
+food was made and thrown away. In the void's transaction the API expands the item's
+recipe (`recipe_ingredients`, combos into their components) into one `waste_records`
+row per ingredient (quantity × recipe amount, unit cost from the inventory item,
+`waste_reason = 'voided_order'`, notes with check number and void reason), writes a
+`stock_movements` row of type `waste` and lowers `current_stock`, all atomically.
+`trg_auto_post_waste_to_ledger` posts the waste expense as it does for waste entered by
+hand. Items with no recipe produce no waste rows (nothing to deduct); the void is still
+listed. Unsent voided lines were never made: no waste. Voiding a whole check with sent
+rounds does the same for each of its sent lines.
 
 ### Screens
 
@@ -136,6 +148,23 @@ check. It shows them read-only from its last copy and says why. Quick sales keep
 queuing offline as today. Offline open checks (local check + replay of
 add/send/pay events) is a separate, later step if restaurants ask for it.
 
+### Service charge (per branch)
+
+Owner decision: a separate setting per branch, not a manual surcharge.
+
+- Branch settings: `service_charge_percent` (0 = off) and `service_charge_scope`
+  (`dine_in_checks` default, or `all_sales`). Owners/managers set it in branch
+  settings; the API reads it, the browser never sends the amount.
+- On a check it's computed on the lines total after any discount, shown as its own
+  line on the check, pre-bill and receipt ("Service charge 10%"), and charged
+  through the sale's document surcharge, so totals, VAT and ZATCA work as they do now.
+  KSA VAT applies to service charges, so it goes into the VAT base.
+- A manager can waive it on a check (with a reason), like a discount.
+- Split bill spreads it over the parts like any surcharge (already built).
+- Reports: service charge collected per day/branch (sales with a service charge
+  store it in a new `sales_transactions.service_charge` column, also counted in
+  `document_surcharge`).
+
 ### Day end and shifts
 
 - Day-end (DayEndStatusMatrix) lists open checks and blocks closing the day
@@ -154,9 +183,9 @@ the separate `pos_table_orders` flow and its "paid without a sale" gap.
 1. **2b.1 core:** migration; checks API (open, list, get, add/edit/void unsent
    lines, send, pay, void); kitchen tickets per round; table status from the
    check; POS "Open checks" panel and "Send to kitchen"; floor plan opens checks.
-2. **2b.2 service:** void sent lines (manager), move, merge, pre-bill print with
-   discount/surcharge, Waiter page on phones, day-end guard, open-checks report
-   (value, age, server).
+2. **2b.2 service:** void sent lines (manager or admin PIN) with waste records,
+   branch service charge, move, merge, pre-bill print, Waiter page on phones,
+   day-end guard, open-checks report (value, age, server, voids and waste).
 3. **2b.3 guests:** QR orders into checks; reservations seat a table.
 
 ## Tests
@@ -166,8 +195,10 @@ the separate `pos_table_orders` flow and its "paid without a sale" gap.
   one ticket per round and never resends lines; pay with one sale, split payment
   and split bill records `check_id` and closes the check in one transaction;
   pay retried with the same key records once; `version` conflicts; move/merge keep
-  every line; voided sent line cancels the ticket item; a sale with `check_id`
-  makes no extra kitchen ticket.
+  every line; voided sent line cancels the ticket item and records waste per recipe
+  ingredient (stock lowered once, ledger posted), an unsent void records none; service
+  charge from the branch setting, in the VAT base, waivable by a manager, spread over
+  split-bill parts; a sale with `check_id` makes no extra kitchen ticket.
 - Staging (rolled back): open → send two rounds → pay by split bill → two sales,
   two kitchen tickets (not four), table `dirty`, stock deducted once.
 - Click-through on staging as the QA waiter and cashier on two terminals at once.
@@ -180,9 +211,9 @@ the separate `pos_table_orders` flow and its "paid without a sale" gap.
 2. **Voiding a sent item:** undecided. Proposed: a manager/owner, or a cashier or
    waiter with the admin PIN (AdminPinDialog, as other protected POS actions) and a
    reason; every void listed in the open-checks report.
-3. **Stock for voided sent items:** count nothing (proposed for 2b.1), or record
-   as waste?
-4. **Service charge:** many Riyadh restaurants add one; use the document surcharge
-   on the check (proposed), or a separate service-charge setting per branch?
-5. **Is dine-in a priority now?** No production customer uses tables yet. If the
-   next customers are quick-service or delivery, other gaps may matter more.
+3. **Stock for voided sent items:** decided 2026-11-24: recorded as waste (see
+   "Stock, COGS, ledger, ZATCA").
+4. **Service charge:** decided 2026-11-24: a separate setting per branch (see
+   "Service charge").
+5. **Is dine-in a priority now?** decided 2026-11-24: yes, even though no
+   production customer uses tables yet.
