@@ -174,9 +174,12 @@ the separate `pos_table_orders` flow and its "paid without a sale" gap.
 
 ## Decisions for the owner
 
-1. **Who can pay a check:** waiters too (today waiters can ring up sales), or
-   cashiers/managers only?
-2. **Voiding a sent item:** manager only (proposed), or cashier with a reason?
+1. **Who can pay a check:** decided 2026-11-24: waiters can pay, like any sale
+   today (owner, manager, cashier, waiter). A per-restaurant "cashiers only" setting
+   can come later if an owner asks.
+2. **Voiding a sent item:** undecided. Proposed: a manager/owner, or a cashier or
+   waiter with the admin PIN (AdminPinDialog, as other protected POS actions) and a
+   reason; every void listed in the open-checks report.
 3. **Stock for voided sent items:** count nothing (proposed for 2b.1), or record
    as waste?
 4. **Service charge:** many Riyadh restaurants add one; use the document surcharge
