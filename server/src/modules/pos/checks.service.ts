@@ -16,7 +16,7 @@ import { badRequest, HttpError } from "../../lib/errors.js";
 const conflict = (msg: string, code: string) => new HttpError(409, msg, code);
 import type { DbClaims } from "../../db.js";
 import { inServiceTx, type ServiceTx } from "../shared/db.js";
-import { requireRestaurantRole } from "../shared/access.js";
+import { requireRestaurantRole, type RestaurantAccess } from "../shared/access.js";
 import { salesRepository } from "./sales.repository.js";
 import { checksRepository, type CheckRow, type LineRow } from "./checks.repository.js";
 import { checkSaleInput, priceSale, recordSale } from "./sales.service.js";
@@ -34,11 +34,29 @@ const PAY_ENTITY = "api.pos.check_pay";
 type Claims = DbClaims & { sub: string };
 type Repo = ReturnType<typeof checksRepository>;
 
-async function withAccess<T>(claims: Claims, restaurantId: string, fn: (t: ServiceTx, repo: Repo) => Promise<T>) {
+async function withAccess<T>(claims: Claims, restaurantId: string, fn: (t: ServiceTx, repo: Repo, access: RestaurantAccess) => Promise<T>) {
   return inServiceTx(claims, async (t) => {
-    await requireRestaurantRole(t.tx, claims.sub, restaurantId, [...CHECK_ROLES]);
-    return fn(t, checksRepository(t));
+    const access = await requireRestaurantRole(t.tx, claims.sub, restaurantId, [...CHECK_ROLES]);
+    return fn(t, checksRepository(t), access);
   });
+}
+
+/**
+ * Manager-level actions (voiding items already sent to the kitchen, waiving the service
+ * charge): an owner/manager by role, or anyone else with the restaurant's admin PIN.
+ */
+async function managerApproval(repo: Repo, access: RestaurantAccess, restaurantId: string, userId: string, adminPin?: string | null) {
+  if (access.superadmin || access.roles.some((r) => r === "owner" || r === "manager")) return { approval: "role" as const, approvedBy: userId };
+  if (adminPin && /^\d{4,12}$/.test(adminPin) && (await repo.adminPinMatches(restaurantId, adminPin))) {
+    return { approval: "admin_pin" as const, approvedBy: null };
+  }
+  throw new HttpError(403, adminPin ? "Incorrect admin PIN" : "A manager or the admin PIN is needed", adminPin ? "admin_pin_invalid" : "manager_required");
+}
+
+function requireReason(reason?: string | null) {
+  const r = reason?.trim();
+  if (!r || r.length < 3) throw badRequest("Give a reason (at least 3 characters)", "reason_required");
+  return r;
 }
 
 /** The open check, locked, at the version the terminal expects. */
@@ -110,8 +128,9 @@ async function detail(t: ServiceTx, repo: Repo, restaurantId: string, checkId: s
     ...summaryOf(c, {
       itemCount: active.reduce((s, l) => s + l.quantity, 0),
       unsentCount: active.filter((l) => !l.round_id).reduce((s, l) => s + l.quantity, 0),
-      ...totalsOf(linesTotal, await vatOf(t, restaurantId, c.branch_id)),
+      ...withService(linesTotal, await repo.serviceChargePercent(restaurantId, c.branch_id), c.service_charge_waived, await vatOf(t, restaurantId, c.branch_id)),
     }),
+    serviceChargeWaiveReason: c.service_charge_waived ? (c as CheckRow & { service_charge_waive_reason?: string | null }).service_charge_waive_reason ?? null : null,
     customerId: c.customer_id,
     notes: c.notes,
     lines: lines.map(lineOf),
@@ -119,7 +138,16 @@ async function detail(t: ServiceTx, repo: Repo, restaurantId: string, checkId: s
   };
 }
 
-function summaryOf(c: CheckRow, x: { itemCount: number; unsentCount: number; subtotal: number; tax: number; total: number }): CheckSummary {
+/**
+ * Totals with the branch service charge: a percent of the lines (listed amounts, before VAT is
+ * split), unless waived on this check. Paying charges it as the sale's document surcharge.
+ */
+function withService(linesTotal: number, percent: number, waived: boolean, vat: { rate: number; inclusive: boolean }) {
+  const serviceCharge = waived || !(percent > 0) ? 0 : roundMoney((linesTotal * percent) / 100);
+  return { ...totalsOf(linesTotal + serviceCharge, vat), linesTotal: roundMoney(linesTotal), serviceChargePercent: percent, serviceCharge, serviceChargeWaived: waived };
+}
+
+function summaryOf(c: CheckRow, x: Omit<CheckSummary, "id" | "checkNumber" | "name" | "status" | "branchId" | "tableId" | "tableLabel" | "guestCount" | "serverId" | "openedAt" | "version">): CheckSummary {
   return {
     id: c.id, checkNumber: c.check_number, name: c.name, status: c.status, branchId: c.branch_id, tableId: c.table_id,
     tableLabel: c.table_label, guestCount: c.guest_count, serverId: c.server_id, openedAt: String(c.opened_at), version: c.version, ...x,
@@ -145,17 +173,23 @@ async function send(repo: Repo, restaurantId: string, check: CheckRow, userId: s
 // ---- reads ---------------------------------------------------------------------------
 
 export async function listOpenChecks(q: { restaurantId: string; branchId?: string | null }, claims: Claims): Promise<CheckSummary[]> {
-  return withAccess(claims, q.restaurantId, async (t, repo) => {
+  return withAccess(claims, q.restaurantId, (t, repo) => listOpenChecksIn(t, repo, q.restaurantId, q.branchId ?? null));
+}
+
+async function listOpenChecksIn(t: ServiceTx, repo: Repo, restaurantId: string, branchId: string | null): Promise<CheckSummary[]> {
+  const q = { restaurantId, branchId };
+  {
     const rows = await repo.openChecks(q.restaurantId, q.branchId ?? null);
-    const vats = new Map<string, { rate: number; inclusive: boolean }>();
+    const vats = new Map<string, { rate: number; inclusive: boolean; pct: number }>();
     const out: CheckSummary[] = [];
     for (const r of rows) {
       const key = r.branch_id ?? "";
-      if (!vats.has(key)) vats.set(key, await vatOf(t, q.restaurantId, r.branch_id));
-      out.push(summaryOf(r, { itemCount: r.item_count, unsentCount: r.unsent_count, ...totalsOf(r.lines_total, vats.get(key)!) }));
+      if (!vats.has(key)) vats.set(key, { ...(await vatOf(t, q.restaurantId, r.branch_id)), pct: await repo.serviceChargePercent(q.restaurantId, r.branch_id) });
+      const v = vats.get(key)!;
+      out.push(summaryOf(r, { itemCount: r.item_count, unsentCount: r.unsent_count, ...withService(r.lines_total, v.pct, r.service_charge_waived, v) }));
     }
     return out;
-  });
+  }
 }
 
 export async function getCheck(id: string, restaurantId: string, claims: Claims) {
@@ -232,16 +266,44 @@ export async function editLine(id: string, lineId: string, input: EditLineInput,
   });
 }
 
-/** Removes a line that was not sent yet. Voiding sent items (with waste) is phase 2b.2. */
+/**
+ * Removes a line, or `quantity` units of it. Not sent yet: anyone. Already sent to the
+ * kitchen: a manager (or the admin PIN) with a reason; its kitchen item is cancelled and the
+ * units are recorded as waste of their recipe ingredients (stock lowered, expense posted).
+ */
 export async function voidLine(id: string, lineId: string, input: VoidInput, claims: Claims): Promise<CheckDetail> {
-  return withAccess(claims, input.restaurantId, async (t, repo) => {
-    await lockOpen(repo, input.restaurantId, id, input.expectedVersion);
-    const line = await repo.line(input.restaurantId, id, lineId);
+  return withAccess(claims, input.restaurantId, async (t, repo, access) => {
+    const check = await lockOpen(repo, input.restaurantId, id, input.expectedVersion);
+    const line = await repo.lineFull(input.restaurantId, id, lineId);
     if (!line || line.status !== "active") throw new HttpError(404, "Line not found", "line_not_found");
-    if (line.round_id) throw conflict("This item was already sent to the kitchen; a manager has to void it", "line_sent");
-    await repo.voidLine(input.restaurantId, lineId, claims.sub, input.reason?.trim() || null);
+    const quantity = Math.min(input.quantity ?? line.quantity, line.quantity);
+    if (!line.round_id) {
+      await repo.voidUnits(input.restaurantId, line, quantity, { userId: claims.sub, reason: input.reason?.trim() || null, approval: "unsent", approvedBy: null });
+    } else {
+      const reason = requireReason(input.reason);
+      const ok = await managerApproval(repo, access, input.restaurantId, claims.sub, input.adminPin);
+      await voidSentUnits(repo, input.restaurantId, check, line, quantity, claims.sub, reason, ok);
+    }
     await repo.bump(input.restaurantId, id);
     return detail(t, repo, input.restaurantId, id);
+  });
+}
+
+async function voidSentUnits(
+  repo: Repo,
+  restaurantId: string,
+  check: CheckRow,
+  line: { id: string; menu_item_id: string | null; combo_id: string | null; quantity: number },
+  quantity: number,
+  userId: string,
+  reason: string,
+  ok: { approval: string; approvedBy: string | null },
+) {
+  const voidedId = await repo.voidUnits(restaurantId, line, quantity, { userId, reason, ...ok });
+  await repo.cancelKitchenUnits(restaurantId, line.id, quantity, line.quantity);
+  await repo.recordWaste(restaurantId, {
+    lineId: voidedId, menuItemId: line.menu_item_id, comboId: line.combo_id, quantity, userId,
+    notes: `Voided from ${check.check_number}: ${reason}`,
   });
 }
 
@@ -256,14 +318,23 @@ export async function sendCheck(id: string, input: { restaurantId: string; expec
   });
 }
 
-/** Voids a check nothing of which reached the kitchen; the table is free again. */
+/**
+ * Voids a whole check; the table is free again. If items were sent to the kitchen, a manager
+ * (or the admin PIN) and a reason are needed, and every sent item is voided as waste.
+ */
 export async function voidCheck(id: string, input: VoidInput, claims: Claims): Promise<CheckDetail> {
-  return withAccess(claims, input.restaurantId, async (t, repo) => {
+  return withAccess(claims, input.restaurantId, async (t, repo, access) => {
     const check = await lockOpen(repo, input.restaurantId, id, input.expectedVersion);
+    let reason = input.reason?.trim() || null;
     if (await repo.hasSentRounds(input.restaurantId, id)) {
-      throw conflict("Items of this check were sent to the kitchen; a manager has to void them", "check_sent");
+      reason = requireReason(input.reason);
+      const ok = await managerApproval(repo, access, input.restaurantId, claims.sub, input.adminPin);
+      for (const l of (await repo.lines(input.restaurantId, id)).filter((x) => x.status === "active" && x.round_id)) {
+        const line = (await repo.lineFull(input.restaurantId, id, l.id))!;
+        await voidSentUnits(repo, input.restaurantId, check, line, line.quantity, claims.sub, reason, ok);
+      }
     }
-    await repo.close(input.restaurantId, id, "void", claims.sub, input.reason?.trim() || null);
+    await repo.close(input.restaurantId, id, "void", claims.sub, reason);
     if (check.table_id) await repo.setTableStatus(input.restaurantId, check.table_id, "free");
     await repo.bump(input.restaurantId, id);
     return detail(t, repo, input.restaurantId, id);
@@ -301,6 +372,10 @@ export async function payCheck(
     const active = (await repo.lines(input.restaurantId, id)).filter((l) => l.status === "active");
     if (!active.length) throw badRequest("The check has no items to pay", "check_empty");
 
+    // The branch service charge is the sale's document surcharge (computed here, never sent by
+    // the terminal), so it is in the VAT base and on the ZATCA invoice.
+    const linesTotal = sumMoney(active.map((l) => lineGross(Number(l.unit_price), l.quantity)));
+    const service = withService(linesTotal, await repo.serviceChargePercent(input.restaurantId, check.branch_id), check.service_charge_waived, { rate: 0, inclusive: true });
     const base = {
       restaurantId: input.restaurantId,
       branchId: check.branch_id,
@@ -308,19 +383,18 @@ export async function payCheck(
       customerId: input.customerId ?? check.customer_id ?? null,
       tableId: check.table_id,
       lines: saleLines(active),
-      documentDiscount: input.documentDiscount,
-      documentSurcharge: input.documentSurcharge,
+      documentSurcharge: service.serviceCharge,
     };
 
     let saleResults: CreateSaleResult[];
     let billGroupId: string | null = null;
     if (input.parts?.length) {
-      const res = await recordBillSplit(t, { ...base, parts: input.parts }, userId, undefined, { checkId: id });
+      const res = await recordBillSplit(t, { ...base, parts: input.parts }, userId, undefined, { checkId: id, serviceChargeFromSurcharge: true });
       saleResults = res.sales;
       billGroupId = res.billGroupId;
     } else {
       const saleInput: CreateSaleInput = { ...base, payments: input.payments ?? null };
-      const ctx = { ...checkSaleInput(saleInput, userId), checkId: id, priceLocked: true };
+      const ctx = { ...checkSaleInput(saleInput, userId), checkId: id, priceLocked: true, serviceChargeFromSurcharge: true };
       saleResults = [await recordSale(t, sales, saleInput, ctx)];
     }
 
@@ -333,6 +407,99 @@ export async function payCheck(
     const result: PayCheckResult = { check: await detail(t, repo, input.restaurantId, id), sales: saleResults, billGroupId };
     if (idemId) await sales.completeIdempotencyKey(idemId, result, input.shiftId ?? null);
     return result;
+  });
+}
+
+/** Moves a check to another free table of its branch; the old table needs clearing. */
+export async function moveCheck(id: string, input: { restaurantId: string; expectedVersion?: number; tableId: string }, claims: Claims): Promise<CheckDetail> {
+  return withAccess(claims, input.restaurantId, async (t, repo) => {
+    const check = await lockOpen(repo, input.restaurantId, id, input.expectedVersion);
+    if (check.table_id === input.tableId) throw badRequest("The check is already on this table", "same_table");
+    const table = await repo.table(input.restaurantId, input.tableId);
+    if (!table) throw badRequest("Table not found for this restaurant", "table_not_found");
+    if (check.branch_id && table.branch_id && table.branch_id !== check.branch_id) throw badRequest("The table belongs to another branch", "table_branch_mismatch");
+    try {
+      await repo.moveTo(input.restaurantId, id, input.tableId);
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") throw conflict("That table already has an open check", "table_has_open_check");
+      throw e;
+    }
+    const sent = await repo.hasSentRounds(input.restaurantId, id);
+    await repo.setTableStatus(input.restaurantId, input.tableId, sent ? "ordered" : "seated", { guestCount: check.guest_count, serverId: check.server_id });
+    if (check.table_id) await repo.setTableStatus(input.restaurantId, check.table_id, "dirty");
+    await repo.bump(input.restaurantId, id);
+    return detail(t, repo, input.restaurantId, id);
+  });
+}
+
+/** Merges another open check of the branch into this one (tables pushed together). */
+export async function mergeChecks(id: string, input: { restaurantId: string; expectedVersion?: number; fromCheckId: string }, claims: Claims): Promise<CheckDetail> {
+  if (id === input.fromCheckId) throw badRequest("A check can't be merged into itself", "same_check");
+  return withAccess(claims, input.restaurantId, async (t, repo) => {
+    // Lock both in a fixed order so two terminals merging the same pair can't deadlock.
+    const [firstId, secondId] = [id, input.fromCheckId].sort();
+    const first = await lockOpen(repo, input.restaurantId, firstId, firstId === id ? input.expectedVersion : undefined);
+    const second = await lockOpen(repo, input.restaurantId, secondId, secondId === id ? input.expectedVersion : undefined);
+    const [into, from] = firstId === id ? [first, second] : [second, first];
+    if ((into.branch_id ?? null) !== (from.branch_id ?? null)) throw badRequest("Checks of different branches can't be merged", "branch_mismatch");
+    await repo.mergeInto(input.restaurantId, into.id, from.id, claims.sub);
+    if (from.table_id) await repo.setTableStatus(input.restaurantId, from.table_id, "dirty");
+    await repo.bump(input.restaurantId, from.id);
+    await repo.bump(input.restaurantId, into.id);
+    return detail(t, repo, input.restaurantId, into.id);
+  });
+}
+
+/** The guest bill before payment (not a tax invoice); the table shows "billing". */
+export async function prebill(id: string, input: { restaurantId: string; expectedVersion?: number }, claims: Claims): Promise<CheckDetail> {
+  return withAccess(claims, input.restaurantId, async (t, repo) => {
+    const check = await lockOpen(repo, input.restaurantId, id, input.expectedVersion);
+    if (check.table_id) await repo.setTableStatus(input.restaurantId, check.table_id, "billing");
+    await repo.bump(input.restaurantId, id);
+    return detail(t, repo, input.restaurantId, id);
+  });
+}
+
+/** Waives (manager or admin PIN, with a reason) or restores the service charge on a check. */
+export async function setServiceCharge(
+  id: string,
+  input: { restaurantId: string; expectedVersion?: number; waived: boolean; reason?: string | null; adminPin?: string | null },
+  claims: Claims,
+): Promise<CheckDetail> {
+  return withAccess(claims, input.restaurantId, async (t, repo, access) => {
+    await lockOpen(repo, input.restaurantId, id, input.expectedVersion);
+    let reason: string | null = null;
+    if (input.waived) {
+      reason = requireReason(input.reason);
+      await managerApproval(repo, access, input.restaurantId, claims.sub, input.adminPin);
+    }
+    await repo.setServiceChargeWaived(input.restaurantId, id, input.waived, claims.sub, reason);
+    await repo.bump(input.restaurantId, id);
+    return detail(t, repo, input.restaurantId, id);
+  });
+}
+
+/** Open-checks report for a business day: open checks now, paid checks, service charge, voids and waste. */
+export async function checksReport(q: { restaurantId: string; branchId?: string | null; day?: string | null }, claims: Claims) {
+  return withAccess(claims, q.restaurantId, async (t, repo, access) => {
+    if (!access.superadmin && !access.roles.some((r) => r === "owner" || r === "manager")) {
+      throw new HttpError(403, "Only owners and managers see this report", "role_forbidden");
+    }
+    const day = q.day ?? (await repo.businessDay(q.restaurantId));
+    const open = await listOpenChecksIn(t, repo, q.restaurantId, q.branchId ?? null);
+    const voids = await repo.voidsOfDay(q.restaurantId, q.branchId ?? null, day);
+    const totals = await repo.dayTotals(q.restaurantId, q.branchId ?? null, day);
+    return {
+      day,
+      open: { count: open.length, total: roundMoney(open.reduce((s, c) => s + c.total, 0)), checks: open },
+      paid: { checks: totals.paid_checks, sales: roundMoney(totals.checks_sales), serviceCharge: roundMoney(totals.service_charge) },
+      voids: {
+        count: voids.length,
+        value: roundMoney(voids.reduce((s, v) => s + v.line_total, 0)),
+        wasteCost: roundMoney(voids.reduce((s, v) => s + v.waste_cost, 0)),
+        items: voids.map((v) => ({ checkNumber: v.check_number, name: v.name, quantity: v.quantity, reason: v.reason, approval: v.approval, voidedBy: v.voided_by, voidedAt: v.voided_at, value: v.line_total, wasteCost: roundMoney(v.waste_cost) })),
+      },
+    };
   });
 }
 

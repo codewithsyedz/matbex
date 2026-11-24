@@ -1100,6 +1100,7 @@ export type Database = {
           phone: string | null
           prices_vat_inclusive: boolean
           restaurant_id: string
+          service_charge_percent: number
           timezone: string | null
           updated_at: string
           vat_rate: number
@@ -1119,6 +1120,7 @@ export type Database = {
           phone?: string | null
           prices_vat_inclusive?: boolean
           restaurant_id: string
+          service_charge_percent?: number
           timezone?: string | null
           updated_at?: string
           vat_rate?: number
@@ -1138,6 +1140,7 @@ export type Database = {
           phone?: string | null
           prices_vat_inclusive?: boolean
           restaurant_id?: string
+          service_charge_percent?: number
           timezone?: string | null
           updated_at?: string
           vat_rate?: number
@@ -12257,9 +12260,12 @@ export type Database = {
           status: string
           unit_price: number
           updated_at: string
+          void_approval: string | null
+          void_approved_by: string | null
           void_reason: string | null
           voided_at: string | null
           voided_by: string | null
+          waste_cost: number | null
         }
         Insert: {
           added_by: string
@@ -12276,9 +12282,12 @@ export type Database = {
           status?: string
           unit_price: number
           updated_at?: string
+          void_approval?: string | null
+          void_approved_by?: string | null
           void_reason?: string | null
           voided_at?: string | null
           voided_by?: string | null
+          waste_cost?: number | null
         }
         Update: {
           added_by?: string
@@ -12295,9 +12304,12 @@ export type Database = {
           status?: string
           unit_price?: number
           updated_at?: string
+          void_approval?: string | null
+          void_approved_by?: string | null
           void_reason?: string | null
           voided_at?: string | null
           voided_by?: string | null
+          waste_cost?: number | null
         }
         Relationships: [
             {
@@ -12406,6 +12418,9 @@ export type Database = {
           opened_by: string
           restaurant_id: string
           server_id: string | null
+          service_charge_waive_reason: string | null
+          service_charge_waived: boolean
+          service_charge_waived_by: string | null
           status: string
           table_id: string | null
           updated_at: string
@@ -12428,6 +12443,9 @@ export type Database = {
           opened_by: string
           restaurant_id: string
           server_id?: string | null
+          service_charge_waive_reason?: string | null
+          service_charge_waived?: boolean
+          service_charge_waived_by?: string | null
           status?: string
           table_id?: string | null
           updated_at?: string
@@ -12450,6 +12468,9 @@ export type Database = {
           opened_by?: string
           restaurant_id?: string
           server_id?: string | null
+          service_charge_waive_reason?: string | null
+          service_charge_waived?: boolean
+          service_charge_waived_by?: string | null
           status?: string
           table_id?: string | null
           updated_at?: string
@@ -12894,6 +12915,7 @@ export type Database = {
       }
       pos_kds_ticket_items: {
         Row: {
+          check_line_id: string | null
           created_at: string
           id: string
           menu_item_id: string | null
@@ -12910,6 +12932,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          check_line_id?: string | null
           created_at?: string
           id?: string
           menu_item_id?: string | null
@@ -12926,6 +12949,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          check_line_id?: string | null
           created_at?: string
           id?: string
           menu_item_id?: string | null
@@ -12942,6 +12966,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+            {
+              foreignKeyName: "pos_kds_ticket_items_check_line_id_fkey"
+              columns: ["check_line_id"]
+              isOneToOne: false
+              referencedRelation: "pos_check_lines"
+              referencedColumns: ["id"]
+            },
             {
               foreignKeyName: "pos_kds_ticket_items_restaurant_id_fkey"
               columns: ["restaurant_id"]
@@ -16227,6 +16258,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           receipt_number: string | null
           restaurant_id: string
+          service_charge: number
           settled_at: string | null
           settlement_invoice_id: string | null
           settlement_status: Database["public"]["Enums"]["transaction_settlement_status"]
@@ -16285,6 +16317,7 @@ export type Database = {
           payment_method: Database["public"]["Enums"]["payment_method"]
           receipt_number?: string | null
           restaurant_id: string
+          service_charge?: number
           settled_at?: string | null
           settlement_invoice_id?: string | null
           settlement_status?: Database["public"]["Enums"]["transaction_settlement_status"]
@@ -16343,6 +16376,7 @@ export type Database = {
           payment_method?: Database["public"]["Enums"]["payment_method"]
           receipt_number?: string | null
           restaurant_id?: string
+          service_charge?: number
           settled_at?: string | null
           settlement_invoice_id?: string | null
           settlement_status?: Database["public"]["Enums"]["transaction_settlement_status"]
@@ -20341,6 +20375,7 @@ export type Database = {
       }
       waste_records: {
         Row: {
+          check_line_id: string | null
           created_at: string
           id: string
           inventory_item_id: string
@@ -20356,6 +20391,7 @@ export type Database = {
           waste_reason: string
         }
         Insert: {
+          check_line_id?: string | null
           created_at?: string
           id?: string
           inventory_item_id: string
@@ -20371,6 +20407,7 @@ export type Database = {
           waste_reason: string
         }
         Update: {
+          check_line_id?: string | null
           created_at?: string
           id?: string
           inventory_item_id?: string
@@ -20386,6 +20423,13 @@ export type Database = {
           waste_reason?: string
         }
         Relationships: [
+            {
+              foreignKeyName: "waste_records_check_line_id_fkey"
+              columns: ["check_line_id"]
+              isOneToOne: false
+              referencedRelation: "pos_check_lines"
+              referencedColumns: ["id"]
+            },
             {
               foreignKeyName: "waste_records_inventory_item_id_fkey"
               columns: ["inventory_item_id"]

@@ -176,6 +176,8 @@ export interface SaleContext {
   /** Open checks: the check this sale pays; its lines are charged at their stored prices. */
   checkId?: string | null;
   priceLocked?: boolean;
+  /** Open checks: the document surcharge is the branch service charge (stored for reports). */
+  serviceChargeFromSurcharge?: boolean;
 }
 
 /** Input rules that need no database; throws 400 on the first broken one. */
@@ -302,6 +304,7 @@ export async function recordSale(t: ServiceTx, repo: ReturnType<typeof salesRepo
       documentSurcharge: String(documentSurcharge),
       billGroupId: ctx.billGroupId ?? null,
       checkId: ctx.checkId ?? null,
+      serviceCharge: String(ctx.serviceChargeFromSurcharge ? documentSurcharge : 0),
       ...(saleCard
         ? {
             halaStatus: saleCard.cardTerminal!.status,

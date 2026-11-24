@@ -16,10 +16,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Banknote, ChefHat, CreditCard, Minus, Plus, Receipt, SplitSquareHorizontal, Trash2, Users, Wallet } from "lucide-react";
+import { ArrowLeft, Ban, Banknote, ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Printer, Receipt, SplitSquareHorizontal, Trash2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/integrations/db/client";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -31,7 +32,8 @@ import { cn } from "@/lib/utils";
 import { ApiError } from "@/lib/api/http";
 import type { CardTerminalApproval, RecordSaleResult, SaleTender } from "@/lib/api/pos";
 import {
-  addCheckLines, checkSaleLine, editCheckLine, getCheck, listOpenChecks, openCheck, payCheck, sendCheck, voidCheck, voidCheckLine,
+  addCheckLines, checkSaleLine, checksReport, editCheckLine, getCheck, listOpenChecks, mergeChecks, moveCheck, openCheck, payCheck, prebillCheck,
+  sendCheck, setCheckServiceCharge, voidCheck, voidCheckLine,
   type CheckDetail, type CheckLineInput, type CheckSummary,
 } from "@/lib/api/checks";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
@@ -80,9 +82,27 @@ export interface OpenChecksSheetProps {
   onPaid: (parts: PaidCheckPart[], check: CheckDetail) => void;
   formatCurrency: (n: number) => string;
   restaurantName?: string;
+  /** Prints the guest bill (not a tax invoice) on the screen's receipt printer; else a browser print. */
+  onPrebill?: (check: CheckDetail) => void;
 }
 
-type View = { kind: "list" } | { kind: "new" } | { kind: "check"; id: string } | { kind: "pay"; id: string };
+type View =
+  | { kind: "list" }
+  | { kind: "new" }
+  | { kind: "report" }
+  | { kind: "check"; id: string }
+  | { kind: "pay"; id: string }
+  | { kind: "move"; id: string }
+  | { kind: "merge"; id: string };
+
+/** What a manager-level action asks for: a reason, optionally units, and the admin PIN. */
+type Approval = {
+  title: string;
+  maxQuantity?: number;
+  /** Not needed to restore the service charge, for example. */
+  needsReason: boolean;
+  run: (v: { reason: string; quantity?: number; adminPin?: string }) => Promise<void>;
+};
 
 const offlineNow = () => (typeof navigator !== "undefined" && navigator.onLine === false) || !isPosOnline();
 
@@ -92,6 +112,9 @@ function errorText(e: unknown, t: (k: string) => string) {
     if (e.code === "price_changed") return t("app.pos.checks.errors.priceChanged");
     if (e.code === "table_has_open_check") return t("app.pos.checks.errors.tableBusy");
     if (e.code === "line_sent" || e.code === "check_sent") return t("app.pos.checks.errors.sent");
+    if (e.code === "manager_required") return t("app.pos.checks.errors.managerRequired");
+    if (e.code === "admin_pin_invalid") return t("app.pos.checks.errors.pinInvalid");
+    if (e.code === "reason_required") return t("app.pos.checks.errors.reasonRequired");
   }
   return e instanceof Error ? e.message : String(e);
 }
@@ -106,6 +129,8 @@ export function OpenChecksSheet(props: OpenChecksSheetProps) {
   const [newTable, setNewTable] = useState<string>("");
   const [newName, setNewName] = useState("");
   const [newGuests, setNewGuests] = useState("");
+  const [approval, setApproval] = useState<Approval | null>(null);
+  const [moveTo, setMoveTo] = useState("");
   const adding = props.cart.length > 0;
   const offline = offlineNow();
 
@@ -116,7 +141,7 @@ export function OpenChecksSheet(props: OpenChecksSheetProps) {
     enabled: open && !!restaurantId && !offline,
     refetchInterval: open ? 30_000 : false,
   });
-  const checkId = view.kind === "check" || view.kind === "pay" ? view.id : null;
+  const checkId = "id" in view ? view.id : null;
   const { data: check, refetch: refetchCheck } = useQuery({
     queryKey: ["pos-check", restaurantId, checkId],
     queryFn: () => getCheck(checkId!, restaurantId),
@@ -136,7 +161,7 @@ export function OpenChecksSheet(props: OpenChecksSheetProps) {
 
   const { data: tables = [] } = useQuery({
     queryKey: ["pos-tables-for-checks", restaurantId, branchId],
-    enabled: open && view.kind === "new",
+    enabled: open && (view.kind === "new" || view.kind === "move"),
     queryFn: async () => {
       let q = db.from("pos_tables").select("id, label, status, branch_id").eq("restaurant_id", restaurantId).is("deleted_at", null).order("label");
       if (branchId) q = q.eq("branch_id", branchId);
@@ -220,11 +245,16 @@ export function OpenChecksSheet(props: OpenChecksSheetProps) {
     <SheetHeader>
       <SheetTitle className="flex items-center gap-2">
         {view.kind !== "list" && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("app.pos.checks.back")} onClick={() => setView(view.kind === "pay" ? { kind: "check", id: view.id } : { kind: "list" })}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" aria-label={t("app.pos.checks.back")} onClick={() => setView(view.kind === "pay" || view.kind === "move" || view.kind === "merge" ? { kind: "check", id: view.id } : { kind: "list" })}>
             <ArrowLeft className="h-4 w-4 rtl:rotate-180" />
           </Button>
         )}
-        {view.kind === "list" ? t("app.pos.checks.title") : view.kind === "new" ? t("app.pos.checks.newCheck") : check ? label(check) : t("app.pos.checks.title")}
+        {view.kind === "list" ? t("app.pos.checks.title") : view.kind === "new" ? t("app.pos.checks.newCheck") : view.kind === "report" ? t("app.pos.checks.report.title") : check ? label(check) : t("app.pos.checks.title")}
+        {view.kind === "list" && !adding && (
+          <Button variant="ghost" size="sm" className="ms-auto me-6 h-7 text-xs" onClick={() => setView({ kind: "report" })}>
+            {t("app.pos.checks.report.open")}
+          </Button>
+        )}
       </SheetTitle>
       <SheetDescription>
         {adding && view.kind !== "pay" ? t("app.pos.checks.addingCart", { count: props.cart.reduce((s, x) => s + x.line.quantity, 0) }) : offline ? t("app.pos.checks.offline") : t("app.pos.checks.help")}
@@ -324,39 +354,146 @@ export function OpenChecksSheet(props: OpenChecksSheetProps) {
             onSend={() => run(async () => { const c = await sendCheck(check.id, { restaurantId, expectedVersion: check.version }); refresh(c); toast.success(t("app.pos.checks.sent")); })}
             onQty={(lineId, quantity) => run(async () => refresh(await editCheckLine(check.id, lineId, { restaurantId, expectedVersion: check.version, quantity })))}
             onRemove={(lineId) => run(async () => refresh(await voidCheckLine(check.id, lineId, { restaurantId, expectedVersion: check.version })))}
-            onVoid={() => run(async () => { await voidCheck(check.id, { restaurantId, expectedVersion: check.version }); refresh(); setView({ kind: "list" }); })}
+            onVoidSent={(l) => setApproval({
+              title: t("app.pos.checks.voidSentTitle", { item: l.name }),
+              maxQuantity: l.quantity,
+              needsReason: true,
+              run: async (v) => refresh(await voidCheckLine(check.id, l.id, { restaurantId, expectedVersion: check.version, reason: v.reason, quantity: v.quantity, adminPin: v.adminPin || null })),
+            })}
+            onVoid={() =>
+              check.rounds.length
+                ? setApproval({
+                    title: t("app.pos.checks.voidCheckTitle"),
+                    needsReason: true,
+                    run: async (v) => { await voidCheck(check.id, { restaurantId, expectedVersion: check.version, reason: v.reason, adminPin: v.adminPin || null }); refresh(); setView({ kind: "list" }); },
+                  })
+                : run(async () => { await voidCheck(check.id, { restaurantId, expectedVersion: check.version }); refresh(); setView({ kind: "list" }); })
+            }
+            onServiceCharge={() =>
+              check.serviceChargeWaived
+                ? run(async () => refresh(await setCheckServiceCharge(check.id, { restaurantId, expectedVersion: check.version, waived: false })))
+                : setApproval({
+                    title: t("app.pos.checks.waiveTitle"),
+                    needsReason: true,
+                    run: async (v) => refresh(await setCheckServiceCharge(check.id, { restaurantId, expectedVersion: check.version, waived: true, reason: v.reason, adminPin: v.adminPin || null })),
+                  })
+            }
+            onPrebill={() => run(async () => {
+              const c = await prebillCheck(check.id, { restaurantId, expectedVersion: check.version });
+              refresh(c);
+              if (props.onPrebill) props.onPrebill(c);
+              else void printPrebill(c, fmt, props.restaurantName, t);
+            })}
+            onMove={() => { setMoveTo(""); setView({ kind: "move", id: check.id }); }}
+            onMerge={() => setView({ kind: "merge", id: check.id })}
             onPay={() => setView({ kind: "pay", id: check.id })}
           />
         )}
 
+        {view.kind === "move" && check && (
+          <div className="space-y-3">
+            <Label>{t("app.pos.checks.moveTo")}</Label>
+            <Select value={moveTo} onValueChange={setMoveTo}>
+              <SelectTrigger><SelectValue placeholder={t("app.pos.checks.pickTable")} /></SelectTrigger>
+              <SelectContent>
+                {tables.filter((tb) => tb.id !== check.tableId).map((tb) => (
+                  <SelectItem key={tb.id} value={tb.id} disabled={busyTables.has(tb.id)}>
+                    {t("app.pos.checks.table", { label: tb.label })}{busyTables.has(tb.id) ? ` · ${t("app.pos.checks.busy")}` : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button className="w-full" disabled={busy || offline || !moveTo} onClick={() => void run(async () => {
+              const c = await moveCheck(check.id, { restaurantId, expectedVersion: check.version, tableId: moveTo });
+              refresh(c);
+              toast.success(t("app.pos.checks.moved", { check: label(c) }));
+              setView({ kind: "check", id: c.id });
+            })}>
+              {t("app.pos.checks.move")}
+            </Button>
+          </div>
+        )}
+
+        {view.kind === "merge" && check && (
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">{t("app.pos.checks.mergeHelp", { check: label(check) })}</p>
+            <ul className="space-y-2">
+              {checks.filter((c) => c.id !== check.id && (c.branchId ?? null) === (check.branchId ?? null)).map((c) => (
+                <li key={c.id}>
+                  <button
+                    type="button"
+                    disabled={busy || offline}
+                    className="w-full rounded-lg border p-3 text-start hover:bg-muted disabled:opacity-50"
+                    onClick={() => void run(async () => {
+                      const merged = await mergeChecks(check.id, { restaurantId, expectedVersion: check.version, fromCheckId: c.id });
+                      refresh(merged);
+                      toast.success(t("app.pos.checks.merged", { from: label(c), into: label(merged) }));
+                      setView({ kind: "check", id: merged.id });
+                    })}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">{label(c)}</span>
+                      <span className="tabular-nums">{fmt(c.total)}</span>
+                    </div>
+                    <div className="text-xs text-muted-foreground">{c.checkNumber} · {t("app.pos.checks.items", { count: c.itemCount })}</div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {view.kind === "report" && <ReportView restaurantId={restaurantId} branchId={branchId} fmt={fmt} open={open} />}
+
         {view.kind === "pay" && check && (
           <PayView {...props} check={check} offline={offline} onDone={(parts) => { refresh(); props.onPaid(parts, check); onOpenChange(false); }} onChanged={() => void refetchCheck()} />
         )}
+        <ApprovalDialog approval={approval} onClose={() => setApproval(null)} onError={(e) => { toast.error(errorText(e, t)); if (e instanceof ApiError && e.code === "check_changed") void refetchCheck(); }} />
       </SheetContent>
     </Sheet>
   );
 }
 
-function CheckView({ check, busy, fmt, onSend, onQty, onRemove, onVoid, onPay }: {
+function CheckView({ check, busy, fmt, onSend, onQty, onRemove, onVoidSent, onVoid, onServiceCharge, onPrebill, onMove, onMerge, onPay }: {
   check: CheckDetail;
   busy: boolean;
   fmt: (n: number) => string;
   onSend: () => void;
   onQty: (lineId: string, quantity: number) => void;
   onRemove: (lineId: string) => void;
+  onVoidSent: (line: CheckDetail["lines"][number]) => void;
   onVoid: () => void;
+  onServiceCharge: () => void;
+  onPrebill: () => void;
+  onMove: () => void;
+  onMerge: () => void;
   onPay: () => void;
 }) {
   const { t } = useTranslation();
   const active = check.lines.filter((l) => l.status === "active");
+  const voided = check.lines.filter((l) => l.status === "voided" && l.roundNumber != null);
   const unsent = active.filter((l) => l.roundNumber == null);
-  const rounds = [...new Set(active.flatMap((l) => (l.roundNumber != null ? [l.roundNumber] : [])))].sort((a, b) => a - b);
+  const rounds = [...new Set(check.lines.flatMap((l) => (l.roundNumber != null ? [l.roundNumber] : [])))].sort((a, b) => a - b);
   return (
     <>
       <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         <span className="font-mono">{check.checkNumber}</span>
         {check.guestCount ? <span>· <Users className="inline h-3 w-3" /> {check.guestCount}</span> : null}
         <span>· {formatDistanceToNow(new Date(check.openedAt), { addSuffix: true })}</span>
+      </div>
+      <div className="grid grid-cols-3 gap-1.5">
+        <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" disabled={busy || active.length === 0} onClick={onPrebill}>
+          <Printer className="h-3.5 w-3.5" />
+          {t("app.pos.checks.prebill")}
+        </Button>
+        <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" disabled={busy} onClick={onMove}>
+          <MoveRight className="h-3.5 w-3.5 rtl:rotate-180" />
+          {t("app.pos.checks.move")}
+        </Button>
+        <Button variant="outline" size="sm" className="h-8 gap-1 text-xs" disabled={busy} onClick={onMerge}>
+          <Merge className="h-3.5 w-3.5" />
+          {t("app.pos.checks.merge")}
+        </Button>
       </div>
       <ScrollArea className="min-h-0 flex-1">
         <div className="space-y-3 pe-2">
@@ -381,20 +518,38 @@ function CheckView({ check, busy, fmt, onSend, onQty, onRemove, onVoid, onPay }:
             <section key={n}>
               <p className="mb-1 text-xs font-semibold uppercase text-muted-foreground">{t("app.pos.checks.round", { n })}</p>
               <ul className="divide-y rounded-md border">
-                {active.filter((l) => l.roundNumber === n).map((l) => (
-                  <li key={l.id} className="flex items-center gap-2 p-2 text-sm">
+                {check.lines.filter((l) => l.roundNumber === n).map((l) => (
+                  <li key={l.id} className={cn("flex items-center gap-2 p-2 text-sm", l.status === "voided" && "text-muted-foreground line-through")}>
                     <span className="w-6 text-center tabular-nums">{l.quantity}×</span>
                     <span className="min-w-0 flex-1 truncate">{l.name}{l.note ? <span className="text-muted-foreground"> · {l.note}</span> : null}</span>
                     <span className="tabular-nums">{fmt(l.lineTotal)}</span>
+                    {l.status === "active" ? (
+                      <Button variant="ghost" size="icon" className="h-7 w-7 text-destructive" aria-label={t("app.pos.checks.voidItem", { item: l.name })} disabled={busy} onClick={() => onVoidSent(l)}>
+                        <Ban className="h-3.5 w-3.5" />
+                      </Button>
+                    ) : (
+                      <Badge variant="outline" className="px-1 py-0 text-[10px] no-underline">{t("app.pos.checks.voided")}</Badge>
+                    )}
                   </li>
                 ))}
               </ul>
             </section>
           ))}
-          {active.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">{t("app.pos.checks.empty")}</p>}
+          {active.length === 0 && voided.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">{t("app.pos.checks.empty")}</p>}
         </div>
       </ScrollArea>
       <div className="space-y-1 border-t pt-2 text-sm">
+        {(check.serviceChargePercent > 0) && (
+          <div className="flex items-center justify-between gap-2 text-muted-foreground">
+            <span className={cn(check.serviceChargeWaived && "line-through")}>{t("app.pos.checks.serviceCharge", { percent: check.serviceChargePercent })}</span>
+            <span className="flex items-center gap-2">
+              <Button variant="link" size="sm" className="h-auto p-0 text-xs" disabled={busy} onClick={onServiceCharge}>
+                {check.serviceChargeWaived ? t("app.pos.checks.restoreService") : t("app.pos.checks.waiveService")}
+              </Button>
+              <span className="tabular-nums">{fmt(check.serviceCharge)}</span>
+            </span>
+          </div>
+        )}
         <div className="flex justify-between text-muted-foreground"><span>{t("app.pos.checks.vat")}</span><span className="tabular-nums">{fmt(check.tax)}</span></div>
         <div className="flex justify-between text-base font-semibold"><span>{t("app.pos.checks.total")}</span><span className="tabular-nums">{fmt(check.total)}</span></div>
       </div>
@@ -408,13 +563,145 @@ function CheckView({ check, busy, fmt, onSend, onQty, onRemove, onVoid, onPay }:
           {t("app.pos.checks.pay", { total: fmt(check.total) })}
         </Button>
       </div>
-      {check.rounds.length === 0 && (
-        <Button variant="ghost" size="sm" className="text-destructive" disabled={busy} onClick={onVoid}>
-          {t("app.pos.checks.voidCheck")}
-        </Button>
-      )}
+      <Button variant="ghost" size="sm" className="text-destructive" disabled={busy} onClick={onVoid}>
+        {t("app.pos.checks.voidCheck")}
+      </Button>
     </>
   );
+}
+
+/** Reason, units and admin PIN for a manager-level action; managers may leave the PIN empty. */
+function ApprovalDialog({ approval, onClose, onError }: { approval: Approval | null; onClose: () => void; onError: (e: unknown) => void }) {
+  const { t } = useTranslation();
+  const [reason, setReason] = useState("");
+  const [quantity, setQuantity] = useState("1");
+  const [pin, setPin] = useState("");
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    setReason("");
+    setPin("");
+    setQuantity(String(approval?.maxQuantity ?? 1));
+  }, [approval]);
+  const q = Math.min(Math.max(1, parseInt(quantity, 10) || 1), approval?.maxQuantity ?? 1);
+  const submit = async () => {
+    if (!approval) return;
+    setBusy(true);
+    try {
+      await approval.run({ reason: reason.trim(), quantity: approval.maxQuantity ? q : undefined, adminPin: pin.trim() || undefined });
+      onClose();
+    } catch (e) {
+      onError(e);
+    } finally {
+      setBusy(false);
+    }
+  };
+  return (
+    <Dialog open={!!approval} onOpenChange={(o) => !o && !busy && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle>{approval?.title}</DialogTitle>
+          <DialogDescription>{t("app.pos.checks.approvalHelp")}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          {approval?.maxQuantity && approval.maxQuantity > 1 ? (
+            <div className="space-y-1">
+              <Label htmlFor="void-qty">{t("app.pos.checks.howMany", { max: approval.maxQuantity })}</Label>
+              <Input id="void-qty" type="number" inputMode="numeric" min={1} max={approval.maxQuantity} value={quantity} onChange={(e) => setQuantity(e.target.value)} />
+            </div>
+          ) : null}
+          <div className="space-y-1">
+            <Label htmlFor="void-reason">{t("app.pos.checks.reason")}</Label>
+            <Input id="void-reason" value={reason} maxLength={500} placeholder={t("app.pos.checks.reasonPlaceholder")} onChange={(e) => setReason(e.target.value)} />
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor="void-pin">{t("app.pos.checks.adminPin")}</Label>
+            <Input id="void-pin" type="password" inputMode="numeric" autoComplete="off" maxLength={12} value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, ""))} />
+            <p className="text-xs text-muted-foreground">{t("app.pos.checks.adminPinHelp")}</p>
+          </div>
+          <Button className="w-full" variant="destructive" disabled={busy || (approval?.needsReason && reason.trim().length < 3)} onClick={() => void submit()}>
+            {t("app.pos.checks.confirm")}
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/** Owners/managers: open checks, paid checks, service charge, voided items and waste today. */
+function ReportView({ restaurantId, branchId, fmt, open }: { restaurantId: string; branchId: string | null; fmt: (n: number) => string; open: boolean }) {
+  const { t } = useTranslation();
+  const { data, error, isLoading } = useQuery({
+    queryKey: ["pos-checks-report", restaurantId, branchId],
+    queryFn: () => checksReport(restaurantId, { branchId }),
+    enabled: open,
+    retry: false,
+  });
+  if (isLoading) return <p className="py-6 text-center text-sm text-muted-foreground">…</p>;
+  if (error) return <p className="py-6 text-center text-sm text-destructive">{error instanceof ApiError && error.status === 403 ? t("app.pos.checks.report.managersOnly") : String((error as Error).message)}</p>;
+  if (!data) return null;
+  const tile = (label: string, value: string, sub?: string) => (
+    <div className="rounded-md border p-2">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-lg font-semibold tabular-nums">{value}</p>
+      {sub && <p className="text-xs text-muted-foreground">{sub}</p>}
+    </div>
+  );
+  return (
+    <ScrollArea className="min-h-0 flex-1">
+      <div className="space-y-3 pe-2">
+        <p className="text-xs text-muted-foreground">{t("app.pos.checks.report.day", { day: data.day })}</p>
+        <div className="grid grid-cols-2 gap-2">
+          {tile(t("app.pos.checks.report.openNow"), String(data.open.count), fmt(data.open.total))}
+          {tile(t("app.pos.checks.report.paid"), String(data.paid.checks), fmt(data.paid.sales))}
+          {tile(t("app.pos.checks.report.serviceCharge"), fmt(data.paid.serviceCharge))}
+          {tile(t("app.pos.checks.report.voids"), String(data.voids.count), t("app.pos.checks.report.wasteCost", { cost: fmt(data.voids.wasteCost) }))}
+        </div>
+        {data.voids.items.length > 0 && (
+          <ul className="divide-y rounded-md border text-sm">
+            {data.voids.items.map((v, i) => (
+              <li key={i} className="space-y-0.5 p-2">
+                <div className="flex justify-between gap-2">
+                  <span>{v.quantity}× {v.name}</span>
+                  <span className="tabular-nums">{fmt(v.value)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {v.checkNumber} · {v.reason ?? "—"} · {v.voidedBy ?? "—"} · {v.approval === "admin_pin" ? t("app.pos.checks.report.byPin") : t("app.pos.checks.report.byManager")} · {t("app.pos.checks.report.wasteCost", { cost: fmt(v.wasteCost) })}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </ScrollArea>
+  );
+}
+
+/** Browser print of the guest bill (screens without a receipt printer set up). */
+async function printPrebill(check: CheckDetail, fmt: (n: number) => string, restaurantName: string | undefined, t: (k: string, o?: Record<string, unknown>) => string) {
+  const w = window.open("", "_blank", "width=340,height=640");
+  if (!w) return;
+  const esc = (v: string) => v.replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]!);
+  const rows = check.lines
+    .filter((l) => l.status === "active")
+    .map((l) => `<tr><td>${l.quantity}× ${esc(l.name)}</td><td class="r">${esc(fmt(l.lineTotal))}</td></tr>`)
+    .join("");
+  const service = check.serviceCharge > 0 ? `<tr><td>${esc(t("app.pos.checks.serviceCharge", { percent: check.serviceChargePercent }))}</td><td class="r">${esc(fmt(check.serviceCharge))}</td></tr>` : "";
+  w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>${esc(check.checkNumber)}</title><style>
+    body{font-family:system-ui,sans-serif;width:280px;margin:0;padding:8px;font-size:13px} h1{font-size:15px;text-align:center;margin:4px 0}
+    .c{text-align:center} table{width:100%;border-collapse:collapse} td{padding:2px 0} .r{text-align:right} .t td{font-weight:700;border-top:1px dashed #000;padding-top:4px}
+  </style></head><body>
+    <h1>${esc(restaurantName ?? "")}</h1>
+    <p class="c"><b>${esc(t("app.pos.checks.prebillTitle"))}</b></p>
+    <p class="c">${esc(check.tableLabel ? t("app.pos.checks.table", { label: check.tableLabel }) : check.name ?? "")} · ${esc(check.checkNumber)}</p>
+    <table>${rows}${service}
+      <tr><td>${esc(t("app.pos.checks.vat"))}</td><td class="r">${esc(fmt(check.tax))}</td></tr>
+      <tr class="t"><td>${esc(t("app.pos.checks.total"))}</td><td class="r">${esc(fmt(check.total))}</td></tr>
+    </table>
+    <p class="c">${esc(t("app.pos.checks.notTaxInvoice"))}</p>
+  </body></html>`);
+  w.document.close();
+  w.focus();
+  w.print();
 }
 
 function PayView(props: OpenChecksSheetProps & {
@@ -468,7 +755,8 @@ function PayView(props: OpenChecksSheetProps & {
           change_given: p.tendered != null ? roundMoney(p.tendered - p.amount) : null,
         })),
         documentDiscount: 0,
-        documentSurcharge: 0,
+        // The branch service charge was charged as the sale's surcharge.
+        documentSurcharge: check.serviceCharge,
       }], check);
     } catch (e) {
       toast.error(errorText(e, t));
@@ -525,6 +813,7 @@ function PayView(props: OpenChecksSheetProps & {
           unitPrice: l.unitPrice,
         }))}
         total={check.total}
+        documentSurcharge={check.serviceCharge}
         vatRate={props.vatRate}
         pricesInclusive={props.pricesInclusive}
         order={{ restaurantId, branchId: check.branchId, shiftId: props.shiftId, tableId: check.tableId }}

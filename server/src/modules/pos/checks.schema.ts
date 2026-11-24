@@ -101,11 +101,50 @@ export const editLineBody = {
   },
 } as const;
 
+const adminPin = { type: "string", pattern: "^[0-9]{4,12}$", nullable: true } as const;
+
+/**
+ * Void a line (or `quantity` of its units) or a whole check. Items already sent to the kitchen
+ * need a reason and a manager, or anyone with the admin PIN (`adminPin`).
+ */
 export const voidBody = {
   type: "object",
   additionalProperties: false,
   required: ["restaurantId"],
-  properties: { restaurantId: uuid, expectedVersion, reason: { type: "string", maxLength: 500, nullable: true } },
+  properties: {
+    restaurantId: uuid,
+    expectedVersion,
+    reason: { type: "string", maxLength: 500, nullable: true },
+    quantity: { type: "integer", minimum: 1, maximum: 1000 },
+    adminPin,
+  },
+} as const;
+
+export const moveBody = {
+  type: "object",
+  additionalProperties: false,
+  required: ["restaurantId", "tableId"],
+  properties: { restaurantId: uuid, expectedVersion, tableId: uuid },
+} as const;
+
+export const mergeBody = {
+  type: "object",
+  additionalProperties: false,
+  required: ["restaurantId", "fromCheckId"],
+  properties: { restaurantId: uuid, expectedVersion, fromCheckId: uuid },
+} as const;
+
+export const serviceChargeBody = {
+  type: "object",
+  additionalProperties: false,
+  required: ["restaurantId", "waived"],
+  properties: { restaurantId: uuid, expectedVersion, waived: { type: "boolean" }, reason: { type: "string", maxLength: 500, nullable: true }, adminPin },
+} as const;
+
+export const reportQuery = {
+  type: "object",
+  required: ["restaurantId"],
+  properties: { restaurantId: uuid, branchId: uuid, day: { type: "string", format: "date" } },
 } as const;
 
 /**
@@ -122,8 +161,6 @@ export const payBody = {
     expectedVersion,
     shiftId: p.shiftId,
     customerId: p.customerId,
-    documentDiscount: p.documentDiscount,
-    documentSurcharge: p.documentSurcharge,
     payments: p.payments,
     parts: billSplitBody.properties.parts,
   },
@@ -169,6 +206,8 @@ export interface VoidInput {
   restaurantId: string;
   expectedVersion?: number;
   reason?: string | null;
+  quantity?: number;
+  adminPin?: string | null;
 }
 
 export interface PayCheckInput {
@@ -176,8 +215,6 @@ export interface PayCheckInput {
   expectedVersion?: number;
   shiftId?: string | null;
   customerId?: string | null;
-  documentDiscount?: number;
-  documentSurcharge?: number;
   payments?: CreateSaleInput["payments"];
   parts?: { lines: CreateSaleInput["lines"]; payments?: CreateSaleInput["payments"] }[];
 }
@@ -212,6 +249,12 @@ export interface CheckSummary {
   /** Active lines, at their stored prices. */
   itemCount: number;
   unsentCount: number;
+  /** Active lines at their stored prices (listed). */
+  linesTotal: number;
+  /** Branch service charge (percent of the lines), 0 when off or waived; included in total. */
+  serviceChargePercent: number;
+  serviceCharge: number;
+  serviceChargeWaived: boolean;
   subtotal: number;
   tax: number;
   total: number;
@@ -220,6 +263,7 @@ export interface CheckSummary {
 export interface CheckDetail extends CheckSummary {
   customerId: string | null;
   notes: string | null;
+  serviceChargeWaiveReason: string | null;
   lines: CheckLine[];
   rounds: { id: string; number: number; sentAt: string; kdsTicketId: string | null }[];
 }

@@ -7,9 +7,14 @@
  * POST   /api/v1/pos/checks                               open (table or name; optional lines, send)
  * POST   /api/v1/pos/checks/:id/lines                     add lines (optional send)
  * PATCH  /api/v1/pos/checks/:id/lines/:lineId             change quantity / note of an unsent line
- * POST   /api/v1/pos/checks/:id/lines/:lineId/void        remove an unsent line
+ * POST   /api/v1/pos/checks/:id/lines/:lineId/void        remove a line or some units (sent: manager/PIN + reason, waste)
  * POST   /api/v1/pos/checks/:id/send                      send unsent lines to the kitchen (one round)
- * POST   /api/v1/pos/checks/:id/void                      void a check nothing of which was sent
+ * POST   /api/v1/pos/checks/:id/void                      void a check (sent items: manager/PIN + reason, waste)
+ * POST   /api/v1/pos/checks/:id/move                      move to another free table
+ * POST   /api/v1/pos/checks/:id/merge                     merge another open check into this one
+ * POST   /api/v1/pos/checks/:id/prebill                   guest bill before payment; table → billing
+ * POST   /api/v1/pos/checks/:id/service-charge            waive (manager/PIN + reason) or restore it
+ * GET    /api/v1/pos/checks/report?restaurantId&branchId&day   owners/managers: open, paid, voids, waste
  * POST   /api/v1/pos/checks/:id/pay                       pay: payments (one sale) or parts (split bill);
  *                                                          Idempotency-Key like POST /pos/sales
  *
@@ -20,10 +25,13 @@
 import type { FastifyInstance } from "fastify";
 import { requireUser } from "../shared/auth.js";
 import {
-  addLinesBody, checkParams, editLineBody, getQuery, lineParams, listQuery, openBody, payBody, restaurantBody, voidBody,
+  addLinesBody, checkParams, editLineBody, getQuery, lineParams, listQuery, mergeBody, moveBody, openBody, payBody, reportQuery, restaurantBody,
+  serviceChargeBody, voidBody,
   type AddLinesInput, type EditLineInput, type OpenCheckInput, type PayCheckInput, type VoidInput,
 } from "./checks.schema.js";
-import { addLines, editLine, getCheck, listOpenChecks, openCheck, payCheck, sendCheck, voidCheck, voidLine } from "./checks.service.js";
+import {
+  addLines, checksReport, editLine, getCheck, listOpenChecks, mergeChecks, moveCheck, openCheck, payCheck, prebill, sendCheck, setServiceCharge, voidCheck, voidLine,
+} from "./checks.service.js";
 
 const limit = { rateLimit: { max: 240, timeWindow: "1 minute" } };
 
@@ -32,6 +40,12 @@ export async function posChecksRoutes(app: FastifyInstance) {
     "/pos/checks",
     { schema: { querystring: listQuery }, config: limit },
     async (req) => ({ checks: await listOpenChecks(req.query, await requireUser(req)) }),
+  );
+
+  app.get<{ Querystring: { restaurantId: string; branchId?: string; day?: string } }>(
+    "/pos/checks/report",
+    { schema: { querystring: reportQuery }, config: limit },
+    async (req) => checksReport(req.query, await requireUser(req)),
   );
 
   app.get<{ Params: { id: string }; Querystring: { restaurantId: string } }>(
@@ -60,7 +74,7 @@ export async function posChecksRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { id: string; lineId: string }; Body: VoidInput }>(
     "/pos/checks/:id/lines/:lineId/void",
-    { schema: { params: lineParams, body: voidBody }, config: limit },
+    { schema: { params: lineParams, body: voidBody }, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
     async (req) => voidLine(req.params.id, req.params.lineId, req.body, await requireUser(req)),
   );
 
@@ -72,7 +86,7 @@ export async function posChecksRoutes(app: FastifyInstance) {
 
   app.post<{ Params: { id: string }; Body: VoidInput }>(
     "/pos/checks/:id/void",
-    { schema: { params: checkParams, body: voidBody }, config: limit },
+    { schema: { params: checkParams, body: voidBody }, config: { rateLimit: { max: 30, timeWindow: "1 minute" } } },
     async (req) => voidCheck(req.params.id, req.body, await requireUser(req)),
   );
 
@@ -90,5 +104,32 @@ export async function posChecksRoutes(app: FastifyInstance) {
       if (result.replayed) reply.header("Idempotent-Replayed", "true");
       return reply.code(result.replayed ? 200 : 201).send(result);
     },
+  );
+
+  // Admin-PIN routes are limited harder: a PIN is short.
+  const pinLimit = { rateLimit: { max: 30, timeWindow: "1 minute" } };
+
+  app.post<{ Params: { id: string }; Body: { restaurantId: string; expectedVersion?: number; tableId: string } }>(
+    "/pos/checks/:id/move",
+    { schema: { params: checkParams, body: moveBody }, config: limit },
+    async (req) => moveCheck(req.params.id, req.body, await requireUser(req)),
+  );
+
+  app.post<{ Params: { id: string }; Body: { restaurantId: string; expectedVersion?: number; fromCheckId: string } }>(
+    "/pos/checks/:id/merge",
+    { schema: { params: checkParams, body: mergeBody }, config: limit },
+    async (req) => mergeChecks(req.params.id, req.body, await requireUser(req)),
+  );
+
+  app.post<{ Params: { id: string }; Body: { restaurantId: string; expectedVersion?: number } }>(
+    "/pos/checks/:id/prebill",
+    { schema: { params: checkParams, body: restaurantBody }, config: limit },
+    async (req) => prebill(req.params.id, req.body, await requireUser(req)),
+  );
+
+  app.post<{ Params: { id: string }; Body: { restaurantId: string; expectedVersion?: number; waived: boolean; reason?: string | null; adminPin?: string | null } }>(
+    "/pos/checks/:id/service-charge",
+    { schema: { params: checkParams, body: serviceChargeBody }, config: pinLimit },
+    async (req) => setServiceCharge(req.params.id, req.body, await requireUser(req)),
   );
 }

@@ -1512,6 +1512,43 @@ export default function RecordSale() {
   useEffect(() => {
     if (checkTableId) setChecksOpen(true);
   }, [checkTableId]);
+  /** The guest bill of an open check on the receipt printer: not a tax invoice, no QR. */
+  const printCheckPrebill = (check: CheckDetail) => {
+    const items = check.lines.filter((l) => l.status === "active");
+    handlePOSPrint(
+      {
+        vatRatePercent: vatPercent,
+        pricesVatInclusive: pricesInclusive,
+        restaurantName: restaurant?.name || "Restaurant",
+        receiptNumber: check.checkNumber,
+        date: new Date(),
+        items: items.map((l) => ({ name: l.name, size: l.comboId ? undefined : l.size, quantity: l.quantity, price: l.unitPrice, total: l.lineTotal })),
+        ...receiptTotals({
+          linesListed: check.linesTotal,
+          documentSurcharge: check.serviceCharge,
+          vatRate,
+          pricesInclusive,
+          recorded: { tax: check.tax, total: check.total },
+        }),
+        paymentMethod: "",
+        header: `${t("app.pos.checks.prebillTitle")}${posHardware.receipt_header ? `\n${posHardware.receipt_header}` : ""}`,
+        footer: t("app.pos.checks.notTaxInvoice"),
+        zatca: null,
+      },
+      null,
+      {
+        receiptEnabled: true,
+        receiptPrinterType: posHardware.receipt_printer_type,
+        receiptPrinterIp: posHardware.receipt_printer_ip || undefined,
+        receiptPrinterPort: posHardware.receipt_printer_port,
+        kitchenEnabled: false,
+        kitchenPrinterType: posHardware.kitchen_printer_type,
+        drawerEnabled: false,
+        drawerAutoOpen: false,
+        paymentMethod: "",
+      },
+    );
+  };
   /** A check was paid: print and stamp each of its sales like any sale (the cart is untouched). */
   const finishCheckParts = (parts: PaidCheckPart[], check: CheckDetail) => {
     const label = check.tableLabel ? t("app.pos.checks.table", { label: check.tableLabel }) : check.name || check.checkNumber;
@@ -3424,6 +3461,7 @@ export default function RecordSale() {
               : null
           }
           onPaid={finishCheckParts}
+          onPrebill={posHardware.receipt_printer_enabled ? printCheckPrebill : undefined}
           formatCurrency={formatCurrency}
           restaurantName={restaurant.name}
         />

@@ -116,7 +116,7 @@ export async function recordBillSplit(
   userId: string,
   billGroupId = randomUUID(),
   /** Open checks: the check being paid; its lines keep their stored prices. */
-  check: { checkId: string } | null = null,
+  check: { checkId: string; serviceChargeFromSurcharge?: boolean } | null = null,
 ): Promise<BillSplitResult> {
   const ctxs = checkBillSplit(input, userId);
   const repo = salesRepository(t);
@@ -131,7 +131,7 @@ export async function recordBillSplit(
       t,
       repo,
       { ...partInput(input, i), documentDiscount: discounts[i], documentSurcharge: surcharges[i] },
-      { ...ctxs[i], billGroupId, checkId: check?.checkId ?? null, priceLocked },
+      { ...ctxs[i], billGroupId, checkId: check?.checkId ?? null, priceLocked, serviceChargeFromSurcharge: !!check?.serviceChargeFromSurcharge },
     ).catch((e: unknown) => {
       // Name the part, so the cashier knows whose payment to fix; nothing has been saved.
       if (e instanceof HttpError) throw new HttpError(e.status, `Guest ${i + 1}: ${e.message}`, e.code, { ...(e.details as object | undefined), part: i + 1 });

@@ -28,6 +28,7 @@ const api = {
   listOpenChecks: vi.fn(async () => [summary]),
   getCheck: vi.fn(async () => detail),
   addCheckLines: vi.fn(async () => ({ ...detail, version: 4 })),
+  voidCheckLine: vi.fn(async () => ({ ...detail, version: 4 })),
   payCheck: vi.fn(async () => ({
     check: { ...detail, status: "paid" }, billGroupId: null,
     sales: [{ transaction: { id: "s1", receipt_number: "RCP-1", subtotal: 20, tax: 3, total: 23, settlement_status: "paid", payment_method: "cash", created_at: "", branch_id: "b1" }, receiptNumber: "RCP-1", payments: [], salesItems: [], lowStock: [] }],
@@ -78,5 +79,18 @@ describe("OpenChecksSheet", () => {
     await waitFor(() => expect(props.onPaid).toHaveBeenCalledTimes(1));
     const [parts] = (props.onPaid as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(parts.map((p: { receiptNumber: string }) => p.receiptNumber)).toEqual(["RCP-1"]);
+  });
+
+  it("voids a sent item with a reason and the admin PIN", async () => {
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: /app\.pos\.checks\.table:\{"label":"5"\}/ }));
+    fireEvent.click(await screen.findByRole("button", { name: /app\.pos\.checks\.voidItem:\{"item":"Burger"\}/ }));
+    const confirm = await screen.findByRole("button", { name: "app.pos.checks.confirm" });
+    expect(confirm).toBeDisabled(); // a reason is required
+    fireEvent.change(screen.getByLabelText("app.pos.checks.reason"), { target: { value: "guest changed mind" } });
+    fireEvent.change(screen.getByLabelText("app.pos.checks.adminPin"), { target: { value: "12a34" } });
+    fireEvent.click(confirm);
+    await waitFor(() => expect(api.voidCheckLine).toHaveBeenCalledTimes(1));
+    expect(api.voidCheckLine.mock.calls[0]).toEqual(["c1", "l1", { restaurantId: "r1", expectedVersion: 3, reason: "guest changed mind", quantity: 1, adminPin: "1234" }]);
   });
 });

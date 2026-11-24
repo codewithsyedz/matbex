@@ -377,6 +377,7 @@ export const salesTransactions = pgTable("sales_transactions", {
 	documentSurcharge: numeric("document_surcharge", { precision: 12, scale:  2 }).default('0').notNull(),
 	billGroupId: uuid("bill_group_id"),
 	checkId: uuid("check_id"),
+	serviceCharge: numeric("service_charge", { precision: 12, scale:  2 }).default('0').notNull(),
 }, (table) => [
 	index("idx_sales_legal_retention").using("btree", table.restaurantId.asc().nullsLast().op("timestamptz_ops"), table.legalRetentionUntil.asc().nullsLast().op("uuid_ops")),
 	index("idx_sales_transactions_customer").using("btree", table.customerId.asc().nullsLast().op("uuid_ops")),
@@ -417,10 +418,12 @@ export const branches = pgTable("branches", {
 	vatRate: numeric("vat_rate", { precision: 5, scale:  2 }).default('15').notNull(),
 	pricesVatInclusive: boolean("prices_vat_inclusive").default(true).notNull(),
 	lifecycleStatus: text("lifecycle_status").default('active').notNull(),
+	serviceChargePercent: numeric("service_charge_percent", { precision: 5, scale:  2 }).default('0').notNull(),
 }, (table) => [
 	uniqueIndex("branches_one_primary_per_restaurant").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")).where(sql`((is_primary = true) AND (deleted_at IS NULL))`),
 	index("idx_branches_restaurant").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")).where(sql`(deleted_at IS NULL)`),
 	uniqueIndex("uniq_branches_code_per_tenant").using("btree", sql`restaurant_id`, sql`lower(code)`).where(sql`((code IS NOT NULL) AND (deleted_at IS NULL))`),
 	uniqueIndex("uniq_branches_primary_per_tenant").using("btree", table.restaurantId.asc().nullsLast().op("uuid_ops")).where(sql`((is_primary = true) AND (deleted_at IS NULL))`),
 	check("branches_lifecycle_status_check", sql`lifecycle_status = ANY (ARRAY['under_construction'::text, 'pre_opening'::text, 'active'::text, 'closed'::text])`),
+	check("branches_service_charge_percent", sql`(service_charge_percent >= (0)::numeric) AND (service_charge_percent <= (100)::numeric)`),
 ]);
