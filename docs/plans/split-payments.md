@@ -179,7 +179,10 @@ refused); all parts are saved or none (a failure on part 3 saves nothing);
 discount spreading; evenly-split rounding; offline replay; one void doesn't
 touch the siblings. Then a staging click-through as the QA cashier.
 
-### 2b — open checks / running tabs (separate feature, plan later)
+### 2b — open checks / running tabs (separate feature)
+
+Planned in docs/plans/open-checks.md (proposed 2026-11-24).
+
 
 Order now, send rounds to the kitchen, add items, move or merge tables, pay at the
 end (then split with 2a). This needs a new "open check" record (draft lines held
