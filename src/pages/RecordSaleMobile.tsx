@@ -35,6 +35,8 @@ import {
   Receipt,
   SplitSquareHorizontal,
   Users,
+  ChefHat,
+  ClipboardList,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -62,6 +64,7 @@ import { recordOfflineSale } from "@/lib/offline/posService";
 import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize } from "@/lib/api/pos";
 import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
 import { SplitBillSheet } from "@/components/pos/SplitBillSheet";
+import { OpenChecksSheet } from "@/components/pos/OpenChecksSheet";
 import { chargeCardTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders, type SplitTenders } from "@/lib/pos/splitTenders";
 import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { ApiError } from "@/lib/api/http";
@@ -206,6 +209,12 @@ export default function RecordSaleMobile() {
   /** Split tender: the sale is paid by the tenders in splitTenders instead of `payment`. */
   const [isSplit, setIsSplit] = useState(false);
   const [splitBillOpen, setSplitBillOpen] = useState(false);
+  const [checksWithCart, setChecksWithCart] = useState(false);
+  // Opened from the floor plan for a table (?checkTable=): its check, or a new one for it.
+  const [checkTableId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("checkTable"),
+  );
+  const [checksOpen, setChecksOpen] = useState(!!checkTableId);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -857,6 +866,43 @@ export default function RecordSaleMobile() {
   return (
     <div className="fixed inset-0 flex bg-muted/30 text-foreground overflow-hidden">
       {moyasar.dialog}
+      {restaurant?.id && (
+        <OpenChecksSheet
+          open={checksOpen}
+          onOpenChange={setChecksOpen}
+          restaurantId={restaurant.id}
+          branchId={activeBranchId ?? null}
+          shiftId={activeShifts[0]?.id ?? null}
+          vatRate={vatRate}
+          pricesInclusive={pricesInclusive}
+          cart={checksWithCart ? cart.map((l) => ({
+            name: l.name,
+            line: l.combo
+              ? { comboId: l.id, quantity: l.qty, unitPrice: l.price }
+              : { menuItemId: l.id, size: sizeOf(l.variant), quantity: l.qty, unitPrice: l.price },
+          })) : []}
+          onCartAdded={() => { setCart([]); setChecksWithCart(false); setCartOpen(false); }}
+          tableId={checkTableId}
+          chargeCard={
+            moyasar.enabled
+              ? async (amount) => ({
+                  provider: "moyasar",
+                  status: "approved",
+                  reference: await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` }),
+                })
+              : null
+          }
+          onPaid={(parts, check) => {
+            const label = check.tableLabel ? t("app.pos.checks.table", { label: check.tableLabel }) : check.name || check.checkNumber;
+            toast.success(t("app.pos.checks.paid", { check: label, count: parts.length }), {
+              description: parts.map((p) => `${p.receiptNumber} · ${formatCurrency(p.transaction.total)}`).join("\n"),
+            });
+            queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
+          }}
+          formatCurrency={formatCurrency}
+          restaurantName={restaurant.name}
+        />
+      )}
       {restaurant?.id && user?.id && (
         <SplitBillSheet
           open={splitBillOpen}
@@ -1248,7 +1294,7 @@ export default function RecordSaleMobile() {
           payment={payment}
           unpaid={unpaid}
           setPayment={setPayment}
-          split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true) }}
+          split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true), openChecks: (withCart: boolean) => { setChecksWithCart(withCart); setChecksOpen(true); } }}
           setUnpaid={toggleUnpaid}
           changeQty={changeQty}
           removeLine={removeLine}
@@ -1320,7 +1366,7 @@ export default function RecordSaleMobile() {
             payment={payment}
             unpaid={unpaid}
             setPayment={setPayment}
-            split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true) }}
+            split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true), openChecks: (withCart: boolean) => { setChecksWithCart(withCart); setChecksOpen(true); } }}
             setUnpaid={toggleUnpaid}
             changeQty={changeQty}
             removeLine={removeLine}
@@ -1711,7 +1757,7 @@ function OrderSummary({
   unpaid: boolean;
   setPayment: (p: PaymentMethod) => void;
   /** Split tender state (not offered for unpaid sales). */
-  split: { active: boolean; setActive: (v: boolean) => void; tenders: SplitTenders; openBill: () => void };
+  split: { active: boolean; setActive: (v: boolean) => void; tenders: SplitTenders; openBill: () => void; openChecks: (withCart: boolean) => void };
   setUnpaid: (v: boolean) => void;
   changeQty: (key: string, delta: number) => void;
   removeLine: (key: string) => void;
@@ -1901,6 +1947,25 @@ function OrderSummary({
             <Users className="h-4 w-4" />
             {t("app.pos.billSplit.open")}
           </button>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => split.openChecks(true)}
+              disabled={empty || unpaid}
+              className="h-10 rounded-xl border-2 border-border bg-card text-sm font-semibold flex items-center justify-center gap-2 hover:border-primary/40 disabled:opacity-50"
+            >
+              <ChefHat className="h-4 w-4" />
+              {t("app.pos.checks.sendToKitchen")}
+            </button>
+            <button
+              type="button"
+              onClick={() => split.openChecks(false)}
+              className="h-10 rounded-xl border-2 border-border bg-card text-sm font-semibold flex items-center justify-center gap-2 hover:border-primary/40"
+            >
+              <ClipboardList className="h-4 w-4" />
+              {t("app.pos.checks.title")}
+            </button>
+          </div>
         </div>
 
         <div className="space-y-1.5">

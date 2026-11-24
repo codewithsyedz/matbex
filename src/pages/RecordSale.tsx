@@ -7,6 +7,8 @@ import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDeta
 import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
 import { SplitBillSheet, type RecordedBillPart } from "@/components/pos/SplitBillSheet";
 import { receiptTotals } from "@/lib/pos/receiptTotals";
+import { OpenChecksSheet, type PaidCheckPart } from "@/components/pos/OpenChecksSheet";
+import type { CheckDetail } from "@/lib/api/checks";
 import { chargeCardTenders, receiptTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders } from "@/lib/pos/splitTenders";
 import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { ApiError } from "@/lib/api/http";
@@ -85,6 +87,8 @@ import {
   PauseCircle,
   SplitSquareHorizontal,
   Users,
+  ChefHat,
+  ClipboardList,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
@@ -165,6 +169,8 @@ interface FinishPart {
   tenders: { method: "cash" | "card" | "other"; amount: number; tendered: number | null; change_given: number | null }[];
   count: number;
   last: boolean;
+  /** Paid from an open check: print and stamp only; the screen (and its cart) stays as it is. */
+  fromCheck?: { label: string };
 }
 
 interface ExpenseCategory {
@@ -1497,6 +1503,42 @@ export default function RecordSale() {
   });
 
   const [splitBillOpen, setSplitBillOpen] = useState(false);
+  // Open checks: the sheet, whether it adds the cart, and a table to open (from the floor plan).
+  const [checksOpen, setChecksOpen] = useState(false);
+  const [checksWithCart, setChecksWithCart] = useState(false);
+  const [checkTableId, setCheckTableId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("checkTable"),
+  );
+  useEffect(() => {
+    if (checkTableId) setChecksOpen(true);
+  }, [checkTableId]);
+  /** A check was paid: print and stamp each of its sales like any sale (the cart is untouched). */
+  const finishCheckParts = (parts: PaidCheckPart[], check: CheckDetail) => {
+    const label = check.tableLabel ? t("app.pos.checks.table", { label: check.tableLabel }) : check.name || check.checkNumber;
+    parts.forEach((p, i) => {
+      const items: CartItem[] = p.lines.map((l) => ({
+        menuItemId: l.comboId ?? l.menuItemId!,
+        name: l.name,
+        size: (l.comboId ? "combo" : l.size) as CartItem["size"],
+        price: l.unitPrice,
+        quantity: l.quantity,
+        isCombo: !!l.comboId,
+      }));
+      finishSale(
+        { transaction: p.transaction, receiptNumber: p.receiptNumber, salesItems: p.salesItems },
+        {
+          items,
+          listed: sumMoney(items.map((it) => lineGrossOf(it.price, it.quantity))),
+          documentDiscount: p.documentDiscount,
+          documentSurcharge: p.documentSurcharge,
+          tenders: p.payments,
+          count: parts.length,
+          last: i === parts.length - 1,
+          fromCheck: { label },
+        },
+      );
+    });
+  };
   /** Split bill by item: every guest's part is recorded; print and invoice them in guest order. */
   const finishBillParts = (parts: RecordedBillPart[]) => {
     parts.forEach((p, i) => {
@@ -2110,6 +2152,10 @@ export default function RecordSale() {
     queryClient.invalidateQueries({ queryKey: ["inventory-items"] });
     queryClient.invalidateQueries({ queryKey: ["customers"] });
     if (part && !part.last) return;
+    if (part?.fromCheck) {
+      toast.success(t("app.pos.checks.paid", { check: part.fromCheck.label, count: part.count }));
+      return;
+    }
     
     // Clear sales draft from sessionStorage
     if (salesDraftKey) {
@@ -3048,6 +3094,22 @@ export default function RecordSale() {
                 <Users className="h-4 w-4" />
                 {t("app.pos.billSplit.open")}
               </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={cart.length === 0 || recordSaleMutation.isPending}
+                  onClick={() => { setChecksWithCart(true); setChecksOpen(true); }}
+                >
+                  <ChefHat className="h-4 w-4" />
+                  {t("app.pos.checks.sendToKitchen")}
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setChecksWithCart(false); setChecksOpen(true); }}>
+                  <ClipboardList className="h-4 w-4" />
+                  {t("app.pos.checks.title")}
+                </Button>
+              </div>
             </div>
           )}
 
@@ -3327,6 +3389,45 @@ export default function RecordSale() {
   return (
     <AppLayout>
       {moyasar.dialog}
+      {restaurant?.id && (
+        <OpenChecksSheet
+          open={checksOpen}
+          onOpenChange={(o) => {
+            setChecksOpen(o);
+            if (!o && checkTableId) {
+              setCheckTableId(null);
+              const url = new URL(window.location.href);
+              url.searchParams.delete("checkTable");
+              window.history.replaceState({}, "", url.toString());
+            }
+          }}
+          restaurantId={restaurant.id}
+          branchId={activeBranchId ?? null}
+          shiftId={(shiftsEnabled ? activeShifts[0]?.id : null) ?? null}
+          vatRate={vatRate}
+          pricesInclusive={pricesInclusive}
+          cart={checksWithCart ? cart.map((c) => ({
+            name: c.name,
+            line: c.isCombo
+              ? { comboId: c.menuItemId, quantity: c.quantity, unitPrice: c.price }
+              : { menuItemId: c.menuItemId, size: (c.size === "combo" ? "regular" : c.size) as SaleLineSize, quantity: c.quantity, unitPrice: c.price },
+          })) : []}
+          onCartAdded={() => { setCart([]); setChecksWithCart(false); }}
+          tableId={checkTableId}
+          chargeCard={
+            moyasar.enabled
+              ? async (amount) => ({
+                  provider: "moyasar",
+                  status: "approved",
+                  reference: await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` }),
+                })
+              : null
+          }
+          onPaid={finishCheckParts}
+          formatCurrency={formatCurrency}
+          restaurantName={restaurant.name}
+        />
+      )}
       {restaurant?.id && user?.id && (
         <SplitBillSheet
           open={splitBillOpen}

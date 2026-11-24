@@ -69,14 +69,19 @@ function checkBillSplit(input: BillSplitInput, userId: string, { quote = false }
  * Reads only; the cart pricing fails the whole bill on a stale price or a discount larger
  * than the order.
  */
-async function priceParts(t: ServiceTx, repo: ReturnType<typeof salesRepository>, input: BillSplitInput, { offline, saleAt }: { offline: boolean; saleAt: string | null }) {
+async function priceParts(
+  t: ServiceTx,
+  repo: ReturnType<typeof salesRepository>,
+  input: BillSplitInput,
+  { offline, saleAt, priceLocked = false }: { offline: boolean; saleAt: string | null; priceLocked?: boolean },
+) {
   const cart = await priceSale(t, repo, {
     restaurantId: input.restaurantId, branchId: input.branchId, shiftId: input.shiftId, customerId: input.customerId,
     tableId: input.tableId, lines: input.lines, documentDiscount: input.documentDiscount, documentSurcharge: input.documentSurcharge,
-  }, { offline, saleAt });
+  }, { offline, saleAt, priceLocked });
   const weights: number[] = [];
   for (let i = 0; i < input.parts.length; i++) {
-    const q = await priceSale(t, repo, { ...partInput(input, i), lines: input.parts[i].lines, documentDiscount: 0, documentSurcharge: 0 }, { offline, saleAt });
+    const q = await priceSale(t, repo, { ...partInput(input, i), lines: input.parts[i].lines, documentDiscount: 0, documentSurcharge: 0 }, { offline, saleAt, priceLocked });
     weights.push(q.linesTotal);
   }
   const discounts = spreadAmount(cart.documentDiscount, weights);
@@ -105,12 +110,20 @@ export async function quoteBillSplit(input: BillSplitInput, opts: { claims: DbCl
  * Records every part inside the caller's transaction (role checked, idempotency claimed).
  * Exported for the database tests, which run it in a transaction they roll back.
  */
-export async function recordBillSplit(t: ServiceTx, input: BillSplitInput, userId: string, billGroupId = randomUUID()): Promise<BillSplitResult> {
+export async function recordBillSplit(
+  t: ServiceTx,
+  input: BillSplitInput,
+  userId: string,
+  billGroupId = randomUUID(),
+  /** Open checks: the check being paid; its lines keep their stored prices. */
+  check: { checkId: string } | null = null,
+): Promise<BillSplitResult> {
   const ctxs = checkBillSplit(input, userId);
   const repo = salesRepository(t);
   const offline = !!input.offline;
   const saleAt = input.offline?.createdAt ?? null;
-  const { discounts, surcharges } = await priceParts(t, repo, input, { offline, saleAt });
+  const priceLocked = !!check;
+  const { discounts, surcharges } = await priceParts(t, repo, input, { offline, saleAt, priceLocked });
 
   const sales: BillSplitResult["sales"] = [];
   for (let i = 0; i < input.parts.length; i++) {
@@ -118,7 +131,7 @@ export async function recordBillSplit(t: ServiceTx, input: BillSplitInput, userI
       t,
       repo,
       { ...partInput(input, i), documentDiscount: discounts[i], documentSurcharge: surcharges[i] },
-      { ...ctxs[i], billGroupId },
+      { ...ctxs[i], billGroupId, checkId: check?.checkId ?? null, priceLocked },
     ).catch((e: unknown) => {
       // Name the part, so the cashier knows whose payment to fix; nothing has been saved.
       if (e instanceof HttpError) throw new HttpError(e.status, `Guest ${i + 1}: ${e.message}`, e.code, { ...(e.details as object | undefined), part: i + 1 });

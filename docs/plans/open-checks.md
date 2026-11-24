@@ -1,8 +1,17 @@
 # Open checks (running tabs) — plan
 
-Status: proposed (2026-11-24), owner decisions 1, 3, 4, 5 taken (see the end). Nothing
-built. Phase 2b of docs/plans/split-payments.md. Dine-in is a priority even though no
-customer uses tables yet.
+Status: 2b.1 (core) built on custom-backend (2026-11-25), not yet on staging. Owner
+decisions 1, 3, 4, 5 taken (see the end). Phase 2b of docs/plans/split-payments.md.
+Dine-in is a priority even though no customer uses tables yet.
+
+Built in 2b.1: `pos_checks`, `pos_check_lines`, `pos_check_rounds`,
+`sales_transactions.check_id`, check counter; /api/v1/pos/checks (list, get, open, add,
+edit/remove unsent lines, send, void unsent check, pay by payments or split bill, with
+versions and an idempotent pay); one kitchen ticket per round and none for the paying sale;
+table status follows the check; "Open checks" sheet and "Send to kitchen" on /record-sale and
+the mobile POS (receipts and ZATCA per sale on /record-sale); the floor plan opens a table's
+check. Not in 2b.1 (as planned for 2b.2): voiding sent items with waste, service charge,
+move/merge, pre-bill, day-end guard, open-checks report.
 
 ## Problem
 

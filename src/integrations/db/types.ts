@@ -12241,6 +12241,259 @@ export type Database = {
         }
         Relationships: []
       }
+      pos_check_lines: {
+        Row: {
+          added_by: string
+          check_id: string
+          combo_id: string | null
+          created_at: string
+          id: string
+          menu_item_id: string | null
+          note: string | null
+          quantity: number
+          restaurant_id: string
+          round_id: string | null
+          size: string
+          status: string
+          unit_price: number
+          updated_at: string
+          void_reason: string | null
+          voided_at: string | null
+          voided_by: string | null
+        }
+        Insert: {
+          added_by: string
+          check_id: string
+          combo_id?: string | null
+          created_at?: string
+          id?: string
+          menu_item_id?: string | null
+          note?: string | null
+          quantity: number
+          restaurant_id: string
+          round_id?: string | null
+          size?: string
+          status?: string
+          unit_price: number
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Update: {
+          added_by?: string
+          check_id?: string
+          combo_id?: string | null
+          created_at?: string
+          id?: string
+          menu_item_id?: string | null
+          note?: string | null
+          quantity?: number
+          restaurant_id?: string
+          round_id?: string | null
+          size?: string
+          status?: string
+          unit_price?: number
+          updated_at?: string
+          void_reason?: string | null
+          voided_at?: string | null
+          voided_by?: string | null
+        }
+        Relationships: [
+            {
+              foreignKeyName: "pos_check_lines_check_id_fkey"
+              columns: ["check_id"]
+              isOneToOne: false
+              referencedRelation: "pos_checks"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_check_lines_combo_id_fkey"
+              columns: ["combo_id"]
+              isOneToOne: false
+              referencedRelation: "combo_packages"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_check_lines_menu_item_id_fkey"
+              columns: ["menu_item_id"]
+              isOneToOne: false
+              referencedRelation: "menu_items"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_check_lines_restaurant_id_fkey"
+              columns: ["restaurant_id"]
+              isOneToOne: false
+              referencedRelation: "restaurants"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_check_lines_round_id_fkey"
+              columns: ["round_id"]
+              isOneToOne: false
+              referencedRelation: "pos_check_rounds"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
+      pos_check_rounds: {
+        Row: {
+          check_id: string
+          id: string
+          kds_ticket_id: string | null
+          number: number
+          restaurant_id: string
+          sent_at: string
+          sent_by: string
+        }
+        Insert: {
+          check_id: string
+          id?: string
+          kds_ticket_id?: string | null
+          number: number
+          restaurant_id: string
+          sent_at?: string
+          sent_by: string
+        }
+        Update: {
+          check_id?: string
+          id?: string
+          kds_ticket_id?: string | null
+          number?: number
+          restaurant_id?: string
+          sent_at?: string
+          sent_by?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "pos_check_rounds_check_id_fkey"
+              columns: ["check_id"]
+              isOneToOne: false
+              referencedRelation: "pos_checks"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_check_rounds_kds_ticket_id_fkey"
+              columns: ["kds_ticket_id"]
+              isOneToOne: false
+              referencedRelation: "pos_kds_tickets"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_check_rounds_restaurant_id_fkey"
+              columns: ["restaurant_id"]
+              isOneToOne: false
+              referencedRelation: "restaurants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
+      pos_checks: {
+        Row: {
+          branch_id: string | null
+          check_number: string
+          closed_at: string | null
+          closed_by: string | null
+          created_at: string
+          customer_id: string | null
+          guest_count: number | null
+          id: string
+          merged_into: string | null
+          name: string | null
+          notes: string | null
+          opened_at: string
+          opened_by: string
+          restaurant_id: string
+          server_id: string | null
+          status: string
+          table_id: string | null
+          updated_at: string
+          version: number
+          void_reason: string | null
+        }
+        Insert: {
+          branch_id?: string | null
+          check_number: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          customer_id?: string | null
+          guest_count?: number | null
+          id?: string
+          merged_into?: string | null
+          name?: string | null
+          notes?: string | null
+          opened_at?: string
+          opened_by: string
+          restaurant_id: string
+          server_id?: string | null
+          status?: string
+          table_id?: string | null
+          updated_at?: string
+          version?: number
+          void_reason?: string | null
+        }
+        Update: {
+          branch_id?: string | null
+          check_number?: string
+          closed_at?: string | null
+          closed_by?: string | null
+          created_at?: string
+          customer_id?: string | null
+          guest_count?: number | null
+          id?: string
+          merged_into?: string | null
+          name?: string | null
+          notes?: string | null
+          opened_at?: string
+          opened_by?: string
+          restaurant_id?: string
+          server_id?: string | null
+          status?: string
+          table_id?: string | null
+          updated_at?: string
+          version?: number
+          void_reason?: string | null
+        }
+        Relationships: [
+            {
+              foreignKeyName: "pos_checks_branch_id_fkey"
+              columns: ["branch_id"]
+              isOneToOne: false
+              referencedRelation: "branches"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_checks_customer_id_fkey"
+              columns: ["customer_id"]
+              isOneToOne: false
+              referencedRelation: "customers"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_checks_merged_into_fkey"
+              columns: ["merged_into"]
+              isOneToOne: false
+              referencedRelation: "pos_checks"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_checks_restaurant_id_fkey"
+              columns: ["restaurant_id"]
+              isOneToOne: false
+              referencedRelation: "restaurants"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "pos_checks_table_id_fkey"
+              columns: ["table_id"]
+              isOneToOne: false
+              referencedRelation: "pos_tables"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       pos_entity_versions: {
         Row: {
           checksum: string | null
@@ -15957,6 +16210,7 @@ export type Database = {
         Row: {
           bill_group_id: string | null
           branch_id: string | null
+          check_id: string | null
           created_at: string
           customer_id: string | null
           delivery_platform: Database["public"]["Enums"]["delivery_platform"] | null
@@ -16014,6 +16268,7 @@ export type Database = {
         Insert: {
           bill_group_id?: string | null
           branch_id?: string | null
+          check_id?: string | null
           created_at?: string
           customer_id?: string | null
           delivery_platform?: Database["public"]["Enums"]["delivery_platform"] | null
@@ -16071,6 +16326,7 @@ export type Database = {
         Update: {
           bill_group_id?: string | null
           branch_id?: string | null
+          check_id?: string | null
           created_at?: string
           customer_id?: string | null
           delivery_platform?: Database["public"]["Enums"]["delivery_platform"] | null
@@ -16131,6 +16387,13 @@ export type Database = {
               columns: ["branch_id"]
               isOneToOne: false
               referencedRelation: "branches"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "sales_transactions_check_id_fkey"
+              columns: ["check_id"]
+              isOneToOne: false
+              referencedRelation: "pos_checks"
               referencedColumns: ["id"]
             },
             {

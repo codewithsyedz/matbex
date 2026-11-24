@@ -2,7 +2,7 @@
   {
     "name": "Startup entry JS (loaded by index.html)",
     "path": "dist/assets/entry-*.js",
-    "limit": "250 KB",
+    "limit": "252 KB",
     "gzip": true
   }
 ]

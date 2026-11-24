@@ -24,7 +24,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { roundMoney, sumMoney } from "@/lib/vatInclusive";
 import { ApiError } from "@/lib/api/http";
-import { quoteBillSplit, recordBillSplit, type BillSplitInput, type CardTerminalApproval, type RecordSaleResult, type SaleTender } from "@/lib/api/pos";
+import { quoteBillSplit, recordBillSplit, type BillSplitInput, type BillSplitResult, type CardTerminalApproval, type RecordSaleResult, type SaleTender } from "@/lib/api/pos";
 import { recordOfflineSale } from "@/lib/offline/posService";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
 import {
@@ -84,6 +84,11 @@ export interface SplitBillSheetProps {
   onRecorded: (parts: RecordedBillPart[]) => void;
   formatCurrency: (n: number) => string;
   restaurantName?: string;
+  /**
+   * Records the split instead of POST /pos/sales/bill-split (an open check pays through
+   * /pos/checks/:id/pay). Such a bill is online only: it is never queued offline.
+   */
+  submit?: (input: BillSplitInput, opts: { idempotencyKey: string }) => Promise<BillSplitResult>;
 }
 
 interface GuestPayment {
@@ -262,7 +267,7 @@ export function SplitBillSheet(props: SplitBillSheetProps) {
     setError(null);
     const online = payments.some((p) => p.approval?.provider === "moyasar");
     const queue = async (): Promise<RecordedBillPart[]> => {
-      if (online) throw new Error(t("app.pos.billSplit.onlineCardOffline"));
+      if (online || props.submit) throw new Error(t("app.pos.billSplit.onlineCardOffline"));
       const res = await recordOfflineSale({
         branchId: props.order.restaurantId,
         saleBranchId: props.order.branchId ?? null,
@@ -298,7 +303,7 @@ export function SplitBillSheet(props: SplitBillSheetProps) {
       if (offlineNow()) recorded = await queue();
       else {
         try {
-          const res = await recordBillSplit(request(true), { idempotencyKey: keyRef.current });
+          const res = await (props.submit ?? recordBillSplit)(request(true), { idempotencyKey: keyRef.current });
           recorded = res.sales.map((s, i) => ({
             index: s.billPart.index, count: s.billPart.count, receiptNumber: s.receiptNumber, transaction: s.transaction,
             salesItems: s.salesItems, lines: parts[i],

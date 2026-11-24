@@ -44,7 +44,7 @@ export async function priceSale(
   t: ServiceTx,
   repo: ReturnType<typeof salesRepository>,
   input: CreateSaleInput,
-  { offline, saleAt }: { offline: boolean; saleAt: string | null },
+  { offline, saleAt, priceLocked = false }: { offline: boolean; saleAt: string | null; priceLocked?: boolean },
 ) {
     // ---- references must belong to this restaurant ---------------------------------------
     const comboIds = [...new Set(input.lines.flatMap((l) => (l.comboId ? [l.comboId] : [])))];
@@ -98,7 +98,11 @@ export async function priceSale(
     // The terminal's price for a line: checked against the server's (online) or, for an offline
     // replay, charged as shown. A combo is reported under its own id in price_changed.
     const charge = (id: string, size: SaleLineSize, current: number, shown: number | undefined) => {
-      if (offline) return roundMoney(shown!);
+      // Offline replays and open checks charge the price the guest was given.
+      if (offline || priceLocked) {
+        if (shown == null) throw badRequest("Each line must carry its price", "price_required");
+        return roundMoney(shown);
+      }
       if (shown != null && Math.abs(roundMoney(shown) - current) >= 0.005) {
         changed.push({ menuItemId: id, size, shown: roundMoney(shown), current });
       }
@@ -169,6 +173,9 @@ export interface SaleContext {
   saleAt: string | null;
   /** Split bill: shared by the sales one cart was divided into. */
   billGroupId?: string | null;
+  /** Open checks: the check this sale pays; its lines are charged at their stored prices. */
+  checkId?: string | null;
+  priceLocked?: boolean;
 }
 
 /** Input rules that need no database; throws 400 on the first broken one. */
@@ -238,7 +245,7 @@ export async function createSale(input: CreateSaleInput, opts: CreateSaleOptions
  */
 export async function recordSale(t: ServiceTx, repo: ReturnType<typeof salesRepository>, input: CreateSaleInput, ctx: SaleContext): Promise<CreateSaleResult> {
     const { userId, settlement, offline, subtype, saleAt } = ctx;
-    const { byId, branchId, day, created_at, lines, subtotal, tax, total, documentDiscount, documentSurcharge } = await priceSale(t, repo, input, { offline: !!offline, saleAt });
+    const { byId, branchId, day, created_at, lines, subtotal, tax, total, documentDiscount, documentSurcharge } = await priceSale(t, repo, input, { offline: !!offline, saleAt, priceLocked: !!ctx.priceLocked });
 
     const tenders = resolveTenders(input, total, { settlement });
     const method = saleMethod(tenders);
@@ -294,6 +301,7 @@ export async function recordSale(t: ServiceTx, repo: ReturnType<typeof salesRepo
       documentDiscount: String(documentDiscount),
       documentSurcharge: String(documentSurcharge),
       billGroupId: ctx.billGroupId ?? null,
+      checkId: ctx.checkId ?? null,
       ...(saleCard
         ? {
             halaStatus: saleCard.cardTerminal!.status,
@@ -402,7 +410,7 @@ export async function recordSale(t: ServiceTx, repo: ReturnType<typeof salesRepo
     };
 
     await repo.emitEvent(input.restaurantId, sale.id, {
-      sale: { id: sale.id, receipt_number: receiptNumber, total, payment_method: method, payments: result.payments, settlement_status: settlement, branch_id: result.transaction.branch_id, offline: !!offline, bill_group_id: ctx.billGroupId ?? null },
+      sale: { id: sale.id, receipt_number: receiptNumber, total, payment_method: method, payments: result.payments, settlement_status: settlement, branch_id: result.transaction.branch_id, offline: !!offline, bill_group_id: ctx.billGroupId ?? null, check_id: ctx.checkId ?? null },
     });
     return result;
 }
