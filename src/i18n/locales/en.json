@@ -2177,7 +2177,8 @@
       "checks": {
         "title": "Open checks",
         "help": "Tables and tabs that are still open. Tap one to add to it, send to the kitchen or pay.",
-        "addingCart": "Add {{count}} items to a check: pick one or open a new check.",
+        "addingCart_one": "Add 1 item to a check: pick one or open a new check.",
+        "addingCart_other": "Add {{count}} items to a check: pick one or open a new check.",
         "offline": "Open checks need a connection; nothing can change while offline.",
         "back": "Back",
         "newCheck": "New check",
