@@ -410,6 +410,56 @@ export function checksRepository({ tx }: ServiceTx) {
       return r.day;
     },
 
+    /** Guest QR orders waiting for staff, with the table's open check if there is one. */
+    async guestOrders(restaurantId: string, branchId: string | null) {
+      return tx<{ id: string; table_id: string; table_label: string; guest_name: string | null; notes: string | null; items: { menu_item_id: string; name: string; size: string; qty: number; price: number }[]; total: number; submitted_at: string; check_id: string | null }[]>`
+        select o.id, o.table_id, t.label as table_label, o.guest_name, o.notes, o.items, o.total::float8 as total, o.submitted_at::text,
+               (select c.id from public.pos_checks c where c.table_id = o.table_id and c.status = 'open') as check_id
+        from public.pos_table_orders o
+        join public.pos_tables t on t.id = o.table_id
+        where o.restaurant_id = ${restaurantId} and o.status = 'submitted' and o.deleted_at is null
+          and (${branchId}::uuid is null or t.branch_id is null or t.branch_id = ${branchId}::uuid)
+        order by o.submitted_at`;
+    },
+
+    async lockGuestOrder(restaurantId: string, id: string) {
+      const [r] = await tx<{ id: string; table_id: string; status: string; guest_name: string | null; items: { menu_item_id: string; size: string; qty: number }[] }[]>`
+        select id, table_id, status, guest_name, items from public.pos_table_orders
+        where id = ${id} and restaurant_id = ${restaurantId} and deleted_at is null for update`;
+      return r ?? null;
+    },
+
+    async acceptGuestOrder(restaurantId: string, id: string, checkId: string, userId: string) {
+      await tx`
+        update public.pos_table_orders set status = 'accepted', check_id = ${checkId}, accepted_by = ${userId}, accepted_at = now()
+         where id = ${id} and restaurant_id = ${restaurantId}`;
+    },
+
+    async rejectGuestOrder(restaurantId: string, id: string, reason: string | null) {
+      await tx`
+        update public.pos_table_orders set status = 'cancelled', cancelled_at = now(), reject_reason = ${reason}
+         where id = ${id} and restaurant_id = ${restaurantId}`;
+    },
+
+    async openCheckOfTable(restaurantId: string, tableId: string) {
+      const [r] = await tx<{ id: string }[]>`
+        select id from public.pos_checks where table_id = ${tableId} and restaurant_id = ${restaurantId} and status = 'open'`;
+      return r?.id ?? null;
+    },
+
+    async lockReservation(restaurantId: string, id: string) {
+      const [r] = await tx<{ id: string; status: string; guest_name: string; party_size: number }[]>`
+        select id, status, guest_name, party_size from public.table_reservations
+        where id = ${id} and restaurant_id = ${restaurantId} for update`;
+      return r ?? null;
+    },
+
+    async seatReservation(restaurantId: string, id: string, tableId: string, checkId: string) {
+      await tx`
+        update public.table_reservations set status = 'seated', table_id = ${tableId}, check_id = ${checkId}, seated_at = now(), updated_at = now()
+         where id = ${id} and restaurant_id = ${restaurantId}`;
+    },
+
     async emit(restaurantId: string, checkId: string, type: string, payload: Record<string, unknown>) {
       await tx`select platform.emit_event('pos', ${type}, ${restaurantId}::uuid, ${checkId}::uuid, ${JSON.stringify(payload)}::jsonb)`;
     },

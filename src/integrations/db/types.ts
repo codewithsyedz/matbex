@@ -13224,8 +13224,11 @@ export type Database = {
       }
       pos_table_orders: {
         Row: {
+          accepted_at: string | null
+          accepted_by: string | null
           access_token: string
           cancelled_at: string | null
+          check_id: string | null
           created_at: string
           deleted_at: string | null
           guest_name: string | null
@@ -13233,6 +13236,7 @@ export type Database = {
           items: Json
           notes: string | null
           paid_at: string | null
+          reject_reason: string | null
           restaurant_id: string
           status: string
           submitted_at: string
@@ -13244,8 +13248,11 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          accepted_at?: string | null
+          accepted_by?: string | null
           access_token?: string
           cancelled_at?: string | null
+          check_id?: string | null
           created_at?: string
           deleted_at?: string | null
           guest_name?: string | null
@@ -13253,6 +13260,7 @@ export type Database = {
           items?: Json
           notes?: string | null
           paid_at?: string | null
+          reject_reason?: string | null
           restaurant_id: string
           status?: string
           submitted_at?: string
@@ -13264,8 +13272,11 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          accepted_at?: string | null
+          accepted_by?: string | null
           access_token?: string
           cancelled_at?: string | null
+          check_id?: string | null
           created_at?: string
           deleted_at?: string | null
           guest_name?: string | null
@@ -13273,6 +13284,7 @@ export type Database = {
           items?: Json
           notes?: string | null
           paid_at?: string | null
+          reject_reason?: string | null
           restaurant_id?: string
           status?: string
           submitted_at?: string
@@ -13284,6 +13296,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+            {
+              foreignKeyName: "pos_table_orders_check_id_fkey"
+              columns: ["check_id"]
+              isOneToOne: false
+              referencedRelation: "pos_checks"
+              referencedColumns: ["id"]
+            },
             {
               foreignKeyName: "pos_table_orders_restaurant_id_fkey"
               columns: ["restaurant_id"]
@@ -18626,6 +18645,7 @@ export type Database = {
       }
       table_reservations: {
         Row: {
+          check_id: string | null
           created_at: string
           guest_email: string | null
           guest_name: string
@@ -18636,11 +18656,14 @@ export type Database = {
           reserved_date: string
           reserved_time: string
           restaurant_id: string
+          seated_at: string | null
           status: string
+          table_id: string | null
           tenant_id: string | null
           updated_at: string
         }
         Insert: {
+          check_id?: string | null
           created_at?: string
           guest_email?: string | null
           guest_name: string
@@ -18651,11 +18674,14 @@ export type Database = {
           reserved_date: string
           reserved_time: string
           restaurant_id: string
+          seated_at?: string | null
           status?: string
+          table_id?: string | null
           tenant_id?: string | null
           updated_at?: string
         }
         Update: {
+          check_id?: string | null
           created_at?: string
           guest_email?: string | null
           guest_name?: string
@@ -18666,16 +18692,32 @@ export type Database = {
           reserved_date?: string
           reserved_time?: string
           restaurant_id?: string
+          seated_at?: string | null
           status?: string
+          table_id?: string | null
           tenant_id?: string | null
           updated_at?: string
         }
         Relationships: [
             {
+              foreignKeyName: "table_reservations_check_id_fkey"
+              columns: ["check_id"]
+              isOneToOne: false
+              referencedRelation: "pos_checks"
+              referencedColumns: ["id"]
+            },
+            {
               foreignKeyName: "table_reservations_restaurant_id_fkey"
               columns: ["restaurant_id"]
               isOneToOne: false
               referencedRelation: "restaurants"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "table_reservations_table_id_fkey"
+              columns: ["table_id"]
+              isOneToOne: false
+              referencedRelation: "pos_tables"
               referencedColumns: ["id"]
             },
           ]

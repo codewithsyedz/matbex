@@ -200,9 +200,28 @@ export async function getCheck(id: string, restaurantId: string, claims: Claims)
 
 export async function openCheck(input: OpenCheckInput, claims: Claims): Promise<CheckDetail> {
   const userId = claims.sub;
+  if (input.reservationId && !input.tableId) throw badRequest("Seating a reservation needs a table", "reservation_needs_table");
   if (!input.tableId && !input.name?.trim()) throw badRequest("A check needs a table or a name", "check_needs_table_or_name");
   if (input.send && !input.lines?.length) throw badRequest("Nothing to send", "nothing_to_send");
   return withAccess(claims, input.restaurantId, async (t, repo) => {
+    // Seating a reservation: the party size and guest name come with it.
+    let reservation: { id: string; guest_name: string; party_size: number } | null = null;
+    if (input.reservationId) {
+      const r = await repo.lockReservation(input.restaurantId, input.reservationId);
+      if (!r) throw badRequest("Reservation not found for this restaurant", "reservation_not_found");
+      if (r.status !== "pending" && r.status !== "confirmed") throw conflict(`This reservation is already ${r.status}`, "reservation_not_open");
+      reservation = r;
+      input = { ...input, guestCount: input.guestCount ?? r.party_size, name: input.name ?? r.guest_name };
+    }
+    const checkId = await openCheckIn(t, repo, input, userId);
+    if (reservation) await repo.seatReservation(input.restaurantId, reservation.id, input.tableId!, checkId);
+    return detail(t, repo, input.restaurantId, checkId);
+  });
+}
+
+/** Opens a check inside the caller's transaction (role checked); returns its id. */
+async function openCheckIn(t: ServiceTx, repo: Repo, input: OpenCheckInput, userId: string): Promise<string> {
+  {
     let branchId = input.branchId ?? null;
     if (input.tableId) {
       const table = await repo.table(input.restaurantId, input.tableId);
@@ -238,8 +257,8 @@ export async function openCheck(input: OpenCheckInput, claims: Claims): Promise<
       const check = (await repo.check(input.restaurantId, checkId, { lock: true }))!;
       await send(repo, input.restaurantId, check, userId);
     }
-    return detail(t, repo, input.restaurantId, checkId);
-  });
+    return checkId;
+  }
 }
 
 export async function addLines(id: string, input: AddLinesInput, claims: Claims): Promise<CheckDetail> {
@@ -500,6 +519,70 @@ export async function checksReport(q: { restaurantId: string; branchId?: string 
         items: voids.map((v) => ({ checkNumber: v.check_number, name: v.name, quantity: v.quantity, reason: v.reason, approval: v.approval, voidedBy: v.voided_by, voidedAt: v.voided_at, value: v.line_total, wasteCost: roundMoney(v.waste_cost) })),
       },
     };
+  });
+}
+
+// ---- guest QR orders -------------------------------------------------------------------
+
+/** Guest QR orders waiting for staff (newest last), with each item at today's server price. */
+export async function listGuestOrders(q: { restaurantId: string; branchId?: string | null }, claims: Claims) {
+  return withAccess(claims, q.restaurantId, async (_t, repo) =>
+    (await repo.guestOrders(q.restaurantId, q.branchId ?? null)).map((o) => ({
+      id: o.id,
+      tableId: o.table_id,
+      tableLabel: o.table_label,
+      guestName: o.guest_name,
+      notes: o.notes,
+      submittedAt: o.submitted_at,
+      checkId: o.check_id,
+      total: roundMoney(Number(o.total)),
+      items: (o.items ?? []).map((i) => ({ menuItemId: i.menu_item_id, name: i.name, size: i.size, quantity: Number(i.qty), unitPrice: Number(i.price ?? 0) })),
+    })),
+  );
+}
+
+/**
+ * Accepts a guest's QR order: its items go onto the table's open check (opened if there is
+ * none) at the server's current prices, noted as a QR order, and are sent to the kitchen
+ * unless `send` is false.
+ */
+export async function acceptGuestOrder(id: string, input: { restaurantId: string; send?: boolean }, claims: Claims): Promise<CheckDetail> {
+  const userId = claims.sub;
+  return withAccess(claims, input.restaurantId, async (t, repo) => {
+    const order = await repo.lockGuestOrder(input.restaurantId, id);
+    if (!order) throw new HttpError(404, "Guest order not found", "guest_order_not_found");
+    if (order.status !== "submitted") throw conflict(`This guest order is already ${order.status}`, "guest_order_handled");
+    const note = `QR${order.guest_name ? ` · ${order.guest_name}` : ""}`;
+    const lines: CheckLineInput[] = (order.items ?? []).map((i) => ({
+      menuItemId: i.menu_item_id,
+      size: (["quarter", "half", "full"].includes(i.size) ? i.size : "regular") as CheckLineInput["size"],
+      quantity: Number(i.qty),
+      note,
+    }));
+    if (!lines.length) throw badRequest("The guest order has no items", "guest_order_empty");
+
+    const sendNow = input.send ?? true;
+    let checkId = await repo.openCheckOfTable(input.restaurantId, order.table_id);
+    if (checkId) {
+      const check = await lockOpen(repo, input.restaurantId, checkId);
+      await repo.insertLines(input.restaurantId, checkId, userId, await priceNewLines(t, input.restaurantId, check.branch_id, lines));
+      if (sendNow) await send(repo, input.restaurantId, check, userId);
+      await repo.bump(input.restaurantId, checkId);
+    } else {
+      checkId = await openCheckIn(t, repo, { restaurantId: input.restaurantId, tableId: order.table_id, lines, send: sendNow }, userId);
+    }
+    await repo.acceptGuestOrder(input.restaurantId, id, checkId, userId);
+    return detail(t, repo, input.restaurantId, checkId);
+  });
+}
+
+export async function rejectGuestOrder(id: string, input: { restaurantId: string; reason?: string | null }, claims: Claims) {
+  return withAccess(claims, input.restaurantId, async (_t, repo) => {
+    const order = await repo.lockGuestOrder(input.restaurantId, id);
+    if (!order) throw new HttpError(404, "Guest order not found", "guest_order_not_found");
+    if (order.status !== "submitted") throw conflict(`This guest order is already ${order.status}`, "guest_order_handled");
+    await repo.rejectGuestOrder(input.restaurantId, id, input.reason?.trim() || null);
+    return { id, status: "cancelled" as const };
   });
 }
 

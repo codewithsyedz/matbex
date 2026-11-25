@@ -16,7 +16,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
-import { ArrowLeft, Ban, Banknote, ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Printer, Receipt, SplitSquareHorizontal, Trash2, Users, Wallet } from "lucide-react";
+import { ArrowLeft, Ban, Banknote, ChefHat, CreditCard, Merge, Minus, MoveRight, Plus, Printer, QrCode, Receipt, SplitSquareHorizontal, Trash2, Users, Wallet } from "lucide-react";
 import { toast } from "sonner";
 import { db } from "@/integrations/db/client";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
@@ -33,11 +33,12 @@ import { ApiError } from "@/lib/api/http";
 import type { CardTerminalApproval, RecordSaleResult, SaleTender } from "@/lib/api/pos";
 import {
   addCheckLines, checkSaleLine, checksReport, editCheckLine, getCheck, listOpenChecks, mergeChecks, moveCheck, openCheck, payCheck, prebillCheck,
-  sendCheck, setCheckServiceCharge, voidCheck, voidCheckLine,
+  sendCheck, setCheckServiceCharge, voidCheck, voidCheckLine, acceptGuestOrder, rejectGuestOrder,
   type CheckDetail, type CheckLineInput, type CheckSummary,
 } from "@/lib/api/checks";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
 import { useTableChanges } from "@/hooks/useTableChanges";
+import { useGuestOrders } from "@/hooks/useGuestOrders";
 import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
 import { SplitBillSheet } from "@/components/pos/SplitBillSheet";
 import { chargeCardTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders } from "@/lib/pos/splitTenders";
@@ -159,6 +160,8 @@ export function OpenChecksSheet(props: OpenChecksSheetProps) {
     },
   });
 
+  const { data: guestOrders = [] } = useGuestOrders(restaurantId, branchId, open && !offline);
+
   const { data: tables = [] } = useQuery({
     queryKey: ["pos-tables-for-checks", restaurantId, branchId],
     enabled: open && (view.kind === "new" || view.kind === "move"),
@@ -273,6 +276,44 @@ export function OpenChecksSheet(props: OpenChecksSheetProps) {
                 {t("app.pos.checks.sendNow")}
                 <Switch checked={sendNow} onCheckedChange={setSendNow} />
               </label>
+            )}
+            {!adding && guestOrders.length > 0 && (
+              <section className="space-y-2 rounded-lg border border-primary/40 bg-primary/5 p-2" aria-label={t("app.pos.checks.guestOrders.title")}>
+                <p className="flex items-center gap-1.5 text-xs font-semibold uppercase text-primary">
+                  <QrCode className="h-3.5 w-3.5" />
+                  {t("app.pos.checks.guestOrders.title")} · {guestOrders.length}
+                </p>
+                {guestOrders.map((o) => (
+                  <div key={o.id} className="space-y-1.5 rounded-md border bg-background p-2 text-sm">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">{t("app.pos.checks.table", { label: o.tableLabel })}{o.guestName ? ` · ${o.guestName}` : ""}</span>
+                      <span className="tabular-nums">{fmt(o.total)}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {o.items.map((i) => `${i.quantity}× ${i.name}${i.size !== "regular" ? ` (${i.size})` : ""}`).join(", ")}
+                      {o.notes ? ` · “${o.notes}”` : ""} · {formatDistanceToNow(new Date(o.submittedAt), { addSuffix: true })}
+                    </p>
+                    <div className="grid grid-cols-2 gap-1.5">
+                      <Button size="sm" variant="outline" className="h-8" disabled={busy || offline} onClick={() => void run(async () => {
+                        await rejectGuestOrder(o.id, { restaurantId });
+                        void qc.invalidateQueries({ queryKey: ["pos-guest-orders", restaurantId] });
+                        toast.success(t("app.pos.checks.guestOrders.rejected"));
+                      })}>
+                        {t("app.pos.checks.guestOrders.reject")}
+                      </Button>
+                      <Button size="sm" className="h-8 gap-1" disabled={busy || offline} onClick={() => void run(async () => {
+                        const c = await acceptGuestOrder(o.id, { restaurantId, send: true });
+                        void qc.invalidateQueries({ queryKey: ["pos-guest-orders", restaurantId] });
+                        refresh(c);
+                        toast.success(t("app.pos.checks.guestOrders.accepted", { check: label(c) }));
+                      })}>
+                        <ChefHat className="h-3.5 w-3.5" />
+                        {o.checkId ? t("app.pos.checks.guestOrders.acceptAdd") : t("app.pos.checks.guestOrders.acceptOpen")}
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </section>
             )}
             <Button className="w-full gap-1.5" disabled={busy || offline} onClick={() => setView({ kind: "new" })}>
               <Plus className="h-4 w-4" />

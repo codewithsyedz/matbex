@@ -1,9 +1,9 @@
 # Open checks (running tabs) — plan
 
-Status: 2b.1 (core) on staging and tested (2026-11-25); 2b.2 (service) built on
-custom-backend (2026-11-25), not yet on staging. Owner decisions 1, 3, 4, 5 taken; 2 (who
-voids sent items) built as proposed: a manager/owner, or anyone with the admin PIN, with a
-reason. Phase 2b of docs/plans/split-payments.md.
+Status: 2b.1 and 2b.2 on staging and tested (2026-11-25); 2b.3 (guests) built on
+custom-backend (2026-11-25), not yet on staging. Owner decisions 1-5 taken (2 as proposed:
+a manager/owner, or anyone with the admin PIN, with a reason). Phase 2b of
+docs/plans/split-payments.md.
 
 Built in 2b.1: `pos_checks`, `pos_check_lines`, `pos_check_rounds`,
 `sales_transactions.check_id`, check counter; /api/v1/pos/checks (list, get, open, add,
@@ -21,6 +21,16 @@ surcharge and stored in `sales_transactions.service_charge`; move to another tab
 checks (rounds renumbered); pre-bill (receipt printer on /record-sale, else browser print;
 table → billing); day end refuses to close with checks open (`validate_day_close`);
 checks report for owners/managers (open now, paid, service charge, voids and waste).
+Built in 2b.3: a guest's QR order waits for staff (no kitchen ticket at submit; the
+`trg_kds_from_guest_order` trigger is dropped); `guest_create_order` prices items from the
+menu and caps lines/quantities; staff accept it from Open checks (items onto the table's
+check, opened if needed, at server prices, sent to the kitchen) or reject it; a badge on
+"Open checks" counts waiting orders; guest orders can no longer be marked "paid" without a
+sale (trigger); the tables page links to the POS instead. Reservations: "Seat at a table"
+opens a check with the party size and guest name and records table, check and seat time.
+The guest page cannot show whether staff accepted the order (`guest_get_order` is not
+public).
+
 Not built: a separate waiter page (the mobile POS has the same sheet); service charge on
 ordinary (non-check) sales.
 

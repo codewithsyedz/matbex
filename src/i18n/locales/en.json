@@ -2266,6 +2266,16 @@
           "title": "Checks report",
           "voids": "Voided items",
           "wasteCost": "waste {{cost}}"
+        },
+        "guestOrders": {
+          "title": "Guest orders (QR)",
+          "reject": "Reject",
+          "rejected": "Guest order rejected",
+          "acceptOpen": "Accept & send",
+          "acceptAdd": "Add to check & send",
+          "accepted": "Sent to the kitchen · {{check}}",
+          "waiting_one": "1 guest order waiting",
+          "waiting_other": "{{count}} guest orders waiting"
         }
       }
     },

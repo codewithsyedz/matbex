@@ -15,6 +15,10 @@
  * POST   /api/v1/pos/checks/:id/prebill                   guest bill before payment; table → billing
  * POST   /api/v1/pos/checks/:id/service-charge            waive (manager/PIN + reason) or restore it
  * GET    /api/v1/pos/checks/report?restaurantId&branchId&day   owners/managers: open, paid, voids, waste
+ * GET    /api/v1/pos/checks/guest-orders?restaurantId&branchId  guest QR orders waiting for staff
+ * POST   /api/v1/pos/checks/guest-orders/:id/accept       onto the table's check (opened if needed), sent
+ * POST   /api/v1/pos/checks/guest-orders/:id/reject
+ * POST /pos/checks with reservationId + tableId seats a reservation.
  * POST   /api/v1/pos/checks/:id/pay                       pay: payments (one sale) or parts (split bill);
  *                                                          Idempotency-Key like POST /pos/sales
  *
@@ -26,10 +30,11 @@ import type { FastifyInstance } from "fastify";
 import { requireUser } from "../shared/auth.js";
 import {
   addLinesBody, checkParams, editLineBody, getQuery, lineParams, listQuery, mergeBody, moveBody, openBody, payBody, reportQuery, restaurantBody,
-  serviceChargeBody, voidBody,
+  acceptGuestOrderBody, guestOrderParams, rejectGuestOrderBody, serviceChargeBody, voidBody,
   type AddLinesInput, type EditLineInput, type OpenCheckInput, type PayCheckInput, type VoidInput,
 } from "./checks.schema.js";
 import {
+  acceptGuestOrder, listGuestOrders, rejectGuestOrder,
   addLines, checksReport, editLine, getCheck, listOpenChecks, mergeChecks, moveCheck, openCheck, payCheck, prebill, sendCheck, setServiceCharge, voidCheck, voidLine,
 } from "./checks.service.js";
 
@@ -46,6 +51,24 @@ export async function posChecksRoutes(app: FastifyInstance) {
     "/pos/checks/report",
     { schema: { querystring: reportQuery }, config: limit },
     async (req) => checksReport(req.query, await requireUser(req)),
+  );
+
+  app.get<{ Querystring: { restaurantId: string; branchId?: string } }>(
+    "/pos/checks/guest-orders",
+    { schema: { querystring: listQuery }, config: limit },
+    async (req) => ({ orders: await listGuestOrders(req.query, await requireUser(req)) }),
+  );
+
+  app.post<{ Params: { id: string }; Body: { restaurantId: string; send?: boolean } }>(
+    "/pos/checks/guest-orders/:id/accept",
+    { schema: { params: guestOrderParams, body: acceptGuestOrderBody }, config: limit },
+    async (req) => acceptGuestOrder(req.params.id, req.body, await requireUser(req)),
+  );
+
+  app.post<{ Params: { id: string }; Body: { restaurantId: string; reason?: string | null } }>(
+    "/pos/checks/guest-orders/:id/reject",
+    { schema: { params: guestOrderParams, body: rejectGuestOrderBody }, config: limit },
+    async (req) => rejectGuestOrder(req.params.id, req.body, await requireUser(req)),
   );
 
   app.get<{ Params: { id: string }; Querystring: { restaurantId: string } }>(

@@ -89,6 +89,8 @@ export async function openCheck(input: {
   guestCount?: number | null;
   lines?: CheckLineInput[];
   send?: boolean;
+  /** Seat this reservation (needs tableId): party size and guest name come with it. */
+  reservationId?: string | null;
 }) {
   const { data } = await apiRequest<CheckDetail>("/pos/checks", { body: input });
   return data;
@@ -162,6 +164,37 @@ export interface ChecksReport {
 export async function checksReport(restaurantId: string, opts: { branchId?: string | null; day?: string | null } = {}) {
   const q = new URLSearchParams({ restaurantId, ...(opts.branchId ? { branchId: opts.branchId } : {}), ...(opts.day ? { day: opts.day } : {}) });
   const { data } = await apiRequest<ChecksReport>(`/pos/checks/report?${q}`);
+  return data;
+}
+
+export interface GuestOrder {
+  id: string;
+  tableId: string;
+  tableLabel: string;
+  guestName: string | null;
+  notes: string | null;
+  submittedAt: string;
+  /** The table's open check, if any (accepting adds to it). */
+  checkId: string | null;
+  total: number;
+  items: { menuItemId: string; name: string; size: string; quantity: number; unitPrice: number }[];
+}
+
+/** Guest QR orders waiting for staff. */
+export async function listGuestOrders(restaurantId: string, branchId?: string | null) {
+  const q = new URLSearchParams({ restaurantId, ...(branchId ? { branchId } : {}) });
+  const { data } = await apiRequest<{ orders: GuestOrder[] }>(`/pos/checks/guest-orders?${q}`);
+  return data.orders;
+}
+
+/** Puts a guest order on the table's check (opened if needed) and sends it to the kitchen. */
+export async function acceptGuestOrder(id: string, input: { restaurantId: string; send?: boolean }) {
+  const { data } = await apiRequest<CheckDetail>(`/pos/checks/guest-orders/${id}/accept`, { body: input });
+  return data;
+}
+
+export async function rejectGuestOrder(id: string, input: { restaurantId: string; reason?: string | null }) {
+  const { data } = await apiRequest<{ id: string; status: "cancelled" }>(`/pos/checks/guest-orders/${id}/reject`, { body: input });
   return data;
 }
 

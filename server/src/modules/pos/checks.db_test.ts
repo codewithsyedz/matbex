@@ -11,6 +11,7 @@ import type postgres from "postgres";
 import { HttpError } from "../../lib/errors.js";
 import { closeModuleDb, moduleSql, withTestTransaction } from "../shared/db.js";
 import {
+  acceptGuestOrder, listGuestOrders, rejectGuestOrder,
   addLines, checksReport, editLine, getCheck, listOpenChecks, mergeChecks, moveCheck, openCheck, payCheck, prebill, sendCheck, setServiceCharge, voidCheck, voidLine,
 } from "./checks.service.js";
 
@@ -273,5 +274,79 @@ test("move to another table, merge two checks, pre-bill; the day can't close wit
 
     const report = await checksReport({ restaurantId: r }, claims());
     ok(report.open.checks.some((x) => x.id === a.id));
+  });
+});
+
+// ---- 2b.3: guest QR orders and reservations ---------------------------------------------
+
+async function guestOrder(tx: postgres.TransactionSql, code: string, items: unknown[], clientTotal = 1) {
+  const [r] = await tx<{ o: { id: string } }[]>`
+    select public.guest_create_order(${code}, 'Ali', ${JSON.stringify(items)}::jsonb, ${clientTotal}, 0, ${clientTotal}, null) as o`;
+  return r.o.id;
+}
+
+test("guest QR orders: priced from the menu, no kitchen ticket until accepted, never 'paid' without a sale", async (t) => {
+  if (!fx) return t.skip("no local fixture");
+  await rolledBack(async (tx) => {
+    const r = fx!.restaurantId;
+    const label = `G-${randomUUID().slice(0, 4)}`;
+    const tableId = await newTable(tx, label);
+    const id = await guestOrder(tx, label, [{ menu_item_id: fx!.a.id, qty: 2, price: 0.01 }]);
+    const [o] = await tx<{ total: number; tickets: number }[]>`
+      select total::float8 as total,
+             (select count(*)::int from public.pos_kds_tickets k where k.source_order_id = ${id}) as tickets
+      from public.pos_table_orders where id = ${id}`;
+    eq(o, { total: fx!.a.price * 2, tickets: 0 });
+    await rejects(guestOrder(tx, label, [{ menu_item_id: fx!.a.id, qty: 50 }]).then(() => tx`select 1`), /quantity outside/);
+  });
+  await rolledBack(async (tx) => {
+    const label = `G-${randomUUID().slice(0, 4)}`;
+    await newTable(tx, label);
+    const id = await guestOrder(tx, label, [{ menu_item_id: fx!.a.id, qty: 1 }]);
+    await rejects(tx`update public.pos_table_orders set status = 'paid' where id = ${id}`, /paid through the table's check/);
+  });
+});
+
+test("accepting guest orders opens the table's check and sends them; a second one joins it; reject cancels", async (t) => {
+  if (!fx) return t.skip("no local fixture");
+  await rolledBack(async (tx) => {
+    const r = fx!.restaurantId;
+    const label = `G-${randomUUID().slice(0, 4)}`;
+    const tableId = await newTable(tx, label);
+    const first = await guestOrder(tx, label, [{ menu_item_id: fx!.a.id, qty: 2 }]);
+    const second = await guestOrder(tx, label, [{ menu_item_id: fx!.b.id, qty: 1 }]);
+    const third = await guestOrder(tx, label, [{ menu_item_id: fx!.b.id, qty: 1 }]);
+    const waiting = await listGuestOrders({ restaurantId: r }, claims());
+    eq(waiting.filter((o) => [first, second, third].includes(o.id)).length, 3);
+
+    const c1 = await acceptGuestOrder(first, { restaurantId: r }, claims());
+    eq([c1.tableId, c1.itemCount, c1.rounds.length, c1.lines[0].note], [tableId, 2, 1, "QR · Ali"]);
+    strictEqual(await tableStatus(tx, tableId), "ordered");
+    const c2 = await acceptGuestOrder(second, { restaurantId: r }, claims());
+    eq([c2.id, c2.itemCount, c2.rounds.length], [c1.id, 3, 2]);
+    await rejects(acceptGuestOrder(first, { restaurantId: r }, claims()), code("guest_order_handled"));
+
+    await rejectGuestOrder(third, { restaurantId: r, reason: "duplicate" }, claims());
+    const rows = await tx<{ id: string; status: string; check_id: string | null }[]>`
+      select id, status, check_id from public.pos_table_orders where id in (${first}, ${second}, ${third})`;
+    const byId = new Map(rows.map((x) => [x.id, [x.status, x.check_id]]));
+    eq([byId.get(first), byId.get(second), byId.get(third)], [["accepted", c1.id], ["accepted", c1.id], ["cancelled", null]]);
+  });
+});
+
+test("seating a reservation opens a check on the table with its party size and name", async (t) => {
+  if (!fx) return t.skip("no local fixture");
+  await rolledBack(async (tx) => {
+    const r = fx!.restaurantId;
+    const tableId = await newTable(tx);
+    const [res] = await tx<{ id: string }[]>`
+      insert into public.table_reservations (tenant_id, restaurant_id, guest_name, guest_phone, party_size, reserved_date, reserved_time, status)
+      values (${fx!.tenantId}, ${r}, 'Fatima', '0500000000', 4, current_date, '20:00', 'confirmed') returning id`;
+    await rejects(openCheck({ restaurantId: r, reservationId: res.id, name: "x" }, claims()), code("reservation_needs_table"));
+    const c = await openCheck({ restaurantId: r, reservationId: res.id, tableId }, claims());
+    eq([c.name, c.guestCount, c.tableId], ["Fatima", 4, tableId]);
+    const [row] = await tx<{ status: string; table_id: string; check_id: string }[]>`select status, table_id, check_id from public.table_reservations where id = ${res.id}`;
+    eq(row, { status: "seated", table_id: tableId, check_id: c.id });
+    await rejects(openCheck({ restaurantId: r, reservationId: res.id, tableId: await newTable(tx) }, claims()), code("reservation_not_open"));
   });
 });

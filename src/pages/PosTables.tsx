@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import { useMemo, useState } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { usePosTables, usePosTableOrders, type PosTable } from "@/hooks/usePosTables";
@@ -266,22 +267,13 @@ export default function PosTables() {
                       </div>
                       <div className="text-right space-y-2">
                         <p className="font-medium">{format(Number(o.total))}</p>
-                        {o.status === "submitted" && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={async () => {
-                              const { error } = await import("@/integrations/db/client").then(({ db }) =>
-                                db
-                                  .from("pos_table_orders")
-                                  .update({ status: "paid", paid_at: new Date().toISOString() })
-                                  .eq("id", o.id)
-                              );
-                              if (error) toast.error(error.message);
-                              else toast.success("Marked paid");
-                            }}
-                          >
-                            Mark paid
+                        {(o.status === "submitted" || o.status === "accepted") && (
+                          // Guest orders are accepted onto the table's check and paid there, so
+                          // the sale is recorded (Record sale → Open checks).
+                          <Button size="sm" variant="outline" asChild>
+                            <Link to={`/record-sale?checkTable=${o.table_id}`}>
+                              {o.status === "submitted" ? "Review on POS" : "Open check"}
+                            </Link>
                           </Button>
                         )}
                       </div>

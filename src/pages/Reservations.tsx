@@ -6,7 +6,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { CalendarCheck, Copy, Users } from "lucide-react";
+import { Armchair, CalendarCheck, Copy, Users } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useBranch } from "@/contexts/BranchContext";
+import { openCheck } from "@/lib/api/checks";
 import { toast } from "sonner";
 
 interface Reservation {
@@ -36,6 +41,38 @@ export default function Reservations() {
   const { restaurant } = useAuth();
   const restaurantId = restaurant?.id;
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const { activeBranchId } = useBranch();
+  // Seating a reservation opens a check on a table (Record sale → Open checks).
+  const [seating, setSeating] = useState<{ id: string; guest_name: string; party_size: number } | null>(null);
+  const [seatTable, setSeatTable] = useState("");
+  const [seatBusy, setSeatBusy] = useState(false);
+  const { data: tables = [] } = useQuery({
+    queryKey: ["reservation-seat-tables", restaurantId, activeBranchId],
+    enabled: !!restaurantId && !!seating,
+    queryFn: async () => {
+      let q = db.from("pos_tables").select("id, label, status, branch_id").eq("restaurant_id", restaurantId!).is("deleted_at", null).order("label");
+      if (activeBranchId) q = q.eq("branch_id", activeBranchId);
+      const { data, error } = await q;
+      if (error) throw error;
+      return (data ?? []) as { id: string; label: string; status: string }[];
+    },
+  });
+  const seat = async () => {
+    if (!seating || !seatTable || !restaurantId) return;
+    setSeatBusy(true);
+    try {
+      const c = await openCheck({ restaurantId, branchId: activeBranchId ?? null, tableId: seatTable, reservationId: seating.id });
+      toast.success(`${seating.guest_name} seated · ${c.checkNumber}`);
+      setSeating(null);
+      queryClient.invalidateQueries({ queryKey: ["table-reservations", restaurantId] });
+      navigate(`/record-sale?checkTable=${seatTable}`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not seat the reservation");
+    } finally {
+      setSeatBusy(false);
+    }
+  };
   const [from, setFrom] = useState(new Date().toISOString().slice(0, 10));
 
   const bookingUrl = restaurantId ? `${window.location.origin}/book/${restaurantId}` : "";
@@ -163,7 +200,17 @@ export default function Reservations() {
                 {r.notes && <p className="text-sm text-muted-foreground">{r.notes}</p>}
               </div>
               <div className="flex flex-wrap gap-2">
-                {STATUSES.filter((s) => s !== r.status).map((s) => (
+                {(r.status === "pending" || r.status === "confirmed") && (
+                  <Button
+                    size="sm"
+                    className="min-h-11 gap-1.5"
+                    onClick={() => { setSeatTable(""); setSeating({ id: r.id, guest_name: r.guest_name, party_size: r.party_size }); }}
+                  >
+                    <Armchair className="h-4 w-4" />
+                    Seat at a table
+                  </Button>
+                )}
+                {STATUSES.filter((s) => s !== r.status && s !== "seated").map((s) => (
                   <Button
                     key={s}
                     size="sm"
@@ -179,6 +226,31 @@ export default function Reservations() {
           ))}
         </CardContent>
       </Card>
+
+      <Dialog open={!!seating} onOpenChange={(o) => !o && !seatBusy && setSeating(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Seat {seating?.guest_name}</DialogTitle>
+            <DialogDescription>
+              Opens a check on the table for {seating?.party_size} guests. Take their order on the POS (Record sale → Open checks).
+            </DialogDescription>
+          </DialogHeader>
+          <Select value={seatTable} onValueChange={setSeatTable}>
+            <SelectTrigger><SelectValue placeholder="Pick a free table" /></SelectTrigger>
+            <SelectContent>
+              {tables.map((t) => (
+                <SelectItem key={t.id} value={t.id} disabled={t.status !== "free" && t.status !== "dirty"}>
+                  Table {t.label}{t.status !== "free" ? ` · ${t.status}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {tables.length === 0 && <p className="text-sm text-muted-foreground">No tables yet: add them on the floor plan.</p>}
+          <Button className="w-full" disabled={!seatTable || seatBusy} onClick={() => void seat()}>
+            {seatBusy ? "Seating…" : "Seat and open check"}
+          </Button>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

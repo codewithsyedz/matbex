@@ -29,6 +29,9 @@ const api = {
   getCheck: vi.fn(async () => detail),
   addCheckLines: vi.fn(async () => ({ ...detail, version: 4 })),
   voidCheckLine: vi.fn(async () => ({ ...detail, version: 4 })),
+  listGuestOrders: vi.fn(async () => [] as unknown[]),
+  acceptGuestOrder: vi.fn(async () => ({ ...detail, version: 5 })),
+  rejectGuestOrder: vi.fn(async () => ({ id: "g1", status: "cancelled" })),
   payCheck: vi.fn(async () => ({
     check: { ...detail, status: "paid" }, billGroupId: null,
     sales: [{ transaction: { id: "s1", receipt_number: "RCP-1", subtotal: 20, tax: 3, total: 23, settlement_status: "paid", payment_method: "cash", created_at: "", branch_id: "b1" }, receiptNumber: "RCP-1", payments: [], salesItems: [], lowStock: [] }],
@@ -92,5 +95,15 @@ describe("OpenChecksSheet", () => {
     fireEvent.click(confirm);
     await waitFor(() => expect(api.voidCheckLine).toHaveBeenCalledTimes(1));
     expect(api.voidCheckLine.mock.calls[0]).toEqual(["c1", "l1", { restaurantId: "r1", expectedVersion: 3, reason: "guest changed mind", quantity: 1, adminPin: "1234" }]);
+  });
+
+  it("lists guest QR orders and accepts one onto the table's check", async () => {
+    api.listGuestOrders.mockResolvedValueOnce([
+      { id: "g1", tableId: "t1", tableLabel: "5", guestName: "Ali", notes: null, submittedAt: new Date().toISOString(), checkId: "c1", total: 46,
+        items: [{ menuItemId: "burger", name: "Burger", size: "regular", quantity: 2, unitPrice: 23 }] },
+    ]);
+    setup();
+    fireEvent.click(await screen.findByRole("button", { name: "app.pos.checks.guestOrders.acceptAdd" }));
+    await waitFor(() => expect(api.acceptGuestOrder).toHaveBeenCalledWith("g1", { restaurantId: "r1", send: true }));
   });
 });

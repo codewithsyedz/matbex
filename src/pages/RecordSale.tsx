@@ -7,6 +7,7 @@ import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDeta
 import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
 import { SplitBillSheet, type RecordedBillPart } from "@/components/pos/SplitBillSheet";
 import { receiptTotals } from "@/lib/pos/receiptTotals";
+import { useGuestOrders } from "@/hooks/useGuestOrders";
 import { OpenChecksSheet, type PaidCheckPart } from "@/components/pos/OpenChecksSheet";
 import type { CheckDetail } from "@/lib/api/checks";
 import { chargeCardTenders, receiptTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders } from "@/lib/pos/splitTenders";
@@ -1506,6 +1507,9 @@ export default function RecordSale() {
   // Open checks: the sheet, whether it adds the cart, and a table to open (from the floor plan).
   const [checksOpen, setChecksOpen] = useState(false);
   const [checksWithCart, setChecksWithCart] = useState(false);
+  // Guest QR orders waiting for staff: a badge on "Open checks".
+  const { data: waitingGuestOrders = [] } = useGuestOrders(restaurant?.id, activeBranchId ?? null);
+  const guestOrderCount = waitingGuestOrders.length;
   const [checkTableId, setCheckTableId] = useState<string | null>(() =>
     typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("checkTable"),
   );
@@ -3145,6 +3149,9 @@ export default function RecordSale() {
                 <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setChecksWithCart(false); setChecksOpen(true); }}>
                   <ClipboardList className="h-4 w-4" />
                   {t("app.pos.checks.title")}
+                  {guestOrderCount > 0 && (
+                    <Badge className="ms-1 h-5 px-1.5 text-[10px]" aria-label={t("app.pos.checks.guestOrders.waiting", { count: guestOrderCount })}>{guestOrderCount}</Badge>
+                  )}
                 </Button>
               </div>
             </div>

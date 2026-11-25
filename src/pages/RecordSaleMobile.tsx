@@ -64,6 +64,7 @@ import { recordOfflineSale } from "@/lib/offline/posService";
 import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize } from "@/lib/api/pos";
 import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
 import { SplitBillSheet } from "@/components/pos/SplitBillSheet";
+import { useGuestOrders } from "@/hooks/useGuestOrders";
 import { OpenChecksSheet } from "@/components/pos/OpenChecksSheet";
 import { chargeCardTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders, type SplitTenders } from "@/lib/pos/splitTenders";
 import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
@@ -455,6 +456,9 @@ export default function RecordSaleMobile() {
 
   const { activeBranchId, activeBranch } = useBranch();
   const moyasar = useMoyasarCheckout(activeBranchId ?? null);
+  // Guest QR orders waiting for staff: a badge on "Open checks".
+  const { data: waitingGuestOrders = [] } = useGuestOrders(restaurant?.id, activeBranchId ?? null);
+  const guestOrderCount = waitingGuestOrders.length;
   const moyasarPaidRef = useRef<{ intentId: string; amount: number } | null>(null);
   // VAT rate is configured per branch (Settings → Branches).
   const { vatRate, vatPercent, pricesInclusive } = useBranchVatRate(activeBranchId);
@@ -1294,7 +1298,7 @@ export default function RecordSaleMobile() {
           payment={payment}
           unpaid={unpaid}
           setPayment={setPayment}
-          split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true), openChecks: (withCart: boolean) => { setChecksWithCart(withCart); setChecksOpen(true); } }}
+          split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true), openChecks: (withCart: boolean) => { setChecksWithCart(withCart); setChecksOpen(true); }, guestOrderCount }}
           setUnpaid={toggleUnpaid}
           changeQty={changeQty}
           removeLine={removeLine}
@@ -1366,7 +1370,7 @@ export default function RecordSaleMobile() {
             payment={payment}
             unpaid={unpaid}
             setPayment={setPayment}
-            split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true), openChecks: (withCart: boolean) => { setChecksWithCart(withCart); setChecksOpen(true); } }}
+            split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true), openChecks: (withCart: boolean) => { setChecksWithCart(withCart); setChecksOpen(true); }, guestOrderCount }}
             setUnpaid={toggleUnpaid}
             changeQty={changeQty}
             removeLine={removeLine}
@@ -1757,7 +1761,7 @@ function OrderSummary({
   unpaid: boolean;
   setPayment: (p: PaymentMethod) => void;
   /** Split tender state (not offered for unpaid sales). */
-  split: { active: boolean; setActive: (v: boolean) => void; tenders: SplitTenders; openBill: () => void; openChecks: (withCart: boolean) => void };
+  split: { active: boolean; setActive: (v: boolean) => void; tenders: SplitTenders; openBill: () => void; openChecks: (withCart: boolean) => void; guestOrderCount: number };
   setUnpaid: (v: boolean) => void;
   changeQty: (key: string, delta: number) => void;
   removeLine: (key: string) => void;
@@ -1964,6 +1968,9 @@ function OrderSummary({
             >
               <ClipboardList className="h-4 w-4" />
               {t("app.pos.checks.title")}
+              {split.guestOrderCount > 0 && (
+                <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground" aria-label={t("app.pos.checks.guestOrders.waiting", { count: split.guestOrderCount })}>{split.guestOrderCount}</span>
+              )}
             </button>
           </div>
         </div>

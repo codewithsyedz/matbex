@@ -2270,6 +2270,16 @@
           "title": "تقرير الطلبات",
           "voids": "أصناف ملغاة",
           "wasteCost": "هدر {{cost}}"
+        },
+        "guestOrders": {
+          "title": "طلبات الضيوف (QR)",
+          "reject": "رفض",
+          "rejected": "رُفض طلب الضيف",
+          "acceptOpen": "قبول وإرسال",
+          "acceptAdd": "إضافة للطلب وإرسال",
+          "accepted": "أُرسل إلى المطبخ · {{check}}",
+          "waiting_one": "طلب ضيف واحد بانتظار",
+          "waiting_other": "{{count}} طلبات ضيوف بانتظار"
         }
       }
     },

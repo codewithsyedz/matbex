@@ -174,7 +174,8 @@ export default function GuestOrder() {
           {data.restaurant?.name} — {data.table?.label}
         </p>
         <p className="text-sm text-muted-foreground mb-6">
-          Your order is with the kitchen. Please pay at the counter or wait for your server.
+          Your server will confirm your order and send it to the kitchen. You pay with the rest of
+          your table's bill.
         </p>
         <Button variant="outline" onClick={() => setSubmitted(null)}>
           Place another order

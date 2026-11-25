@@ -79,7 +79,25 @@ export const openBody = {
     lines: { ...lines, minItems: 0 },
     /** Send the lines to the kitchen in the same request. */
     send: { type: "boolean", default: false },
+    /** Seat this reservation: the check opens on `tableId` with its party size and name. */
+    reservationId: { ...uuid, nullable: true },
   },
+} as const;
+
+export const guestOrderParams = { type: "object", required: ["id"], properties: { id: uuid } } as const;
+
+export const acceptGuestOrderBody = {
+  type: "object",
+  additionalProperties: false,
+  required: ["restaurantId"],
+  properties: { restaurantId: uuid, send: { type: "boolean", default: true } },
+} as const;
+
+export const rejectGuestOrderBody = {
+  type: "object",
+  additionalProperties: false,
+  required: ["restaurantId"],
+  properties: { restaurantId: uuid, reason: { type: "string", maxLength: 300, nullable: true } },
 } as const;
 
 export const addLinesBody = {
@@ -186,6 +204,7 @@ export interface OpenCheckInput {
   notes?: string | null;
   lines?: CheckLineInput[];
   send?: boolean;
+  reservationId?: string | null;
 }
 
 export interface AddLinesInput {
