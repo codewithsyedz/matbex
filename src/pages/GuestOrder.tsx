@@ -10,8 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
-import { Minus, Plus, ShoppingBag, Check, Loader2 } from "lucide-react";
+import { Minus, Plus, ShoppingBag, Check, Loader2, Clock, XCircle } from "lucide-react";
 import { toast } from "sonner";
+import { loadPlaced, savePlaced, useGuestOrderStatus, type PlacedOrder } from "@/hooks/useGuestOrderStatus";
 
 type SizeKey = "quarter" | "half" | "full";
 
@@ -72,7 +73,17 @@ export default function GuestOrder() {
   const [guestName, setGuestName] = useState("");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState<{ id: string; access_token: string } | null>(null);
+  const [submitted, setSubmittedState] = useState<PlacedOrder | null>(() => loadPlaced(code));
+  const setSubmitted = (order: PlacedOrder | null) => {
+    savePlaced(code, order);
+    setSubmittedState(order);
+  };
+  const orderState = useGuestOrderStatus(submitted);
+  // A remembered order that no longer exists (removed by staff): back to the menu.
+  useEffect(() => {
+    if (orderState && !orderState.found) setSubmitted(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderState]);
 
   useEffect(() => {
     document.title = "Order at your table";
@@ -166,17 +177,48 @@ export default function GuestOrder() {
   if (submitted) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center bg-background p-6 text-center">
-        <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
-          <Check className="h-8 w-8 text-primary" />
-        </div>
-        <h1 className="text-2xl font-light mb-2">Order received</h1>
-        <p className="text-sm text-muted-foreground mb-1">
-          {data.restaurant?.name} — {data.table?.label}
-        </p>
-        <p className="text-sm text-muted-foreground mb-6">
-          Your server will confirm your order and send it to the kitchen. You pay with the rest of
-          your table's bill.
-        </p>
+        {orderState?.found && orderState.status === "cancelled" ? (
+          <>
+            <div className="h-16 w-16 rounded-full bg-destructive/10 flex items-center justify-center mb-4">
+              <XCircle className="h-8 w-8 text-destructive" />
+            </div>
+            <h1 className="text-2xl font-light mb-2">Order not accepted</h1>
+            <p className="text-sm text-muted-foreground mb-1">
+              {data.restaurant?.name} — {data.table?.label}
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              {orderState.reject_reason ? `Your server said: ${orderState.reject_reason}` : "Please ask your server."}
+            </p>
+          </>
+        ) : orderState?.found && (orderState.status === "accepted" || orderState.status === "paid") ? (
+          <>
+            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <Check className="h-8 w-8 text-primary" />
+            </div>
+            <h1 className="text-2xl font-light mb-2">Order confirmed</h1>
+            <p className="text-sm text-muted-foreground mb-1">
+              {data.restaurant?.name} — {data.table?.label}
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Your server confirmed your order and sent it to the kitchen. You pay with the rest of
+              your table's bill.
+            </p>
+          </>
+        ) : (
+          <>
+            <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <Clock className="h-8 w-8 text-primary" />
+            </div>
+            <h1 className="text-2xl font-light mb-2">Order received</h1>
+            <p className="text-sm text-muted-foreground mb-1">
+              {data.restaurant?.name} — {data.table?.label}
+            </p>
+            <p className="text-sm text-muted-foreground mb-6">
+              Waiting for your server to confirm it. They will send it to the kitchen; you pay with
+              the rest of your table's bill.
+            </p>
+          </>
+        )}
         <Button variant="outline" onClick={() => setSubmitted(null)}>
           Place another order
         </Button>

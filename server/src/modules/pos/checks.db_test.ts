@@ -334,6 +334,34 @@ test("accepting guest orders opens the table's check and sends them; a second on
   });
 });
 
+test("the guest sees their order's status with its token, and nothing without it", async (t) => {
+  if (!fx) return t.skip("no local fixture");
+  await rolledBack(async (tx) => {
+    const r = fx!.restaurantId;
+    const label = `G-${randomUUID().slice(0, 4)}`;
+    await newTable(tx, label);
+    const [placed] = await tx<{ o: { id: string; access_token: string } }[]>`
+      select public.guest_create_order(${label}, 'Ali', ${JSON.stringify([{ menu_item_id: fx!.a.id, qty: 1 }])}::jsonb, 1, 0, 1, null) as o`;
+    const accepted = placed.o.id;
+    const rejected = await guestOrder(tx, label, [{ menu_item_id: fx!.b.id, qty: 1 }]);
+    const [{ token }] = await tx<{ token: string }[]>`select access_token::text as token from public.pos_table_orders where id = ${rejected}`;
+    const status = async (id: string, tokenValue: string) => {
+      await tx`set local role anon`;
+      const [row] = await tx<{ s: { found: boolean; status?: string; reject_reason?: string | null } }[]>`
+        select public.guest_get_order(${id}::uuid, ${tokenValue}::uuid) as s`;
+      await tx`reset role`;
+      return row.s;
+    };
+    eq((await status(accepted, placed.o.access_token)).status, "submitted");
+    eq(await status(accepted, randomUUID()), { found: false });
+    await acceptGuestOrder(accepted, { restaurantId: r }, claims());
+    await rejectGuestOrder(rejected, { restaurantId: r, reason: "Kitchen closed" }, claims());
+    eq((await status(accepted, placed.o.access_token)).status, "accepted");
+    const s = await status(rejected, token);
+    eq([s.status, s.reject_reason], ["cancelled", "Kitchen closed"]);
+  });
+});
+
 test("seating a reservation opens a check on the table with its party size and name", async (t) => {
   if (!fx) return t.skip("no local fixture");
   await rolledBack(async (tx) => {

@@ -77,11 +77,11 @@ dashboard are not in the migrations; on production, compare
 `select oid::regprocedure from pg_proc where pronamespace='public'::regnamespace and has_function_privilege('anon', oid, 'EXECUTE')`
 with the list below after applying.
 
-## Functions logged-out callers can still execute (44)
+## Functions logged-out callers can still execute (45)
 
 | Why | Functions |
 | --- | --- |
-| Public ordering, booking, tracking | `guest_lookup_table`, `guest_create_order`, `public_create_online_order`, `public_get_online_order`, `public_get_online_order_items`, `public_top_selling_items` |
+| Public ordering, booking, tracking | `guest_lookup_table`, `guest_create_order`, `guest_get_order` (order id + access token), `public_create_online_order`, `public_get_online_order`, `public_get_online_order_items`, `public_top_selling_items` |
 | Driver link (rider token) | `driver_get_state`, `driver_ping_location`, `driver_update_assignment` |
 | Customer-facing display (restaurant + pair code) | `cfd_get_session`, `cfd_heartbeat`, `get_cfd_promos`, `get_cfd_idle_settings` |
 | Signup, ZATCA report verification, subdomains | `submit_tenant_application`, `get_zatca_certification_snapshot` (token), `resolve_subdomain` |

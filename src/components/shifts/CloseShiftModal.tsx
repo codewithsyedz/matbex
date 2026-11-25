@@ -34,6 +34,9 @@ import { useVarianceThresholds, getVarianceStatus, isExplanationRequired } from 
 import { ShiftSummary } from "@/components/shifts/ShiftSummary";
 import { DayEndAdjustmentDialog } from "@/components/dayend/DayEndAdjustmentDialog";
 import { Scale } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { useBranch } from "@/contexts/BranchContext";
+import { listOpenChecks } from "@/lib/api/checks";
 
 interface Shift {
   id: string;
@@ -93,6 +96,17 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
   const [adjustmentOpen, setAdjustmentOpen] = useState(false);
 
   const { restaurant } = useAuth();
+  const { activeBranchId } = useBranch();
+  // Open checks don't block closing a shift (they belong to the branch, not the drawer), but
+  // they do block day end, so the cashier sees how many are still open.
+  const openChecks = useQuery({
+    queryKey: ["pos-checks", restaurant?.id, activeBranchId ?? null, "shift-close"],
+    queryFn: () => listOpenChecks(restaurant!.id, activeBranchId),
+    enabled: open && !!restaurant?.id,
+    retry: false,
+  });
+  const openCheckCount = openChecks.data?.length ?? 0;
+  const openCheckTotal = (openChecks.data ?? []).reduce((sum, c) => sum + c.total, 0);
   const { thresholds } = useVarianceThresholds();
 
   // Calculate expected cash from cash_events (operational source of truth).
@@ -413,6 +427,16 @@ export function CloseShiftModal({ open, onOpenChange, shift, onShiftClosed }: Cl
             <div className="min-h-[200px]">
               {currentStep === 1 && (
                 <div className="space-y-4 fade-slide-in">
+                  {openCheckCount > 0 && (
+                    <Alert data-testid="shift-close-open-checks">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>
+                        {openCheckCount === 1 ? "1 check is" : `${openCheckCount} checks are`} still open
+                        ({openCheckTotal.toFixed(2)}). {openCheckCount === 1 ? "It stays" : "They stay"} open for the next
+                        shift; the day can't be closed until each is paid or voided.
+                      </AlertDescription>
+                    </Alert>
+                  )}
                   <div className="text-center space-y-1">
                     <h3 className="font-medium">Count your payments</h3>
                     <p className="text-sm text-muted-foreground">

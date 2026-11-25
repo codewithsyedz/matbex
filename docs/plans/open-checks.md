@@ -1,7 +1,8 @@
 # Open checks (running tabs) — plan
 
-Status: 2b.1 and 2b.2 on staging and tested (2026-11-25); 2b.3 (guests) built on
-custom-backend (2026-11-25), not yet on staging. Owner decisions 1-5 taken (2 as proposed:
+Status: 2b.1 and 2b.2 on staging and tested (2026-11-25); 2b.3 (guests) on staging
+(2026-11-26), not yet clicked through (QA Test Kitchen needs a table); the guest status page
+and the shift-close count built on custom-backend (2026-11-26), not yet on staging. Owner decisions 1-5 taken (2 as proposed:
 a manager/owner, or anyone with the admin PIN, with a reason). Phase 2b of
 docs/plans/split-payments.md.
 
@@ -28,8 +29,10 @@ check, opened if needed, at server prices, sent to the kitchen) or reject it; a 
 "Open checks" counts waiting orders; guest orders can no longer be marked "paid" without a
 sale (trigger); the tables page links to the POS instead. Reservations: "Seat at a table"
 opens a check with the party size and guest name and records table, check and seat time.
-The guest page cannot show whether staff accepted the order (`guest_get_order` is not
-public).
+The guest page shows whether staff accepted or rejected the order (with the reason): it
+remembers the order for the browser tab and polls `guest_get_order` (public again, needs the
+order's access token). Closing a shift shows how many checks are still open and their
+value, without blocking it.
 
 Not built: a separate waiter page (the mobile POS has the same sheet); service charge on
 ordinary (non-check) sales.
