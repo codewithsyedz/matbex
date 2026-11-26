@@ -375,7 +375,7 @@ export function useJournalEntries() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["account-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["chart-of-accounts"] });
-      toast.success("Transaction voided - reversing entry created");
+      toast.success("Transaction voided");
     },
     onError: (error: Error) => {
       const message = error.message.includes("VALIDATION_ERROR")

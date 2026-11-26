@@ -23,6 +23,7 @@ const LABEL: Record<string, { label: string; about: string; featured?: boolean }
   "zatca-clearance-worker": { label: "ZATCA clearance", about: "Sends invoices to ZATCA" },
   "zatca-device-monitor": { label: "ZATCA device monitor", about: "Checks device certificates" },
   "zatca-chain-integrity-check": { label: "ZATCA chain check", about: "Verifies the invoice hash chain" },
+  "ledger-balance-check": { label: "Account balance check", about: "Corrects stored account balances to match the ledger" },
   "accountant-pending-alerts": { label: "Accountant alerts", about: "Emails accountants their pending work" },
   "sync-branch-billing": { label: "Branch billing sync", about: "Billed branches per business" },
   "run-cogs-trueup-schedules": { label: "COGS true-up", about: "Scheduled cost of goods true-ups" },

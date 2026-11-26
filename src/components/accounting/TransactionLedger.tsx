@@ -819,8 +819,8 @@ export function TransactionLedger({ initialBatchId }: TransactionLedgerProps = {
               Void Transaction
             </DialogTitle>
             <DialogDescription>
-              Voiding creates a reversing entry to cancel this transaction. The
-              original record is preserved for audit purposes.
+              Voiding removes this line from balances and reports. The
+              original record is kept, marked voided, for audit purposes.
             </DialogDescription>
           </DialogHeader>
 

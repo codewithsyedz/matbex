@@ -37,6 +37,7 @@ const TENANT_B_ID = process.env.RLS_TEST_TENANT_B_ID;
  * (or explicitly exempted).
  */
 const TENANT_PRIVATE_TABLES = [
+  "account_balance_recompute_log",
   "account_transactions",
   "accounting_account_mappings",
   "accounting_integrations",

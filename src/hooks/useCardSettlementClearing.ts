@@ -86,6 +86,7 @@ export function useCardSettlementClearing({ branchId }: Args = {}) {
         .select("transaction_date, debit, credit, branch_id, description")
         .eq("tenant_id", tenantId)
         .eq("account_id", clearingAccountId)
+        .eq("is_voided", false)
         .order("transaction_date", { ascending: false })
         .limit(1000);
       if (branchKey) q = q.eq("branch_id", branchKey);

@@ -18,6 +18,8 @@ export const DEFAULT_FUNCTION_SCHEDULES: Record<string, string | null> = {
   "send-scheduled-reports": "0 * * * *",
   "run-cogs-trueup-schedules": "30 2 * * *",
   "nightly-invoice-ledger-scan": "0 3 * * *",
+  // Stored account balances vs the ledger; corrections are logged in account_balance_recompute_log.
+  "ledger-balance-check": "15 3 * * *",
   "zatca-chain-integrity-check": "0 4 * * *",
   "send-expiry-alerts": "0 8 * * *",
   "send-salary-reminder": "0 9 * * *",

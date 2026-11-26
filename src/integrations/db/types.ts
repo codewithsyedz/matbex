@@ -12,6 +12,51 @@ export type Json =
 export type Database = {
   public: {
     Tables: {
+      account_balance_recompute_log: {
+        Row: {
+          account_id: string
+          id: number
+          new_balance: number
+          old_balance: number | null
+          recomputed_at: string
+          source: string
+          tenant_id: string
+        }
+        Insert: {
+          account_id: string
+          id?: number
+          new_balance: number
+          old_balance?: number | null
+          recomputed_at?: string
+          source: string
+          tenant_id: string
+        }
+        Update: {
+          account_id?: string
+          id?: number
+          new_balance?: number
+          old_balance?: number | null
+          recomputed_at?: string
+          source?: string
+          tenant_id?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "account_balance_recompute_log_account_id_fkey"
+              columns: ["account_id"]
+              isOneToOne: false
+              referencedRelation: "chart_of_accounts"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "account_balance_recompute_log_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       account_branch_visibility: {
         Row: {
           account_id: string
@@ -23398,6 +23443,15 @@ export type Database = {
         | {
         Args: { p_txn_id: unknown }
         Returns: string
+      }
+      recompute_account_balances:
+        | {
+        Args: { p_tenant_id?: string; p_source?: string }
+        Returns: {
+          tenant_id: string
+          accounts_corrected: number
+          abs_drift: number
+        }[]
       }
       recompute_customer_balance:
         | {
