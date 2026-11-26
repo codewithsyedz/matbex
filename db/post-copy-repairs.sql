@@ -207,3 +207,38 @@ SELECT st.id, st.restaurant_id, st.branch_id, st.payment_method, COALESCE(st.tot
 FROM public.sales_transactions st
 WHERE st.payment_method IS NOT NULL AND st.payment_method <> 'split'
   AND NOT EXISTS (SELECT 1 FROM public.sale_payments sp WHERE sp.sale_id = st.id);
+
+-- repairs: 20261126064155_ledger_account_balance_from_lines.sql
+-- The copy brings production's stored balances, which drift from the ledger; rebuild them (logged).
+SELECT * FROM public.recompute_account_balances(NULL, 'post_copy_repairs');
+
+-- repairs: 20261126121749_journal_entry_headers_and_integrity.sql
+-- Copied ledger lines arrive without entry_id: give them headers, stamp them, number the headers.
+INSERT INTO public.journal_entries (tenant_id, entry_date, source_type, source_key, batch_id, branch_id, created_by, created_at)
+SELECT g.tenant_id, g.entry_date, g.source_type, g.source_key, g.batch_id, g.branch_id, g.created_by, g.created_at
+  FROM (
+    SELECT DISTINCT ON (t.tenant_id, coalesce(t.reference_type, '(none)'),
+                        coalesce(t.reference_id::text, 'batch:' || t.batch_id::text, 'line:' || t.id::text))
+           t.tenant_id,
+           coalesce(t.reference_type, '(none)') AS source_type,
+           coalesce(t.reference_id::text, 'batch:' || t.batch_id::text, 'line:' || t.id::text) AS source_key,
+           t.transaction_date AS entry_date, t.batch_id, t.branch_id, t.created_by, t.created_at
+      FROM public.account_transactions t
+     WHERE t.entry_id IS NULL
+     ORDER BY t.tenant_id, coalesce(t.reference_type, '(none)'),
+              coalesce(t.reference_id::text, 'batch:' || t.batch_id::text, 'line:' || t.id::text),
+              t.created_at, t.id
+  ) g
+ON CONFLICT (tenant_id, source_type, source_key) DO NOTHING;
+
+ALTER TABLE public.account_transactions DISABLE TRIGGER USER;
+UPDATE public.account_transactions t
+   SET entry_id = e.id
+  FROM public.journal_entries e
+ WHERE t.entry_id IS NULL
+   AND e.tenant_id = t.tenant_id
+   AND e.source_type = coalesce(t.reference_type, '(none)')
+   AND e.source_key = coalesce(t.reference_id::text, 'batch:' || t.batch_id::text, 'line:' || t.id::text);
+ALTER TABLE public.account_transactions ENABLE TRIGGER USER;
+
+SELECT public.number_journal_entries(NULL);

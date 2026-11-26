@@ -74,7 +74,23 @@ Original plan:
 - Migration: drop the browser INSERT policy on `account_transactions` and the browser INSERT/DELETE on `journal_entry_batches`, then revoke the matching grants from `authenticated`. Delete the unused `createTransaction`/`createBatchTransactions`.
 - Then the ledger is written only by SECURITY DEFINER functions and `/api/v1`, which matches the AGENTS.md rule for sales.
 
-### Phase C: journal header + deferred balance invariant + append-only (M–L, ~2–3 weeks)
+### Phase C: journal header + deferred balance invariant + append-only (M–L, ~2–3 weeks): **built 2026-11-26, log mode, not yet deployed**
+
+What shipped (`db/migrations/20261126121749_journal_entry_headers_and_integrity.sql`):
+
+- **Headers:** `journal_entries` has one header per posting, keyed `(tenant, reference_type, reference_id else batch_id else line)`, the same grouping the reports use. `account_transactions.entry_id` points at it.
+  - A BEFORE INSERT trigger stamps new lines, so none of the posting functions changed.
+  - Existing lines were backfilled with user triggers disabled (table owner only; foreign keys stay on).
+- **Entry numbers:** gap-free per tenant, assigned by `number_journal_entries()` from the hourly `ledger-balance-check` job (now `15 * * * *`), not while posting. Assigning them while posting would make POS sales in one business wait on a counter. New entries get their number within the hour, in the order they were created (`clock_timestamp()`).
+- **Balance check:** a deferred constraint trigger checks at commit that each touched entry's non-voided lines balance to the cent.
+- **Edit guard:** a BEFORE UPDATE trigger allows only voiding, stamping `entry_id`, and filling a NULL `reference_id` (card settlement deposits and VAT remittance do this). Anything else is a `line_update`, and un-voiding is an `unvoid`.
+- **Log mode first:** both checks write to `ledger_integrity_violations` (RLS: read-only for tenant members) and let the transaction through. `ledger-balance-check` reports the last 24 hours. Switch them on with `update ledger_integrity_settings set enforce_balance = true` and `enforce_append_only = true` once the log stays empty.
+  - Expected entries in the log: `realign_advance_branch` (rewrites `branch_id`), CoA migration account moves, and any legacy single-line `void_transaction` call.
+- **Dry run on the staging production copy** (rolled back): 3,465 headers, all 12,997 lines stamped, 0 unbalanced entries, numbers gap-free, about 4 seconds.
+- `db/post-copy-repairs.sql` repeats the Phase A recompute and the Phase C backfill after the cutover data copy.
+- Tests: `server/src/modules/ledger/journal-integrity.db_test.ts` (5) covers shared headers, gap-free numbering, log versus enforce for balance, and allowed versus refused edits.
+
+Original plan:
 
 - `journal_entries` (id, tenant_id, branch_id, `entry_number` gap-free per tenant, entry_date, source_type, source_id, batch_id, status, reversal_of, created_by/at). Add the column `account_transactions.entry_id`.
 - **No change to the 63 posting functions.** A BEFORE INSERT trigger on `account_transactions` finds or creates the header for `(tenant_id, reference_type, coalesce(reference_id, batch_id))` within the current transaction and stamps `entry_id`. The functions can adopt explicit headers gradually.

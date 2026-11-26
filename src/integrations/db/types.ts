@@ -150,6 +150,7 @@ export type Database = {
           credit: number | null
           debit: number | null
           description: string | null
+          entry_id: string | null
           id: string
           is_voided: boolean | null
           original_transaction_id: string | null
@@ -172,6 +173,7 @@ export type Database = {
           credit?: number | null
           debit?: number | null
           description?: string | null
+          entry_id?: string | null
           id?: string
           is_voided?: boolean | null
           original_transaction_id?: string | null
@@ -194,6 +196,7 @@ export type Database = {
           credit?: number | null
           debit?: number | null
           description?: string | null
+          entry_id?: string | null
           id?: string
           is_voided?: boolean | null
           original_transaction_id?: string | null
@@ -226,6 +229,13 @@ export type Database = {
               columns: ["branch_id"]
               isOneToOne: false
               referencedRelation: "branches"
+              referencedColumns: ["id"]
+            },
+            {
+              foreignKeyName: "account_transactions_entry_id_fkey"
+              columns: ["entry_id"]
+              isOneToOne: false
+              referencedRelation: "journal_entries"
               referencedColumns: ["id"]
             },
             {
@@ -8716,6 +8726,56 @@ export type Database = {
         }
         Relationships: []
       }
+      journal_entries: {
+        Row: {
+          batch_id: string | null
+          branch_id: string | null
+          created_at: string
+          created_by: string | null
+          entry_date: string
+          entry_number: number | null
+          id: string
+          numbered_at: string | null
+          source_key: string
+          source_type: string
+          tenant_id: string
+        }
+        Insert: {
+          batch_id?: string | null
+          branch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          entry_date: string
+          entry_number?: number | null
+          id?: string
+          numbered_at?: string | null
+          source_key: string
+          source_type: string
+          tenant_id: string
+        }
+        Update: {
+          batch_id?: string | null
+          branch_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          entry_date?: string
+          entry_number?: number | null
+          id?: string
+          numbered_at?: string | null
+          source_key?: string
+          source_type?: string
+          tenant_id?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "journal_entries_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
       journal_entry_batches: {
         Row: {
           approval_status: string
@@ -9815,6 +9875,94 @@ export type Database = {
           utm_term?: string | null
         }
         Relationships: []
+      }
+      ledger_entry_counters: {
+        Row: {
+          last_number: number
+          tenant_id: string
+        }
+        Insert: {
+          last_number?: number
+          tenant_id: string
+        }
+        Update: {
+          last_number?: number
+          tenant_id?: string
+        }
+        Relationships: [
+            {
+              foreignKeyName: "ledger_entry_counters_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: true
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
+      }
+      ledger_integrity_settings: {
+        Row: {
+          enforce_append_only: boolean
+          enforce_balance: boolean
+          id: boolean
+          updated_at: string
+        }
+        Insert: {
+          enforce_append_only?: boolean
+          enforce_balance?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Update: {
+          enforce_append_only?: boolean
+          enforce_balance?: boolean
+          id?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      ledger_integrity_violations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          detail: Json
+          entry_id: string | null
+          id: number
+          kind: string
+          line_id: string | null
+          tenant_id: string
+          txid: number
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          detail?: Json
+          entry_id?: string | null
+          id?: number
+          kind: string
+          line_id?: string | null
+          tenant_id: string
+          txid?: number
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          detail?: Json
+          entry_id?: string | null
+          id?: number
+          kind?: string
+          line_id?: string | null
+          tenant_id?: string
+          txid?: number
+        }
+        Relationships: [
+            {
+              foreignKeyName: "ledger_integrity_violations_tenant_id_fkey"
+              columns: ["tenant_id"]
+              isOneToOne: false
+              referencedRelation: "tenants"
+              referencedColumns: ["id"]
+            },
+          ]
       }
       license_status_cache: {
         Row: {
@@ -23015,6 +23163,11 @@ export type Database = {
         Args: { _user_id: string }
         Returns: boolean
       }
+      ledger_jsonb_pick:
+        | {
+        Args: { p_obj: unknown }
+        Returns: Json
+      }
       list_advance_branch_audit:
         | {
         Args: { p_limit?: number }
@@ -23117,6 +23270,11 @@ export type Database = {
         | {
         Args: { p_closure_id?: unknown }
         Returns: undefined
+      }
+      number_journal_entries:
+        | {
+        Args: { p_tenant_id?: string }
+        Returns: number
       }
       overhead_item_accounts:
         | {
