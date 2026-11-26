@@ -241,6 +241,17 @@ Effort is in engineer-days. Each ticket lists its acceptance criteria.
   - the accountant has no dead ends.
 - **Release:** pushing `custom-backend` deploys staging and needs the owner's OK. Release notes must say that the Finance Dashboard profit now matches the ledger and will change for many tenants.
 
+## Decisions (all made on 2026-11-26; see Linear COD-7…COD-10)
+
+| Decision | Outcome |
+|---|---|
+| Team size | Automation within the token budget. Remaining work is re-dated weekly |
+| Daily Sales journals | System postings skip approval; manual journals keep it |
+| Locking with open items | Allowed for the owner, with "Lock anyway" and a reason |
+| Staging manager user | Created as `qa-manager@matbex.test`; password in the local `.env` |
+
+The original questions are kept below for the record.
+
 ## Decisions needed before the sprint starts
 
 1. **Team size.** 4–5 people or parallel sessions, or fewer people and A–C only (with D–F moved to the next sprint)?
