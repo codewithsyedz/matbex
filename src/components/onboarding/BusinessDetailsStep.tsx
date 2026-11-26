@@ -10,7 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import {
   Building2,
@@ -105,7 +105,7 @@ export function BusinessDetailsStep({
         setUploadProgress((prev) => Math.min(prev + 10, 90));
       }, 100);
 
-      const { error } = await supabase.storage
+      const { error } = await db.storage
         .from("onboarding-documents")
         .upload(filePath, file);
 
@@ -114,7 +114,7 @@ export function BusinessDetailsStep({
       if (error) throw error;
 
       // Get public URL
-      const { data: urlData } = supabase.storage
+      const { data: urlData } = db.storage
         .from("onboarding-documents")
         .getPublicUrl(filePath);
 

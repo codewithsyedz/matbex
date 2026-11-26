@@ -9,7 +9,7 @@
 // they never disagree.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   generateZatcaQrBase64,
   validateZatcaInput,
@@ -88,6 +88,8 @@ export interface GenerateZatcaPdfInput {
   cashierName?: string | null;
   customerName?: string | null;
   paymentMethod: string;
+  /** Split tender: every tender (and cash change) is printed on the receipt. */
+  payments?: { method: string; amount: number; tendered?: number | null; change_given?: number | null }[] | null;
   header?: string | null;
   footer?: string | null;
   currencySymbol?: string | null;
@@ -133,7 +135,7 @@ export async function generateZatcaPdf(
     throw new Error(`ZATCA validation failed: ${v.errors.join("; ")}`);
   }
 
-  const { data, error } = await supabase.functions.invoke(
+  const { data, error } = await db.functions.invoke(
     "generate-zatca-receipt",
     {
       body: input,

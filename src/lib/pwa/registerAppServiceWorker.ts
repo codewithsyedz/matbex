@@ -1,7 +1,7 @@
 /**
  * Single, guarded registrar for the app-shell service worker (/sw.js).
  *
- * NEVER registers in dev, inside an iframe, or in any Lovable preview host.
+ * NEVER registers in dev, inside an iframe, or on a preview host.
  * In those contexts (and with ?sw=off) it unregisters any existing /sw.js
  * registration so stale caches cannot serve deleted chunks.
  *
@@ -14,12 +14,7 @@ function isPreviewHost(hostname: string): boolean {
   return (
     hostname.startsWith("id-preview--") ||
     hostname.startsWith("preview--") ||
-    hostname === "lovableproject.com" ||
-    hostname.endsWith(".lovableproject.com") ||
-    hostname === "lovableproject-dev.com" ||
-    hostname.endsWith(".lovableproject-dev.com") ||
-    hostname === "beta.lovable.dev" ||
-    hostname.endsWith(".beta.lovable.dev")
+    hostname.startsWith("preview.")
   );
 }
 

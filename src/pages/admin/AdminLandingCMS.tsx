@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -145,7 +146,7 @@ const AdminLandingCMS = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Landing Page CMS</h1>
           <p className="text-sm text-muted-foreground">
@@ -1228,7 +1229,7 @@ const PricingEditor = ({
                 )}
               </div>
               <p className="text-2xl font-light mb-2">
-                {plan.monthly_price !== null ? `$${plan.monthly_price}/mo` : "Custom"}
+                {plan.monthly_price !== null ? `${sarPrice(plan.monthly_price)}/mo` : "Custom"}
               </p>
               <p className="text-sm text-muted-foreground mb-4">{plan.description}</p>
               <ul className="text-sm space-y-1 mb-4">

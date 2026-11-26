@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { BranchBadge } from "@/components/branch/BranchBadge";
@@ -51,7 +51,7 @@ export function JournalEntryAuditTrail() {
     queryKey: ["journal-entry-audit", tenantId, scopedBranchId ?? "all"],
     enabled: !!tenantId,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("journal_entry_batches")
         .select(
           "id, batch_date, description, reference_number, entry_type, branch_id, approval_status, approved_by, approved_at, rejected_by, rejected_at, rejection_reason, is_posted, posted_by, posted_at"
@@ -102,7 +102,7 @@ export function JournalEntryAuditTrail() {
     queryKey: ["journal-entry-audit-actors", actorIds.join(",")],
     enabled: actorIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("profiles")
         .select("id, full_name")
         .in("id", actorIds);

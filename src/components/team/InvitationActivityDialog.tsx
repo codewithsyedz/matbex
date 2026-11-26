@@ -10,7 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { formatDistanceToNow } from "date-fns";
 import {
   Mail,
@@ -70,7 +70,7 @@ export function InvitationActivityDialog({ invitationId, email, onClose }: Props
     setLoading(true);
     setError(null);
     (async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("team_invitation_events")
         .select("id, event_type, message, error_detail, actor_email, created_at, metadata")
         .eq("invitation_id", invitationId)

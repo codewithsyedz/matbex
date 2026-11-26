@@ -1,6 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useLocation } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 /** Routes that belong to the signed-in product, not the public site. */
 const PRIVATE_PREFIXES = ["/admin", "/dashboard", "/pos", "/kiosk", "/cfd"];
@@ -39,7 +39,7 @@ export function usePageViewTracker() {
     const isExternal =
       referrer && !referrer.startsWith(window.location.origin) ? referrer : null;
 
-    void supabase
+    void db
       .from("page_views")
       .insert({
         path: pathname,

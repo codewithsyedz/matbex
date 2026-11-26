@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -31,7 +31,7 @@ export function useVarianceNoteTemplates() {
     queryKey: ["variance-note-templates", tenant?.id, restaurant?.id],
     queryFn: async (): Promise<VarianceNoteTemplate[]> => {
       if (!tenant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("variance_note_templates")
         .select("*")
         .eq("tenant_id", tenant.id)
@@ -47,7 +47,7 @@ export function useVarianceNoteTemplates() {
   const create = useMutation({
     mutationFn: async (input: TemplateInput) => {
       if (!tenant?.id) throw new Error("No tenant");
-      const { error } = await supabase.from("variance_note_templates").insert({
+      const { error } = await db.from("variance_note_templates").insert({
         tenant_id: tenant.id,
         restaurant_id: restaurant?.id ?? null,
         created_by: user?.id ?? null,
@@ -67,7 +67,7 @@ export function useVarianceNoteTemplates() {
 
   const update = useMutation({
     mutationFn: async ({ id, patch }: { id: string; patch: Partial<TemplateInput> }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("variance_note_templates")
         .update(patch)
         .eq("id", id);
@@ -82,7 +82,7 @@ export function useVarianceNoteTemplates() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("variance_note_templates")
         .delete()
         .eq("id", id);

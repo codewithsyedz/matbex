@@ -94,8 +94,8 @@ test.describe("Offline POS sale round-trip", () => {
     // ---- 6. Assert idempotency keys reached the cloud ----
     // We rely on the terminal-api /sales/by-idempotency endpoint if available.
     const found: string[] = await page.evaluate(async (keys) => {
-      const { supabase } = await import("/src/integrations/supabase/client.ts");
-      const { data } = await supabase
+      const { supabase } = await import("/src/integrations/db/client.ts");
+      const { data } = await db
         .from("sales")
         .select("idempotency_key")
         .in("idempotency_key", keys);

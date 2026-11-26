@@ -29,7 +29,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import {
@@ -100,18 +100,18 @@ export function PurchaseTracker() {
     
     try {
       const [purchasesRes, itemsRes, suppliersRes] = await Promise.all([
-        supabase
+        db
           .from("purchases")
           .select("*, inventory_items(name, unit), suppliers(name)")
           .eq("restaurant_id", restaurant.id)
           .order("received_at", { ascending: false })
           .limit(50),
-        supabase
+        db
           .from("inventory_items")
           .select("id, name, unit, unit_cost, stock_unit, units_per_pack, current_stock")
           .eq("restaurant_id", restaurant.id)
           .order("name"),
-        supabase
+        db
           .from("suppliers")
           .select("id, name")
           .eq("restaurant_id", restaurant.id)
@@ -198,7 +198,7 @@ export function PurchaseTracker() {
       // 1) Create the purchase invoice (master)
       const status =
         paymentMethod === "credit" ? "unpaid" : "paid";
-      const { data: invoice, error: invoiceError } = await supabase
+      const { data: invoice, error: invoiceError } = await db
         .from("purchase_invoices")
         .insert({
           restaurant_id: restaurant.id,
@@ -220,7 +220,7 @@ export function PurchaseTracker() {
       // 2) Write invoice items through the atomic replace routine (direct
       // writes to invoice_items are blocked by trg_guard_invoice_items_writes).
       // The trigger on the inserted rows auto-creates purchases + stock.
-      const { error: itemsError } = await (supabase as any).rpc("replace_invoice_items", {
+      const { error: itemsError } = await (db as any).rpc("replace_invoice_items", {
         p_invoice_id: invoice.id,
         p_items: prepared.map((l) => ({
           inventory_item_id: l.inventory_item_id,
@@ -236,40 +236,17 @@ export function PurchaseTracker() {
 
       // The routine recomputes the header from net line totals; restore the
       // VAT-inclusive totals captured above so the ledger stays in sync.
-      const { error: totalsError } = await supabase
+      const { error: totalsError } = await db
         .from("purchase_invoices")
         .update({ subtotal, tax_amount: taxAmount, total_amount: totalAmount })
         .eq("id", invoice.id);
       if (totalsError) throw totalsError;
 
-      const { data: insertedItems } = await supabase
-        .from("invoice_items")
-        .select("id")
-        .eq("invoice_id", invoice.id);
-
-      // 3) Post each auto-created purchase to ledger
-      try {
-        const itemIds = (insertedItems || []).map((i) => i.id);
-        if (itemIds.length > 0) {
-          const { data: created } = await supabase
-            .from("purchases")
-            .select("id")
-            .in("invoice_item_id", itemIds);
-          for (const p of created || []) {
-            const { error: ledgerError } = await supabase.rpc(
-              "post_inventory_purchase_to_ledger",
-              { p_purchase_id: p.id, p_payment_method: paymentMethod }
-            );
-            if (ledgerError) console.warn("Ledger posting failed:", ledgerError.message);
-          }
-        }
-      } catch (ledgerErr) {
-        console.warn("Ledger posting error:", ledgerErr);
-      }
-
+      // Stock received on an invoice reaches the ledger once, when the invoice
+      // is posted (net to stock, VAT to input VAT, total to the supplier).
       toast({
         title: "Invoice created",
-        description: `${sharedInvoiceNumber} · ${prepared.length} item(s) added to inventory`,
+        description: `${sharedInvoiceNumber} · ${prepared.length} item(s) added to inventory. Post the invoice to record it in the ledger.`,
       });
       fetchData();
       closeDialog();

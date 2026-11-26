@@ -1,7 +1,10 @@
+import { lazy, Suspense } from "react";
 import { Navigate, useLocation } from "react-router-dom";
+import { useSessionSecurity } from "@/hooks/useSessionSecurity";
 import { useAuth } from "@/contexts/AuthContext";
 import { useSuperAdmin } from "@/contexts/SuperAdminContext";
 import { TenantSuspendedScreen } from "@/components/TenantSuspendedScreen";
+import { Button } from "@/components/ui/button";
 import { MatbexLogoLoader } from "@/components/brand/MatbexLogo";
 import { Capacitor } from "@capacitor/core";
 import { logRouteGuard } from "@/lib/routeGuardLog";
@@ -12,10 +15,11 @@ interface ProtectedRouteProps {
 }
 
 // Routes cashiers are allowed to access
-const CASHIER_ALLOWED_ROUTES = ["/shifts", "/record-sale", "/chat", "/online-orders", "/order-manager"];
+const CASHIER_ALLOWED_ROUTES = ["/shifts", "/record-sale", "/chat", "/online-orders", "/order-manager", "/support"];
 
 // Routes accountants are allowed to access (finance & read-only operations)
 const ACCOUNTANT_ALLOWED_ROUTES = [
+  "/support",
   "/dashboard",
   "/finance-dashboard",
   "/accounting",
@@ -35,12 +39,20 @@ const ACCOUNTANT_ALLOWED_ROUTES = [
   "/settlements",
   "/customers",
   "/sales",
+  // Posting closed sales days (Auto-post) lives here; accountants post them (finance role).
+  "/daily-profit",
+  // Payroll Journal: posting needs journal rights (checked by the database).
+  "/staff/payroll-journal",
 ];
 
+// Loaded only when needed, so it stays out of the startup bundle.
+const AdminMfaGate = lazy(() => import("@/components/admin/AdminMfaGate").then((m) => ({ default: m.AdminMfaGate })));
+
 export function ProtectedRoute({ children, requireOnboarding = true }: ProtectedRouteProps) {
-  const { user, loading, tenant, roles, hasRole, isManager, isOwner } = useAuth();
+  const { user, loading, tenant, roles, hasRole, isManager, isOwner, userDataStatus, retryUserData, signOut } = useAuth();
   const { isSuperAdmin, loading: superAdminLoading, isImpersonating } = useSuperAdmin();
   const location = useLocation();
+  const security = useSessionSecurity();
 
   const snapshot = {
     hasUser: !!user,
@@ -116,19 +128,37 @@ export function ProtectedRoute({ children, requireOnboarding = true }: Protected
     return <TenantSuspendedScreen />;
   }
 
+  // The profile/roles read failed (API restarting, network) and nothing is cached: say so and
+  // offer a retry rather than mistaking the error for "new user, needs onboarding".
+  if (contextsSettled && userDataStatus === "failed" && !tenant && roles.length === 0) {
+    track("wait", "user-data-failed");
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-4">
+        <div className="text-center space-y-4 max-w-sm">
+          <MatbexLogoLoader size={48} />
+          <p className="text-sm text-muted-foreground">We couldn't load your workspace. Check your connection and try again.</p>
+          <Button onClick={() => void retryUserData()}>Try again</Button>
+        </div>
+      </div>
+    );
+  }
+
   // Check if user needs to complete onboarding (skip for SuperAdmins impersonating)
   // Native APK is POS-only: skip the tenant onboarding wizard entirely.
+  // Only after a successful read showed no business and no role, and keep the page they asked
+  // for so onboarding can send them back to it.
   if (
     requireOnboarding &&
     !isImpersonating &&
     !Capacitor.isNativePlatform() &&
     contextsSettled &&
+    userDataStatus === "loaded" &&
     !tenant &&
     roles.length === 0 &&
     location.pathname !== "/onboarding"
   ) {
     track("redirect", "onboarding-required", "/onboarding");
-    return <Navigate to="/onboarding" replace />;
+    return <Navigate to="/onboarding" replace state={{ from: location }} />;
   }
 
   // Cashier role restriction: only allow access to shifts and record-sale
@@ -154,6 +184,21 @@ export function ProtectedRoute({ children, requireOnboarding = true }: Protected
       track("redirect", "accountant-restricted", "/accounting");
       return <Navigate to="/accounting" replace />;
     }
+  }
+
+  // Owners of paying businesses verify with two-factor (when SuperAdmin switched the rule on);
+  // the API refuses their requests until then.
+  if (!isImpersonating && security.data?.owner_mfa_required && security.data.aal !== "aal2") {
+    track("wait", "owner-mfa-required");
+    return (
+      <Suspense fallback={null}><AdminMfaGate
+        title="Verify it's you"
+        description="Owners of paying businesses sign in with a second factor: a 6-digit code from an authenticator app (Google Authenticator, Microsoft Authenticator, 1Password…). It protects your sales, payments and staff data."
+        friendlyName="Matbex owner"
+        onVerified={() => window.location.reload()}
+        onSignOut={() => void signOut()}
+      /></Suspense>
+    );
   }
 
   track("allow", "granted");

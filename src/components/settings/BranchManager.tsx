@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Building2, Plus, Pencil, Archive, Star, Search, Power, PowerOff, Settings2 } from "lucide-react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDemoTrial } from "@/hooks/useDemoTrial";
 import { useFunnelTracker } from "@/hooks/useFunnelTracker";
@@ -49,6 +49,7 @@ interface Branch {
   timezone: string | null;
   vat_rate: number | string | null;
   prices_vat_inclusive?: boolean | null;
+  service_charge_percent?: number | string | null;
   is_primary: boolean;
   is_active: boolean;
   deleted_at: string | null;
@@ -63,9 +64,10 @@ interface BranchFormState {
   phone: string;
   vatRate: string;
   pricesVatInclusive: boolean;
+  serviceChargePercent: string;
 }
 
-const EMPTY_FORM: BranchFormState = { name: "", code: "", address: "", country: "", city: "", phone: "", vatRate: "15", pricesVatInclusive: true };
+const EMPTY_FORM: BranchFormState = { name: "", code: "", address: "", country: "", city: "", phone: "", vatRate: "15", pricesVatInclusive: true, serviceChargePercent: "0" };
 
 export function BranchManager() {
   const { restaurant, hasRole } = useAuth();
@@ -86,7 +88,7 @@ export function BranchManager() {
     queryKey: ["branches", restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [] as Branch[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branches" as any)
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -130,6 +132,7 @@ export function BranchManager() {
       phone: b.phone ?? "",
       vatRate: b.vat_rate == null ? "15" : String(b.vat_rate),
       pricesVatInclusive: b.prices_vat_inclusive ?? true,
+      serviceChargePercent: b.service_charge_percent == null ? "0" : String(Number(b.service_charge_percent)),
     });
     setDialogOpen(true);
   };
@@ -145,6 +148,11 @@ export function BranchManager() {
       toast.error("VAT rate must be a number between 0 and 100");
       return;
     }
+    const servicePct = parseFloat(form.serviceChargePercent || "0");
+    if (!isFinite(servicePct) || servicePct < 0 || servicePct > 100) {
+      toast.error("Service charge must be a number between 0 and 100");
+      return;
+    }
     setSaving(true);
     try {
       const payload = {
@@ -156,16 +164,17 @@ export function BranchManager() {
         phone: form.phone.trim() || null,
         vat_rate: vatRateNum,
         prices_vat_inclusive: form.pricesVatInclusive,
+        service_charge_percent: servicePct,
       };
       if (editing) {
-        const { error } = await supabase
+        const { error } = await db
           .from("branches" as any)
           .update(payload)
           .eq("id", editing.id);
         if (error) throw error;
         toast.success("Branch updated");
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("branches" as any)
           .insert({ ...payload, restaurant_id: restaurantId });
         if (error) throw error;
@@ -192,7 +201,7 @@ export function BranchManager() {
     if (!archiveTarget) return;
     setArchiving(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("branches" as any)
         .update({ deleted_at: new Date().toISOString(), is_active: false })
         .eq("id", archiveTarget.id);
@@ -212,7 +221,7 @@ export function BranchManager() {
       toast.error("The primary branch cannot be deactivated");
       return;
     }
-    const { error } = await supabase
+    const { error } = await db
       .from("branches" as any)
       .update({ is_active: !b.is_active })
       .eq("id", b.id);
@@ -486,6 +495,24 @@ export function BranchManager() {
                 Changing this does not rewrite historical receipts — past sales keep
                 the totals they were recorded with. It only affects how new sales are
                 priced and displayed.
+              </p>
+            </div>
+            <div className="rounded-lg border p-3 space-y-1">
+              <Label htmlFor="branch-service-charge">Service charge on open checks (%)</Label>
+              <Input
+                id="branch-service-charge"
+                type="number"
+                inputMode="decimal"
+                min={0}
+                max={100}
+                step="0.5"
+                value={form.serviceChargePercent}
+                onChange={(e) => setForm((f) => ({ ...f, serviceChargePercent: e.target.value }))}
+              />
+              <p className="text-[11px] text-muted-foreground">
+                Added to dine-in checks (Record sale → Open checks) as a percent of the items, before
+                VAT is worked out, so VAT applies to it. 0 = no service charge. A manager can waive it
+                on a check.
               </p>
             </div>
           </div>

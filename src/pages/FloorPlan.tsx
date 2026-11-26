@@ -325,12 +325,11 @@ export default function FloorPlan() {
                       className="w-full"
                       variant={selectedTable.status === "ordered" ? "outline" : "default"}
                       onClick={() => {
+                        // The POS opens this table's check (or starts one); the check moves the
+                        // table to seated / ordered itself.
                         const id = selectedTable.id;
-                        if (selectedTable.status === "free") {
-                          setStatus.mutate({ id, status: "seated", guest_count: selectedTable.capacity });
-                        }
                         setSelectedTable(null);
-                        navigate(`/record-sale?table=${id}`);
+                        navigate(`/record-sale?checkTable=${id}`);
                       }}
                     >
                       <ShoppingCart className="h-4 w-4 mr-1" />

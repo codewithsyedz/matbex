@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   buildFingerprintRecords,
@@ -25,7 +25,7 @@ export function useImportFingerprints(scope: ImportScope, scopeRef?: string | nu
     queryKey,
     queryFn: async (): Promise<KnownFingerprint[]> => {
       if (!tenantId) return [];
-      let q = supabase
+      let q = db
         .from("import_row_fingerprints")
         .select("row_hash, source_file, source_sheet, source_row_number, created_at, target_id")
         .eq("tenant_id", tenantId)
@@ -55,7 +55,7 @@ export function useImportFingerprints(scope: ImportScope, scopeRef?: string | nu
     });
     // ignoreDuplicates: the unique index is the real guard; a clash simply means
     // another session already claimed that source row.
-    const { error } = await supabase
+    const { error } = await db
       .from("import_row_fingerprints")
       .upsert(records as unknown as never[], {
         onConflict: "tenant_id,scope,row_hash",

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -85,7 +85,7 @@ function MovementsTab({ restaurantId, search }: { restaurantId?: string; search:
   const { data = [], isLoading } = useQuery({
     queryKey: ["audit-movements", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("stock_movements")
         .select("id, created_at, movement_type, quantity_change, stock_before, stock_after, reason, reference_type, reference_id, inventory_item_id, inventory_items(name, unit)")
         .eq("restaurant_id", restaurantId)
@@ -198,7 +198,7 @@ function WacTab({ restaurantId, search, format }: { restaurantId?: string; searc
   const { data: purchases = [], isLoading } = useQuery({
     queryKey: ["audit-purchases", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("purchases")
         .select("id, created_at, received_at, quantity_received, unit_cost, total_cost, invoice_number, inventory_item_id, inventory_items(name, unit, unit_cost)")
         .eq("restaurant_id", restaurantId)
@@ -217,7 +217,7 @@ function WacTab({ restaurantId, search, format }: { restaurantId?: string; searc
   const { data: purchaseMovements = [] } = useQuery({
     queryKey: ["audit-purchase-movements", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("stock_movements")
         .select("reference_id, stock_before, stock_after, quantity_change, inventory_item_id")
         .eq("restaurant_id", restaurantId)
@@ -319,7 +319,7 @@ function CogsTab({ restaurantId, search, format }: { restaurantId?: string; sear
   const { data = [], isLoading } = useQuery({
     queryKey: ["audit-prov-cogs", restaurantId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("provisional_cogs_postings" as any)
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -345,7 +345,7 @@ function CogsTab({ restaurantId, search, format }: { restaurantId?: string; sear
     queryKey: ["audit-prov-cogs-inv", ids.inv],
     queryFn: async () => {
       if (!ids.inv.length) return {};
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_items").select("id, name, unit").in("id", ids.inv);
       if (error) throw error;
       return Object.fromEntries((data ?? []).map((r: any) => [r.id, r]));
@@ -357,7 +357,7 @@ function CogsTab({ restaurantId, search, format }: { restaurantId?: string; sear
     queryKey: ["audit-prov-cogs-menu", ids.mi],
     queryFn: async () => {
       if (!ids.mi.length) return {};
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items").select("id, name").in("id", ids.mi);
       if (error) throw error;
       return Object.fromEntries((data ?? []).map((r: any) => [r.id, r]));

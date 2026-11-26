@@ -167,7 +167,7 @@ describe("posting state rules", () => {
 });
 
 describe("SQL contract: divergence detectors stay VAT-aware", () => {
-  const MIGRATIONS = path.resolve(process.cwd(), "supabase/migrations");
+  const MIGRATIONS = path.resolve(process.cwd(), "db/migrations");
 
   const latestDefinition = (fnName: string): string | null => {
     const files = fs.readdirSync(MIGRATIONS).filter((f) => f.endsWith(".sql")).sort();

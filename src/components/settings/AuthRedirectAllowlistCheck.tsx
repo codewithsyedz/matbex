@@ -21,7 +21,7 @@ function StatusBadge({ ok, label }: { ok: boolean; label: string }) {
 }
 
 /**
- * Validates the Supabase Auth redirectTo / domain allowlist that the
+ * Validates the Matbex auth redirectTo / domain allowlist that the
  * WhatsApp magic-link delivery relies on. Surfaces a clear warning if the
  * current browser origin or the function's APP_URL is not in the allowlist,
  * so we don't ship broken auto-login links.
@@ -45,7 +45,7 @@ export function AuthRedirectAllowlistCheck() {
         </CardTitle>
         <CardDescription>
           Validates that the redirect URL used by WhatsApp magic-links is
-          registered in the Supabase Auth allowlist for both preview and
+          registered in the auth redirect allowlist (SITE_URL / ALLOWED_ORIGINS) for both preview and
           production - run this before sending links.
         </CardDescription>
       </CardHeader>
@@ -88,9 +88,9 @@ export function AuthRedirectAllowlistCheck() {
             <AlertTitle>Allowlist mismatch detected</AlertTitle>
             <AlertDescription className="space-y-1">
               <p>
-                Magic-links will be silently rewritten by Supabase to its
+                Magic-links will be silently rewritten by the auth server to its
                 default SITE_URL, breaking auto-login. Add the missing
-                redirect URLs to the Supabase Auth allowlist before sending.
+                redirect URLs to the auth redirect allowlist (SITE_URL / ALLOWED_ORIGINS) before sending.
               </p>
               {data.effective_redirect && !data.matches_desired && (
                 <p className="font-mono text-xs">
@@ -116,7 +116,7 @@ export function AuthRedirectAllowlistCheck() {
           <div className="grid gap-3 text-xs">
             <div className="flex flex-wrap items-center gap-2">
               <StatusBadge ok={data.desired_allowed} label="WhatsApp APP_URL in expected list" />
-              <StatusBadge ok={data.matches_desired} label="Supabase honours redirect (not rewritten)" />
+              <StatusBadge ok={data.matches_desired} label="Auth server honours redirect (not rewritten)" />
               <StatusBadge ok={data.effective_allowed} label="Effective redirect host allowed" />
               <StatusBadge
                 ok={data.origin_allowed ?? true}
@@ -167,7 +167,7 @@ export function AuthRedirectAllowlistCheck() {
 
       <CardFooter className="text-xs text-muted-foreground flex items-center gap-1">
         <ExternalLink className="h-3 w-3" />
-        Fix mismatches in Lovable Cloud → Auth → URL Configuration (Site URL + Redirect URLs).
+        Fix mismatches in the API environment: SITE_URL and ALLOWED_ORIGINS.
       </CardFooter>
     </Card>
   );

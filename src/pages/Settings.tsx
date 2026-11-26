@@ -1,4 +1,6 @@
 import { Coins, RefreshCw, User, Shield, Database, Target, UtensilsCrossed, Monitor, Printer, Bell, Palette, Languages, ClipboardCheck, ScanLine, Building2, CreditCard, Rocket, Calculator } from "lucide-react";
+import { DataPrivacyCard } from "@/components/settings/DataPrivacyCard";
+import { SupportAccessCard } from "@/components/settings/SupportAccessCard";
 import {
   Select,
   SelectContent,
@@ -339,6 +341,7 @@ export default function Settings() {
             <WorkspaceCodeCard />
             <ImpersonationAnalyticsCard />
             <ImpersonationHistoryCard />
+            <SupportAccessCard />
           </TabsContent>
 
           {/* Notifications Tab - Owners only */}
@@ -386,7 +389,8 @@ export default function Settings() {
           )}
 
           {/* Data Tab */}
-          <TabsContent value="data" className="fade-slide-in">
+          <TabsContent value="data" className="space-y-6 fade-slide-in">
+            <DataPrivacyCard />
             <DataExportManager />
           </TabsContent>
 

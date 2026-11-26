@@ -50,7 +50,7 @@ import { Switch } from "@/components/ui/switch";
 import { BranchScopeSelector } from "@/components/branches/BranchScopeSelector";
 import { useBranch } from "@/contexts/BranchContext";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { InvoiceImageUploader } from "@/components/inventory/InvoiceImageUploader";
 import { useFixedAssets } from "@/hooks/useFixedAssets";
 import { useCurrency } from "@/hooks/useCurrency";

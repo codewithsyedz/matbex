@@ -1,13 +1,13 @@
 #!/usr/bin/env node
 /**
- * CI guard: every edge function deployed with verify_jwt = false MUST either
- * (a) call requireUser() / supabase.auth.getClaims() in code, or
+ * CI guard: every server function listed as "public" (no JWT required) MUST either
+ * (a) call requireUser() / db.auth.getClaims() in code, or
  * (b) be explicitly allowlisted as a public endpoint (webhooks, OAuth
  *     callbacks, public OTP issuers, etc).
  *
  * One forgotten auth check on a verify_jwt = false function = open endpoint.
- * Reads supabase/config.toml as the source of truth for which functions
- * skip JWT verification, then scans each function's index.ts.
+ * Reads server/functions/functions.config.json as the source of truth for
+ * which functions skip JWT verification, then scans each function's index.ts.
  *
  * Allowlist lives at scripts/.edge-auth-allowlist.json - keep it short and
  * justify every entry with a "reason" field.
@@ -16,8 +16,8 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const CONFIG = path.join(ROOT, "supabase", "config.toml");
-const FUNCTIONS_DIR = path.join(ROOT, "supabase", "functions");
+const CONFIG = path.join(ROOT, "server", "functions", "functions.config.json");
+const FUNCTIONS_DIR = path.join(ROOT, "server", "functions");
 const ALLOWLIST_PATH = path.join(__dirname, ".edge-auth-allowlist.json");
 
 const AUTH_PATTERNS = [
@@ -27,30 +27,12 @@ const AUTH_PATTERNS = [
   /validateCustomerJwt/i,
   /guardCronCaller\s*\(/, // cron secret or SuperAdmin JWT guard
   /requireSuperAdminOrCron\s*\(/,
+  /requireSuperAdmin\s*\(/,
 ];
 
-function parseVerifyJwtFalseFunctions(toml) {
-  // Very small TOML scan - we only care about [functions.X] blocks where
-  // the next non-empty line containing verify_jwt = false sets it to false.
-  const lines = toml.split(/\r?\n/);
-  const out = new Set();
-  let current = null;
-  for (const raw of lines) {
-    const line = raw.trim();
-    const header = line.match(/^\[functions\.([^\]]+)\]$/);
-    if (header) {
-      current = header[1];
-      continue;
-    }
-    if (current && /^verify_jwt\s*=\s*false\b/i.test(line)) {
-      out.add(current);
-    }
-    if (current && /^verify_jwt\s*=\s*true\b/i.test(line)) {
-      out.delete(current);
-    }
-    if (/^\[[^\]]+\]$/.test(line) && !header) current = null;
-  }
-  return out;
+function parsePublicFunctions(json) {
+  const cfg = JSON.parse(json);
+  return new Set(Array.isArray(cfg.public) ? cfg.public : []);
 }
 
 function loadAllowlist() {
@@ -113,11 +95,10 @@ function scanFunction(name) {
 
 function main() {
   if (!fs.existsSync(CONFIG)) {
-    console.error(`config.toml not found at ${CONFIG}`);
+    console.error(`functions.config.json not found at ${CONFIG}`);
     process.exit(2);
   }
-  const toml = fs.readFileSync(CONFIG, "utf8");
-  const skipJwt = parseVerifyJwtFalseFunctions(toml);
+  const skipJwt = parsePublicFunctions(fs.readFileSync(CONFIG, "utf8"));
   const allow = loadAllowlist();
 
   const violations = [];
@@ -125,7 +106,7 @@ function main() {
     if (allow[name]) continue; // explicitly public - documented in allowlist
     const { found, hasAuth } = scanFunction(name);
     if (!found) {
-      violations.push(`  ✗ ${name} - declared in config.toml but folder missing`);
+      violations.push(`  ✗ ${name} - declared in functions.config.json but folder missing`);
       continue;
     }
     if (!hasAuth) {

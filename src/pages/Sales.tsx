@@ -4,7 +4,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Info, Image as ImageIcon } from "lucide-react";
 import { toast as sonnerToast } from "sonner";
 
-import { Plus, Receipt, CreditCard, Banknote, MoreHorizontal, CalendarPlus, Trash2, Pencil, ShoppingCart, TrendingUp, TrendingDown, Clock, ArrowRightLeft, FileDown, BarChart3, Eye, Store, FileText, Settings2, Scale, ArrowUp, Wallet, ChevronDown } from "lucide-react";
+import { Plus, Receipt, CreditCard, Banknote, MoreHorizontal, CalendarPlus, Trash2, Pencil, ShoppingCart, TrendingUp, TrendingDown, Clock, ArrowRightLeft, FileDown, BarChart3, Eye, Store, FileText, Settings2, Scale, ArrowUp, Wallet, ChevronDown, Split } from "lucide-react";
 import { BranchBadge } from "@/components/branch/BranchBadge";
 import { exportToCSV, prepareSalesExportData } from "@/lib/exportUtils";
 import { exportSalesPdf, DEFAULT_PDF_OPTIONS, type SalesPdfOptions, type BreakdownDetail } from "@/lib/salesPdfExport";
@@ -64,7 +64,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format, parseISO, startOfDay, endOfDay } from "date-fns";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -78,8 +78,13 @@ import { DailySalesDrilldown } from "@/components/sales/DailySalesDrilldown";
 import { BranchTotalsExplainerBanner } from "@/components/branches/BranchTotalsExplainer";
 import { DayEndAdjustmentBreakdown } from "@/components/sales/DayEndAdjustmentBreakdown";
 import { useBranch } from "@/contexts/BranchContext";
+import { editSale, recordSummarySales, voidSale } from "@/lib/api/pos";
+import { VoidSaleDialog } from "@/components/sales/VoidSaleDialog";
+import { BillSiblings } from "@/components/sales/BillSiblings";
 import { useTranslation } from "react-i18next";
 import { splitInclusive } from "@/lib/vatInclusive";
+import { billPartLabels } from "@/lib/pos/billSplit";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 interface SalesItem {
   id: string;
@@ -96,7 +101,7 @@ interface SaleTransaction {
   subtotal: number;
   tax: number;
   total: number;
-  payment_method: "cash" | "card" | "other";
+  payment_method: "cash" | "card" | "other" | "split";
   created_at: string;
   shift_id: string | null;
   branch_id?: string | null;
@@ -130,6 +135,8 @@ const paymentMethodConfig = {
   cash: { label: "Cash", icon: Banknote, color: "bg-emerald-500/10 text-emerald-600" },
   card: { label: "Card", icon: CreditCard, color: "bg-primary/10 text-primary" },
   other: { label: "Other", icon: MoreHorizontal, color: "bg-muted text-muted-foreground" },
+  // One sale paid by several methods; the tenders are in sale_payments.
+  split: { label: "Split", icon: Split, color: "bg-amber-500/10 text-amber-700" },
 };
 
 // Sales page component
@@ -194,7 +201,6 @@ export default function Sales() {
     const el = detailsScrollRef.current;
     if (!el) return;
     let frame = 0;
-    let timeout: number | undefined;
     const updateScrollState = () => {
       setShowScrollTop(el.scrollTop > 240);
       const max = el.scrollHeight - el.clientHeight;
@@ -203,7 +209,7 @@ export default function Sales() {
     const resizeObserver = new ResizeObserver(() => updateScrollState());
     updateScrollState();
     frame = window.requestAnimationFrame(() => updateScrollState());
-    timeout = window.setTimeout(() => updateScrollState(), 120);
+    const timeout = window.setTimeout(() => updateScrollState(), 120);
     el.addEventListener("scroll", updateScrollState, { passive: true });
     resizeObserver.observe(el);
     Array.from(el.children).forEach((child) => resizeObserver.observe(child));
@@ -215,12 +221,27 @@ export default function Sales() {
     };
   }, [viewDetailsDialogOpen, viewingTransaction?.id]);
 
+  // Tenders of a split sale (one row per payment method), for the details dialog.
+  const { data: viewingTenders = [] } = useQuery({
+    queryKey: ["sale-tenders", viewingTransaction?.id],
+    enabled: viewDetailsDialogOpen && viewingTransaction?.payment_method === "split",
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("sale_payments")
+        .select("id, method, amount, tendered, change_given")
+        .eq("sale_id", viewingTransaction!.id)
+        .order("created_at", { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+  });
+
   // Payment history for the currently viewed transaction's settlement invoice
   const { data: paymentHistory = [], isLoading: paymentHistoryLoading } = useQuery({
     queryKey: ["transaction-payment-history", viewingTransaction?.settlement_invoice_id],
     enabled: viewDetailsDialogOpen && !!viewingTransaction?.settlement_invoice_id,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("settlement_payments")
         .select("id, amount, payment_method, payment_reference, notes, created_at")
         .eq("settlement_invoice_id", viewingTransaction!.settlement_invoice_id!)
@@ -242,7 +263,7 @@ export default function Sales() {
       const customerId = viewingTransaction!.customer_id!;
 
       // 1. Settlement payments (joined via settlement_invoices to filter by customer)
-      const { data: payments, error: payErr } = await supabase
+      const { data: payments, error: payErr } = await db
         .from("settlement_payments")
         .select(
           "id, amount, payment_method, payment_reference, notes, created_at, settlement_invoice:settlement_invoices!inner(invoice_number, customer_id)"
@@ -252,7 +273,7 @@ export default function Sales() {
       if (payErr) throw payErr;
 
       // 2. Manual balance adjustments
-      const { data: adjustments, error: adjErr } = await supabase
+      const { data: adjustments, error: adjErr } = await db
         .from("customer_balance_adjustments")
         .select("id, amount, adjustment_type, reason, notes, created_at")
         .eq("customer_id", customerId)
@@ -296,7 +317,7 @@ export default function Sales() {
       !!viewingTransaction?.customer_id &&
       viewingTransaction?.settlement_status === "unpaid",
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("settlement_invoices")
         .select(
           "id, invoice_number, billing_period_start, billing_period_end, total_amount, amount_paid, status, created_at, settlement_payments(id, amount, payment_method, payment_reference, notes, created_at)"
@@ -394,7 +415,7 @@ export default function Sales() {
     queryFn: async () => {
       if (!restaurant?.id) return 0;
       
-      let query = supabase
+      let query = db
         .from("sales_transactions")
         .select("*", { count: "exact", head: true })
         .eq("restaurant_id", restaurant.id);
@@ -439,7 +460,7 @@ export default function Sales() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       
-      let query = supabase
+      let query = db
         .from("sales_transactions")
         .select("*, settlement_status, branch:branches!sales_transactions_branch_id_fkey(id, name, code), customer:customers(id, name, phone, current_balance), shift:shifts(id, drawer_id, opened_at, closed_at, drawers(name)), sales_items(id, menu_item_id, quantity, unit_price, total_price, menu_item:menu_items(id, name, category))")
         .eq("restaurant_id", restaurant.id);
@@ -507,6 +528,28 @@ export default function Sales() {
       closed: boolean;
     }>,
   };
+  // Split bill: "1 of 3" for sales recorded together from one cart. Siblings may sit on other
+  // pages, so they are looked up by bill_group_id.
+  const billGroupIds = useMemo(
+    () => [...new Set((transactions as { bill_group_id?: string | null }[]).map((tx) => tx.bill_group_id).filter((g): g is string => !!g))],
+    [transactions],
+  );
+  const { data: billSiblings = [] } = useQuery({
+    queryKey: ["sales-bill-groups", restaurant?.id, billGroupIds],
+    queryFn: async () => {
+      const { data, error } = await db
+        .from("sales_transactions")
+        .select("id, bill_group_id, receipt_number")
+        .eq("restaurant_id", restaurant!.id)
+        .in("bill_group_id", billGroupIds);
+      if (error) throw error;
+      return data ?? [];
+    },
+    enabled: !!restaurant?.id && billGroupIds.length > 0,
+    staleTime: 60_000,
+  });
+  const billParts = useMemo(() => billPartLabels(billSiblings), [billSiblings]);
+
   const { data: thisMonthSales = emptyMonthSales } = useQuery({
     queryKey: ["sales-this-month", restaurant?.id, monthStartDay, salesBranchFilter],
     queryFn: async () => {
@@ -593,7 +636,7 @@ export default function Sales() {
       
       const fiscalMonth = getFiscalMonthRange(new Date(), monthStartDay);
       
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("total, settlement_status, paid_amount")
         .eq("restaurant_id", restaurant.id)
@@ -622,7 +665,7 @@ export default function Sales() {
       const fromDate = format(fiscalMonth.start, "yyyy-MM-dd");
       const toDate = format(fiscalMonth.end, "yyyy-MM-dd");
 
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("amount")
         .eq("restaurant_id", restaurant.id)
@@ -658,7 +701,7 @@ export default function Sales() {
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(), tz);
       
       // Get today's sales with shift info
-      let salesQ = supabase
+      let salesQ = db
         .from("sales_transactions")
         .select("total, shift_id")
         .eq("restaurant_id", restaurant.id)
@@ -675,12 +718,12 @@ export default function Sales() {
       if (shiftIds.length === 0) return [];
       
       // Fetch shift details - use template_id FK to shift_templates
-      const { data: shiftsData } = await supabase
+      const { data: shiftsData } = await db
         .from("shifts")
         .select("id, opened_at, template:shift_templates(name), drawers(name)")
         .in("id", shiftIds);
       
-      const shiftMap = new Map(shiftsData?.map(s => [s.id, s]) || []);
+      const shiftMap = new Map<any, any>(shiftsData?.map(s => [s.id, s]) || []);
       
       // Group sales by shift
       const shiftTotals = new Map<string, number>();
@@ -716,7 +759,7 @@ export default function Sales() {
       const tz = restaurant.timezone || "Asia/Riyadh";
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(), tz);
       
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("id", { count: "exact", head: true })
         .eq("restaurant_id", restaurant.id)
@@ -741,7 +784,7 @@ export default function Sales() {
       const tz = restaurant.timezone || "Asia/Riyadh";
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(), tz);
 
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("total")
         .eq("restaurant_id", restaurant.id)
@@ -762,7 +805,7 @@ export default function Sales() {
     queryFn: async () => {
       if (!restaurant?.id) return { total: 0, count: 0, paidTotal: 0, unpaidTotal: 0 };
       
-      let query = supabase
+      let query = db
         .from("sales_transactions")
         .select("total, settlement_status")
         .eq("restaurant_id", restaurant.id);
@@ -811,9 +854,9 @@ export default function Sales() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       
-      let query = supabase
+      let query = db
         .from("sales_transactions")
-        .select("*, shift:shifts(id, drawer_id, drawers(name))")
+        .select("*, shift:shifts(id, drawer_id, drawers(name)), sale_payments(method, amount)")
         .eq("restaurant_id", restaurant.id);
 
       query = applyBranchFilter(query);
@@ -860,41 +903,24 @@ export default function Sales() {
   }, [restaurant?.id]);
 
   // Realtime: refresh today's metrics + transactions list when sales change
-  useEffect(() => {
-    if (!restaurant?.id) return;
-    const channel = supabase
-      .channel(`sales-realtime-${restaurant.id}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "sales_transactions",
-          filter: `restaurant_id=eq.${restaurant.id}`,
-        },
-        () => {
-          queryClient.invalidateQueries({ queryKey: ["sales-today-total"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-today-count"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-today-by-shift"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-count"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-filtered-stats"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-this-month"] });
-          queryClient.invalidateQueries({ queryKey: ["sales-fiscal-month-paid-unpaid"] });
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [restaurant?.id, queryClient]);
+  // Live updates over the event channel (topic "sales").
+  useTableChanges({
+    topic: "sales",
+    restaurantId: restaurant?.id,
+    tables: ["sales_transactions"],
+    onChange: () => {
+      for (const key of ["sales-today-total", "sales-today-count", "sales-today-by-shift", "sales-transactions",
+        "sales-count", "sales-filtered-stats", "sales-this-month", "sales-fiscal-month-paid-unpaid"]) {
+        queryClient.invalidateQueries({ queryKey: [key] });
+      }
+    },
+  });
 
   const fetchOpenShifts = async () => {
     if (!restaurant?.id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id, drawer_id, drawers(name)")
         .eq("restaurant_id", restaurant.id)
@@ -914,7 +940,7 @@ export default function Sales() {
     if (!restaurant?.id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id, opened_at, closed_at, drawer_id, drawers(name), cashier_staff_id, staff(name)")
         .eq("restaurant_id", restaurant.id)
@@ -928,13 +954,6 @@ export default function Sales() {
     }
   };
 
-  const generateReceiptNumber = () => {
-    const date = new Date();
-    const dateStr = format(date, "yyyyMMdd");
-    const random = Math.floor(Math.random() * 10000).toString().padStart(4, "0");
-    return `RCP-${dateStr}-${random}`;
-  };
-
   const handleCreateSale = async (isBackdated: boolean = false) => {
     if (!subtotal || !restaurant?.id) {
       toast({ title: t("common.error"), description: t("app.sales.toasts.subtotalRequired"), variant: "destructive" });
@@ -943,51 +962,24 @@ export default function Sales() {
 
     setSubmitting(true);
     try {
-      const receiptNumber = generateReceiptNumber();
-      
       // Create timestamp for backdated sales
       let createdAt: string | undefined;
       if (isBackdated) {
         createdAt = new Date(`${saleDate}T${saleTime}:00`).toISOString();
       }
-      
-      const insertData: any = {
-        restaurant_id: restaurant.id,
-        subtotal: netSubtotal,
-        tax: tax,
-        total: total,
-        payment_method: paymentMethod,
-        receipt_number: receiptNumber,
-        shift_id: selectedShift && selectedShift !== "none" ? selectedShift : null,
-      };
-      
-      if (isBackdated && createdAt) {
-        insertData.created_at = createdAt;
-      }
 
-      const { data, error } = await supabase
-        .from("sales_transactions")
-        .insert(insertData)
-        .select()
-        .single();
-
-      if (error) throw error;
-
-      // Create cash event for shift tracking (all payment methods, not just cash)
-      if (selectedShift && selectedShift !== "none") {
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.from("cash_events").insert({
-            shift_id: selectedShift,
-            restaurant_id: restaurant.id,
-            event_type: "sale",
-            amount: total,
-            payment_method: paymentMethod,
-            created_by: user.id,
-            description: `Sale ${receiptNumber}`,
-          });
-        }
-      }
+      // POST /api/v1/pos/sales/summary: numbered in the restaurant's receipt sequence, VAT split
+      // with the entered rate, drawer entry when a shift is picked.
+      const { transactions } = await recordSummarySales({
+        restaurantId: restaurant.id,
+        branchId: activeBranchId && activeBranchId !== "all" ? activeBranchId : null,
+        shiftId: selectedShift && selectedShift !== "none" ? selectedShift : null,
+        kind: "manual",
+        createdAt: isBackdated && createdAt ? createdAt : null,
+        vatPercent: parseFloat(taxRate) || 0,
+        entries: [{ paymentMethod: paymentMethod as "cash" | "card" | "other", total }],
+      });
+      const receiptNumber = transactions[0].receipt_number;
 
       toast({ title: t("app.sales.toasts.saleRecorded"), description: t("app.sales.toasts.receipt", { number: receiptNumber }) });
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
@@ -1012,31 +1004,22 @@ export default function Sales() {
     setSaleTime(format(new Date(), "HH:mm"));
   };
 
-  const handleDeleteSale = async (transactionId: string) => {
+  // Sales are never deleted: the server voids them (negative mirror sale, stock back, refund
+  // from an open shift's drawer). POST /api/v1/pos/sales/:id/void
+  const handleDeleteSale = async (transactionId: string, reason: string): Promise<boolean> => {
+    if (!restaurant?.id) return false;
     try {
-      // First delete related sales_items
-      const { error: itemsError } = await supabase
-        .from("sales_items")
-        .delete()
-        .eq("transaction_id", transactionId);
-      
-      if (itemsError) throw itemsError;
-
-      // Then delete the transaction
-      const { error } = await supabase
-        .from("sales_transactions")
-        .delete()
-        .eq("id", transactionId);
-
-      if (error) throw error;
+      await voidSale(transactionId, { restaurantId: restaurant.id, reason });
 
       toast({ title: t("app.sales.toasts.saleDeleted") });
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["sales-count"] });
       queryClient.invalidateQueries({ queryKey: ["sales-all-stats"] });
+      return true;
     } catch (error: any) {
       console.error("Error deleting sale:", error);
       toast({ title: t("common.error"), description: error.message, variant: "destructive" });
+      return false;
     }
   };
 
@@ -1048,7 +1031,8 @@ export default function Sales() {
       ? ((transaction.tax / transaction.subtotal) * 100).toFixed(0)
       : "15";
     setTaxRate(calculatedTaxRate);
-    setPaymentMethod(transaction.payment_method);
+    // Split sales cannot be edited (the edit button is disabled); the server refuses it too.
+    setPaymentMethod(transaction.payment_method === "split" ? "other" : transaction.payment_method);
     setEditDialogOpen(true);
   };
 
@@ -1068,12 +1052,10 @@ export default function Sales() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase
-        .from("sales_transactions")
-        .update({ shift_id: selectedReassignShift && selectedReassignShift !== "none" ? selectedReassignShift : null })
-        .eq("id", reassigningTransaction.id);
-
-      if (error) throw error;
+      await editSale(reassigningTransaction.id, {
+        restaurantId: restaurant.id,
+        shiftId: selectedReassignShift && selectedReassignShift !== "none" ? selectedReassignShift : null,
+      });
 
       toast({ title: t("app.sales.toasts.shiftReassigned") });
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
@@ -1095,17 +1077,12 @@ export default function Sales() {
 
     setSubmitting(true);
     try {
-      const { error } = await supabase
-        .from("sales_transactions")
-        .update({
-          subtotal: netSubtotal,
-          tax: tax,
-          total: total,
-          payment_method: paymentMethod,
-        })
-        .eq("id", editingTransaction.id);
-
-      if (error) throw error;
+      await editSale(editingTransaction.id, {
+        restaurantId: restaurant.id,
+        total,
+        vatPercent: parseFloat(taxRate) || 0,
+        paymentMethod: paymentMethod as "cash" | "card" | "other",
+      });
 
       toast({ title: t("app.sales.toasts.saleUpdated") });
       queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
@@ -1937,7 +1914,7 @@ export default function Sales() {
                 </TableHeader>
                 <TableBody>
                   {transactions.map((transaction) => {
-                    const config = paymentMethodConfig[transaction.payment_method];
+                    const config = paymentMethodConfig[transaction.payment_method] ?? paymentMethodConfig.other;
                     const items = transaction.sales_items || [];
                     const itemsSummary = items.length > 0 
                       ? items.map(item => `${item.quantity}x ${(item.menu_item as any)?.name || 'Item'}`).join(', ')
@@ -1959,6 +1936,11 @@ export default function Sales() {
                         <TableCell className="font-mono text-xs">
                           <div className="flex items-center gap-1.5">
                             <span>{transaction.receipt_number || "-"}</span>
+                            {billParts.get(transaction.id) && (
+                              <Badge variant="secondary" className="text-[9px] px-1 py-0" title={t("app.sales.billPartTitle")}>
+                                {t("app.sales.billPart", billParts.get(transaction.id))}
+                              </Badge>
+                            )}
                             {isManualEod && (
                               <Badge
                                 variant="outline"
@@ -2059,7 +2041,8 @@ export default function Sales() {
                                   size="icon" 
                                   className="h-8 w-8"
                                   onClick={() => openEditDialog(transaction)}
-                                  title={t("app.sales.actions.editSale")}
+                                  disabled={transaction.payment_method === "split"}
+                                  title={transaction.payment_method === "split" ? t("app.sales.actions.splitNotEditable") : t("app.sales.actions.editSale")}
                                 >
                                   <Pencil className="h-4 w-4" />
                                 </Button>
@@ -2074,30 +2057,16 @@ export default function Sales() {
                                     <ArrowRightLeft className="h-4 w-4" />
                                   </Button>
                                 )}
-                                <AlertDialog>
-                                  <AlertDialogTrigger asChild>
-                                    <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive">
-                                      <Trash2 className="h-4 w-4" />
-                                    </Button>
-                                  </AlertDialogTrigger>
-                                  <AlertDialogContent>
-                                    <AlertDialogHeader>
-                                      <AlertDialogTitle>{t("app.sales.delete.title")}</AlertDialogTitle>
-                                      <AlertDialogDescription>
-                                        {t("app.sales.delete.desc", { receipt: transaction.receipt_number })}
-                                      </AlertDialogDescription>
-                                    </AlertDialogHeader>
-                                    <AlertDialogFooter>
-                                      <AlertDialogCancel>{t("app.sales.actions.cancel")}</AlertDialogCancel>
-                                      <AlertDialogAction 
-                                        onClick={() => handleDeleteSale(transaction.id)}
-                                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                                      >
-                                        {t("app.sales.actions.delete")}
-                                      </AlertDialogAction>
-                                    </AlertDialogFooter>
-                                  </AlertDialogContent>
-                                </AlertDialog>
+                                <VoidSaleDialog
+                                  receipt={transaction.receipt_number}
+                                  saleId={transaction.payment_method === "card" ? transaction.id : null}
+                                  bill={{ saleId: transaction.id, billGroupId: (transaction as { bill_group_id?: string | null }).bill_group_id, restaurantId: restaurant?.id }}
+                                  onConfirm={(reason) => handleDeleteSale(transaction.id, reason)}
+                                >
+                                  <Button variant="ghost" size="icon" className="h-8 w-8 text-destructive hover:text-destructive" title={t("app.sales.delete.confirm")}>
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </VoidSaleDialog>
                               </>
                             )}
                           </div>
@@ -2404,13 +2373,38 @@ export default function Sales() {
                   )}
                 </div>
 
+                {/* Split bill: the other sales this cart was divided into */}
+                <BillSiblings
+                  restaurantId={restaurant?.id}
+                  billGroupId={(viewingTransaction as { bill_group_id?: string | null }).bill_group_id}
+                  currentId={viewingTransaction.id}
+                  enabled={viewDetailsDialogOpen}
+                />
+
                 {/* Payment Info */}
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t("app.sales.details.paymentMethod")}</p>
-                    <Badge variant="secondary" className={paymentMethodConfig[viewingTransaction.payment_method].color}>
+                    <Badge variant="secondary" className={paymentMethodConfig[viewingTransaction.payment_method]?.color}>
                       {t(`app.sales.paymentMethods.${viewingTransaction.payment_method}`)}
                     </Badge>
+                    {viewingTenders.length > 0 && (
+                      <ul className="mt-1 space-y-0.5 text-xs">
+                        {viewingTenders.map((p) => (
+                          <li key={p.id} className="flex justify-between gap-2">
+                            <span>{t(`app.sales.paymentMethods.${p.method}`)}</span>
+                            <span className="tabular-nums">
+                              {formatCurrency(Number(p.amount))}
+                              {p.change_given != null && Number(p.change_given) > 0 && (
+                                <span className="text-muted-foreground">
+                                  {" "}({t("app.sales.details.changeGiven", { amount: formatCurrency(Number(p.change_given)) })})
+                                </span>
+                              )}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <p className="text-xs text-muted-foreground">{t("app.sales.details.shift")}</p>

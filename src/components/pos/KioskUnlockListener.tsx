@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
+import { subscribeEvents } from "@/integrations/db/events";
 import { useAuth } from "@/contexts/AuthContext";
 import { getTerminalId } from "@/lib/offline/terminal";
 import { exitKioskMode, isNativeKioskAvailable } from "@/lib/kiosk";
@@ -27,13 +28,12 @@ export function KioskUnlockListener() {
     if (!restaurantId || !isNativeKioskAvailable()) return;
 
     let cancelled = false;
-    let timer: number | undefined;
 
     const check = async () => {
       if (cancelled || handling.current) return;
       try {
         const terminalId = await getTerminalId();
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("kiosk_unlock_requests" as never)
           .select("id, reason, expires_at")
           .eq("restaurant_id", restaurantId)
@@ -49,7 +49,7 @@ export function KioskUnlockListener() {
         handling.current = true;
 
         if (new Date(req.expires_at).getTime() < Date.now()) {
-          await supabase
+          await db
             .from("kiosk_unlock_requests" as never)
             .update({ status: "expired" } as never)
             .eq("id", req.id);
@@ -59,7 +59,7 @@ export function KioskUnlockListener() {
 
         const res = await exitKioskMode();
         if (res.ok) {
-          await supabase
+          await db
             .from("kiosk_unlock_requests" as never)
             .update({
               status: "acknowledged",
@@ -81,21 +81,19 @@ export function KioskUnlockListener() {
     };
 
     void check();
-    timer = window.setInterval(check, POLL_MS);
+    const timer = window.setInterval(check, POLL_MS);
 
-    const channel = supabase
-      .channel(`kiosk-unlock-${restaurantId}`)
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "kiosk_unlock_requests" },
-        () => void check(),
-      )
-      .subscribe();
+    // A new unlock request for this restaurant triggers a check at once (event channel,
+    // topic "pos"); polling above covers missed events.
+    const unsubscribe = subscribeEvents("pos", restaurantId, (e) => {
+      const change = e.payload as { table?: string; op?: string };
+      if (change.table === "kiosk_unlock_requests" && change.op === "insert") void check();
+    });
 
     return () => {
       cancelled = true;
       if (timer) window.clearInterval(timer);
-      supabase.removeChannel(channel);
+      unsubscribe();
     };
   }, [restaurantId]);
 

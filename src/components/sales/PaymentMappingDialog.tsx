@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -176,7 +176,7 @@ export function PaymentMappingDialog({ open, onOpenChange, restaurantId, date, o
     queryKey: ["pos-payment-audit-users", auditUserIds],
     enabled: open && auditUserIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("profiles")
         .select("id,full_name")
         .in("id", auditUserIds);
@@ -203,7 +203,7 @@ export function PaymentMappingDialog({ open, onOpenChange, restaurantId, date, o
     queryKey: ["distinct-payment-methods", restaurantId],
     enabled: open && !!restaurantId,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .select("payment_method")
         .eq("restaurant_id", restaurantId)
@@ -225,7 +225,7 @@ export function PaymentMappingDialog({ open, onOpenChange, restaurantId, date, o
     queryKey: ["payment-mapping-preview-tx", restaurantId, date],
     enabled: open && !!restaurantId && !!date,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
         .select("total,payment_method")
         .eq("restaurant_id", restaurantId)

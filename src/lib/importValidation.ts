@@ -75,7 +75,7 @@ export function parseDateStrict(raw: unknown): { value: string | null; reason?: 
       ? { value: `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}` }
       : { value: null, reason: `"${v}" is not a real calendar date` };
   }
-  const dmy = v.match(/^(\d{1,2})[/.\-](\d{1,2})[/.\-](\d{2,4})$/);
+  const dmy = v.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{2,4})$/);
   if (dmy) {
     const d = Number(dmy[1]);
     const m = Number(dmy[2]);

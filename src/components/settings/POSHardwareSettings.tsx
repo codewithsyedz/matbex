@@ -12,7 +12,7 @@ import { Printer, ChefHat, Banknote, Settings2, TestTube, Loader2, CreditCard, G
 import { hardwareManager } from "@/lib/hardware/manager";
 import { usePOSHardware, POSHardwareSettings as HardwareSettings } from "@/hooks/usePOSHardware";
 import { queueReceiptPrint, generateKitchenOrderHTML, openCashDrawerViaSerial, printViaBrowser } from "@/lib/printUtils";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { ReceiptTemplatesManager } from "@/components/settings/ReceiptTemplatesManager";
 import { POSLayoutPicker } from "@/components/settings/POSLayoutPicker";
@@ -193,7 +193,7 @@ export function POSHardwareSettings() {
   const testHalaCharge = async () => {
     toast.info("Sending 1.00 SAR test charge to Hala terminal...");
     try {
-      const { data, error } = await supabase.functions.invoke("charge-hala-card", {
+      const { data, error } = await db.functions.invoke("charge-hala-card", {
         body: {
           amount: 1,
           currency: "SAR",

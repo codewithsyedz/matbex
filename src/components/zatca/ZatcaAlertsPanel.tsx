@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Card,
@@ -67,7 +67,7 @@ export function ZatcaAlertsPanel() {
     enabled: !!tenantId,
     refetchInterval: 30_000,
     queryFn: async () => {
-      const { data: open } = await supabase
+      const { data: open } = await db
         .from("zatca_alert_state")
         .select("*")
         .eq("tenant_id", tenantId!)
@@ -75,7 +75,7 @@ export function ZatcaAlertsPanel() {
         .order("severity", { ascending: false })
         .order("last_seen_at", { ascending: false })
         .limit(50);
-      const { data: recent } = await supabase
+      const { data: recent } = await db
         .from("zatca_alert_state")
         .select("*")
         .eq("tenant_id", tenantId!)
@@ -92,7 +92,7 @@ export function ZatcaAlertsPanel() {
   // Real-time stream - refresh as soon as the monitor inserts a row.
   useEffect(() => {
     if (!tenantId) return;
-    const channel = supabase
+    const channel = db
       .channel(`zatca_alerts_${tenantId}`)
       .on(
         "postgres_changes",
@@ -108,14 +108,14 @@ export function ZatcaAlertsPanel() {
       )
       .subscribe();
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [tenantId, qc]);
 
   async function runNow() {
     setRunning(true);
     try {
-      const { error } = await supabase.functions.invoke("zatca-device-monitor");
+      const { error } = await db.functions.invoke("zatca-device-monitor");
       if (error) throw error;
       toast.success("Health check complete");
       refetch();

@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ShieldCheck } from "lucide-react";
@@ -32,7 +32,7 @@ export function ReversalAuditLogCard({ reversalTransactionIds, enabled = true }:
     queryKey: ["reversal-audit-log", ids.slice().sort().join(",")],
     queryFn: async () => {
       if (ids.length === 0) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("audit_logs")
         .select("id, created_at, entity_id, old_data, new_data")
         .eq("action", "REVERSAL_POSTED")

@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowLeft, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 
@@ -76,7 +76,7 @@ export default function InventoryLinkRules() {
     queryKey: ["expense-categories-rules", restaurant?.id, activeBranchId],
     enabled: !!restaurant?.id,
     queryFn: async (): Promise<Category[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("expense_categories")
         .select("id, name, branch_id, default_inventory_item_id")
         .eq("restaurant_id", restaurant!.id)
@@ -101,7 +101,7 @@ export default function InventoryLinkRules() {
     queryKey: ["inventory-items-rules", restaurant?.id, activeBranchId],
     enabled: !!restaurant?.id,
     queryFn: async (): Promise<InvItem[]> => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("inventory_items")
         .select("id, name, unit, branch_id, is_active")
         .eq("restaurant_id", restaurant!.id)
@@ -128,7 +128,7 @@ export default function InventoryLinkRules() {
 
   const mutation = useMutation({
     mutationFn: async (params: { id: string; itemId: string | null }) => {
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from("expense_categories")
         .update({ default_inventory_item_id: params.itemId })
         .eq("id", params.id);

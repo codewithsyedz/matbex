@@ -6,7 +6,7 @@ import { isDashboardKey } from "@/lib/query/queryKeys";
  *
  * Why: dashboards are revisited constantly (tab switches, route changes,
  * app reloads on tablets). Without persistence every remount refetched the
- * same Supabase aggregates. We persist a small allowlist of read-only,
+ * same the API aggregates. We persist a small allowlist of read-only,
  * aggregate query keys to sessionStorage so a revisit paints from cache and
  * only revalidates in the background once the data goes stale.
  *

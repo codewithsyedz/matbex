@@ -3,6 +3,16 @@ import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { recordOfflineSale } from "@/lib/offline/posService";
+import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type RecordSaleResult, type SaleLineSize } from "@/lib/api/pos";
+import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
+import { SplitBillSheet, type RecordedBillPart } from "@/components/pos/SplitBillSheet";
+import { receiptTotals } from "@/lib/pos/receiptTotals";
+import { useGuestOrders } from "@/hooks/useGuestOrders";
+import { OpenChecksSheet, type PaidCheckPart } from "@/components/pos/OpenChecksSheet";
+import type { CheckDetail } from "@/lib/api/checks";
+import { chargeCardTenders, receiptTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders } from "@/lib/pos/splitTenders";
+import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
+import { ApiError } from "@/lib/api/http";
 import { toCdnUrl } from "@/lib/imageCdn";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
 import { ensureOfflineBootstrapped } from "@/lib/offline/lazyBootstrap";
@@ -76,13 +86,17 @@ import {
   ShoppingBag,
   Bike,
   PauseCircle,
+  SplitSquareHorizontal,
+  Users,
+  ChefHat,
+  ClipboardList,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar as CalendarComponent } from "@/components/ui/calendar";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useImpersonationGuard } from "@/hooks/useImpersonationGuard";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -110,12 +124,10 @@ import {
   logInvoiceGeneration,
   pdfBase64ToBytes,
 } from "@/lib/zatca/persistence";
-import {
-  advanceZatcaChain,
-  writeZatcaChainToSale,
-} from "@/lib/zatca/chain";
+import { stampZatcaChain } from "@/lib/api/zatca";
 import {
   buildSimplifiedTaxInvoiceUbl,
+  paymentMeansForTenders,
   uploadZatcaXml,
   writeXmlUrlToSale,
 } from "@/lib/zatca/ubl";
@@ -143,6 +155,23 @@ interface CartItem {
   quantity: number;
   isCombo?: boolean;
   imageUrl?: string | null;
+}
+
+/** What recording a sale returns to finishSale (an offline queue returns offlineReceiptNumber). */
+type SaleOutcome = { transaction: RecordSaleResult["transaction"]; receiptNumber: string; salesItems: RecordSaleResult["salesItems"] };
+
+/** One guest's part of a split bill, printed and invoiced on its own. */
+interface FinishPart {
+  items: CartItem[];
+  /** The part's listed lines total (before its discount share). */
+  listed: number;
+  documentDiscount: number;
+  documentSurcharge: number;
+  tenders: { method: "cash" | "card" | "other"; amount: number; tendered: number | null; change_given: number | null }[];
+  count: number;
+  last: boolean;
+  /** Paid from an open check: print and stamp only; the screen (and its cart) stays as it is. */
+  fromCheck?: { label: string };
 }
 
 interface ExpenseCategory {
@@ -176,6 +205,8 @@ export default function RecordSale() {
   const guardWrite = useImpersonationGuard();
   const { t } = useTranslation();
   const { activeBranchId, activeBranch } = useBranch();
+  const moyasar = useMoyasarCheckout(activeBranchId ?? null);
+  const moyasarPaidRef = useRef<{ intentId: string; amount: number } | null>(null);
   const shiftsEnabled = hasFeature("shifts");
   const { format: formatCurrency } = useCurrency();
   const queryClient = useQueryClient();
@@ -192,7 +223,7 @@ export default function RecordSale() {
     if (!tableIdFromUrl || !restaurant?.id) return;
     let cancelled = false;
     (async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("pos_tables")
         .select("id,label")
         .eq("id", tableIdFromUrl)
@@ -258,6 +289,8 @@ export default function RecordSale() {
   // Sales state
   const [cart, setCart] = useState<CartItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("cash");
+  /** Split tender: the sale is paid by the tenders in `splitTenders` instead of paymentMethod. */
+  const [isSplit, setIsSplit] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [isQRScannerOpen, setIsQRScannerOpen] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState<string>("top-selling");
@@ -525,7 +558,7 @@ export default function RecordSale() {
     queryKey: ["menu-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -547,7 +580,7 @@ export default function RecordSale() {
     queryKey: ["active-shifts", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -563,7 +596,7 @@ export default function RecordSale() {
     queryKey: ["expense-categories", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_categories")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -579,7 +612,7 @@ export default function RecordSale() {
     queryKey: ["combo-packages", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("combo_packages")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -596,7 +629,7 @@ export default function RecordSale() {
     queryKey: ["customers", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers")
         .select("id, name, phone, credit_limit, current_balance, credit_status")
         .eq("restaurant_id", restaurant.id)
@@ -609,14 +642,14 @@ export default function RecordSale() {
   });
 
   // Fetch top selling items (last 30 days)
-  const { data: topSellingData = [] } = useQuery({
+  const { data: topSellingData = [] } = useQuery<{ menuItemId: string; totalSold: number }[]>({
     queryKey: ["top-selling-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_items")
         .select("menu_item_id, quantity")
         .eq("restaurant_id", restaurant.id)
@@ -628,7 +661,7 @@ export default function RecordSale() {
       const aggregated = (data || []).reduce((acc, item) => {
         acc[item.menu_item_id] = (acc[item.menu_item_id] || 0) + item.quantity;
         return acc;
-      }, {} as Record<string, number>);
+      }, {} as Record<string, number>) as Record<string, number>;
       
       // Sort by quantity and get top 10
       const ranked = Object.entries(aggregated)
@@ -804,7 +837,10 @@ export default function RecordSale() {
 
   const hasZatcaErrors = Object.keys(zatcaValidation).length > 0;
 
-  const queueSaleOffline = async () => {
+  // One idempotency key per checkout, shared by the online attempt and the offline queue: if
+  // the online request committed but its response was lost, the offline replay returns that
+  // sale instead of recording a second one.
+  const queueSaleOffline = async (idempotencyKey?: string) => {
     if (!restaurant?.id || !user?.id || cart.length === 0) {
       throw new Error("Invalid sale data");
     }
@@ -827,16 +863,34 @@ export default function RecordSale() {
 
     const activeShift = shiftsEnabled ? activeShifts[0] : undefined;
     const result = await recordOfflineSale({
-      branchId: activeBranchId,
+      // The offline queue is scoped by restaurant (the sync engine drains by restaurant id);
+      // the real branch travels in the payload.
+      branchId: restaurant.id,
+      saleBranchId: activeBranchId,
+      idempotencyKey,
       cashierId: user.id,
       shiftId: activeShift?.id ?? null,
-      paymentMethod,
+      paymentMethod: splitActive ? "split" : paymentMethod,
+      payments: splitActive
+        ? toSalePayments(tenderParts(splitTenders.tenders)).map((p) => ({
+            method: p.method,
+            amount: p.amount,
+            tendered: p.tendered ?? null,
+            cardTerminal: null,
+          }))
+        : null,
       customerId: isUnpaidSale ? selectedCustomer?.id ?? null : null,
       isUnpaid: isUnpaidSale,
       vatRate,
+      pricesVatInclusive: pricesInclusive,
+      // Replayed to the API, which charges the same discount/surcharge (SAR only offline).
+      documentDiscount: zatcaTotals.discountSar,
+      documentSurcharge: zatcaTotals.surchargeSar,
       items: cart.map((c) => ({
         menu_item_id: c.menuItemId,
+        combo_id: c.isCombo ? c.menuItemId : null,
         name: c.name,
+        size: c.size === "combo" ? undefined : c.size,
         quantity: c.quantity,
         unit_price: c.price,
       })),
@@ -975,6 +1029,11 @@ export default function RecordSale() {
     };
   }, [cartTotal, docDiscount, docSurcharge, docCurrency, docFxRate, vatRate, pricesInclusive]);
 
+  // Split tender pays the SAR payable (what the server charges); not for credit or foreign-currency sales.
+  const splitTenders = useSplitTenders(zatcaTotals.payable);
+  const splitAllowed = !isUnpaidSale && (!docCurrency || docCurrency === "SAR");
+  const splitActive = isSplit && splitAllowed;
+
   // Build a UBL XML preview from current cart + ZATCA inputs. Uses
   // placeholder UUID/ICV/PIH so the operator can review structure
   // (allowance charges, buyer identification, totals) before submission.
@@ -1055,6 +1114,7 @@ export default function RecordSale() {
           : []),
       ],
       paymentMeansCode: paymentMethod === "cash" ? "10" : "30",
+      paymentMeans: splitActive ? paymentMeansForTenders(tenderParts(splitTenders.tenders)) : undefined,
     });
   };
 
@@ -1093,6 +1153,8 @@ export default function RecordSale() {
     docDiscount,
     docSurcharge,
     paymentMethod,
+    splitActive,
+    splitTenders.tenders,
     zatcaSettings,
     restaurant?.name,
   ]);
@@ -1205,6 +1267,10 @@ export default function RecordSale() {
 
   // Record sale mutation
   const recordSaleMutation = useMutation({
+    // The browser may report offline: this mutation queues the sale itself (offline queue), so
+    // it must run anyway. React Query's default ("online") pauses it instead, leaving the
+    // button on "Processing…" and nothing queued.
+    networkMode: "always",
     mutationFn: async () => {
       if (!guardWrite("record a sale")) {
         throw new Error("Test mode is read-only");
@@ -1234,7 +1300,7 @@ export default function RecordSale() {
       }
 
       // ── Offline guardrail ────────────────────────────────────────────
-      // The desktop ZATCA path issues many sequential Supabase calls
+      // The desktop ZATCA path issues many sequential the API calls
       // (insert, ZATCA hash, PDF, ledger) that have no fetch timeout.
       // When offline, queue a simple cash/card sale to IndexedDB and
       // return immediately so the Pay button never hangs. ZATCA-only
@@ -1248,8 +1314,17 @@ export default function RecordSale() {
       // button look stuck. We rely on the browser offline event + the warmed
       // connectivity watcher and immediately queue the sale when either says
       // offline.
+      const saleKey = crypto.randomUUID();
+      // Split tender: the tenders must pay the total exactly before anything is charged.
+      const splitParts = splitActive ? tenderParts(splitTenders.tenders) : [];
+      if (splitActive && !splitIsComplete(splitTenders.tenders, zatcaTotals.payable)) {
+        throw new Error(t("app.pos.recorder.splitIncomplete"));
+      }
       if (browserOffline || !isPosOnline()) {
-        return queueSaleOffline();
+        if (splitParts.some((p) => p.approval)) {
+          throw new Error("A card was already charged online; reconnect and press Charge again to record the sale.");
+        }
+        return queueSaleOffline(saleKey);
       }
 
       // Validate STANDARD invoice buyer details (B2B requires 15-digit VAT)
@@ -1297,760 +1372,109 @@ export default function RecordSale() {
         transactionTimestamp = new Date().toISOString();
       }
 
-      // Generate receipt number based on transaction date
-      const receiptDate = isUnpaidSale && isBackdated ? backdatedDate : new Date();
-      const receiptNumber = `RCP-${format(receiptDate, 'yyyyMMdd')}-${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`;
+      // One server call records the sale and everything that belongs to it in a single
+      // transaction (POST /api/v1/pos/sales): sale + lines, shift cash event, recipe stock
+      // deduction (database trigger, once), reorder requests, kitchen ticket and a live event.
+      // The server assigns a sequential receipt number and recomputes totals with the branch's
+      // VAT settings. Network failures still fall back to the offline queue.
+      const saleInput: RecordSaleInput = {
+        restaurantId: restaurant.id,
+        branchId: activeBranchId ?? null,
+        shiftId: activeShift?.id ?? null,
+        customerId: selectedCustomer?.id ?? null,
+        tableId: linkedTable?.id ?? null,
+        ...(splitActive ? {} : { paymentMethod }),
+        settlement: isUnpaidSale ? "unpaid" : "paid",
+        createdAt: isUnpaidSale && isBackdated ? transactionTimestamp : null,
+        // Same amounts the receipt and the ZATCA invoice use (zatcaTotals).
+        documentDiscount: zatcaTotals.discountSar,
+        documentSurcharge: zatcaTotals.surchargeSar,
+        lines: cart.map((item) =>
+          item.isCombo
+            ? { comboId: item.menuItemId, quantity: item.quantity, unitPrice: item.price }
+            : {
+                menuItemId: item.menuItemId,
+                size: item.size as SaleLineSize,
+                quantity: item.quantity,
+                unitPrice: item.price,
+              },
+        ),
+        invoice: {
+          subtype: invoiceSubtype,
+          buyerName: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,
+          buyerVat: invoiceSubtype === "STANDARD" ? buyerVat.trim() || null : null,
+          buyerOtherId: invoiceSubtype === "STANDARD" ? buyerIdValue.trim() || null : null,
+          buyerAddress: invoiceSubtype === "STANDARD" ? buyerAddress.trim() || null : null,
+        },
+      };
 
-      // Create sales transaction with settlement status
-      let transaction;
-      let txError;
+      // Card through Moyasar (when enabled for the POS): charge the server's quoted total by QR
+      // first and record the sale only once it is paid; the sales API checks the payment again.
+      // A payment that went through but whose sale failed to record is reused on the next try.
+      let cardTerminal: RecordSaleInput["cardTerminal"] = null;
+      if (splitActive) {
+        // Each card tender is paid through Moyasar for its own amount (when enabled); a card
+        // that fails stops here and keeps the tenders already paid. Without Moyasar, card
+        // tenders are taken on a standalone terminal, like a card sale today.
+        const toCharge = moyasar.enabled ? splitParts.filter((p) => p.method === "card" && !p.approval) : [];
+        if (toCharge.length) {
+          const quote = await quoteSale(saleInput);
+          if (Math.abs(quote.total - zatcaTotals.payable) >= 0.005) {
+            throw new Error("The total changed since the cart was loaded; check the cart and the payments, then charge again.");
+          }
+        }
+        await chargeCardTenders(
+          toCharge,
+          async (amount) => {
+            const intentId = await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` });
+            return { provider: "moyasar", status: "approved", reference: intentId } as CardTerminalApproval;
+          },
+          splitTenders.markApproved,
+        );
+      } else if (paymentMethod === "card" && !isUnpaidSale && moyasar.enabled) {
+        const quote = await quoteSale(saleInput);
+        const kept = moyasarPaidRef.current;
+        const intentId = kept && Math.abs(kept.amount - quote.total) < 0.005
+          ? kept.intentId
+          : await moyasar.charge({ amount: quote.total, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` });
+        moyasarPaidRef.current = { intentId, amount: quote.total };
+        cardTerminal = { provider: "moyasar", status: "approved", reference: intentId };
+      }
+
+      let saved: RecordSaleResult;
       try {
-        const response = await withOnlineWriteTimeout(
-          supabase
-          .from("sales_transactions")
-          .insert({
-            restaurant_id: restaurant.id,
-            shift_id: activeShift?.id || null,
-            payment_method: paymentMethod,
-            subtotal: subtotal,
-            tax: transactionVat,
-            total: transactionTotal,
-            receipt_number: receiptNumber,
-            customer_id: selectedCustomer?.id || null,
-            settlement_status: isUnpaidSale ? "unpaid" : "paid",
-            created_at: transactionTimestamp,
-            zatca_invoice_subtype: invoiceSubtype,
-            zatca_buyer_name: invoiceSubtype === "STANDARD" ? buyerName.trim() : null,
-            zatca_buyer_vat_number: invoiceSubtype === "STANDARD" ? buyerVat.trim() : null,
-            zatca_buyer_address: invoiceSubtype === "STANDARD" ? buyerAddress.trim() || null : null,
-            table_id: linkedTable?.id ?? null,
-          } as never)
-          .select()
-          .single(),
+        saved = await withOnlineWriteTimeout(
+          recordSale(
+            splitActive ? { ...saleInput, payments: toSalePayments(splitParts) } : { ...saleInput, cardTerminal },
+            { idempotencyKey: saleKey },
+          ),
           "Recording sale",
         );
-
-        transaction = response.data;
-        txError = response.error;
       } catch (error) {
-        if (isRecoverableNetworkError(error)) {
-          return queueSaleOffline();
+        if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
+          if (cardTerminal || splitParts.some((p) => p.approval)) throw new Error("The card payment went through but the sale could not be saved. Check the connection and press Charge again; the customer will not be charged twice.");
+          return queueSaleOffline(saleKey);
+        }
+        if (error instanceof ApiError && error.code === "price_changed") {
+          // The server prices every line. Show the cashier the current prices before charging.
+          const changed = (error.details as PriceChangedDetails | undefined)?.lines ?? [];
+          setCart((prev) =>
+            prev.map((c) => {
+              const hit = changed.find((l) => l.menuItemId === c.menuItemId && l.size === (c.size === "combo" ? "regular" : c.size));
+              return hit ? { ...c, price: hit.current } : c;
+            }),
+          );
+          void queryClient.invalidateQueries({ queryKey: ["menu-items", restaurant.id] });
+          void queryClient.invalidateQueries({ queryKey: ["branch-menu-prices"] });
+          throw new Error("Prices changed since the menu was loaded. The cart now shows the current prices; check the total and charge again.");
         }
         throw error;
       }
 
-      if (txError) {
-        if (isRecoverableNetworkError(txError)) {
-          return queueSaleOffline();
-        }
-        throw txError;
-      }
-
-      // Create sales items
-      const salesItems = cart.map((item) => ({
-        restaurant_id: restaurant.id,
-        transaction_id: transaction.id,
-        menu_item_id: item.menuItemId,
-        quantity: item.quantity,
-        unit_price: item.price,
-        total_price: item.price * item.quantity,
-      }));
-
-      const { error: itemsError } = await supabase
-        .from("sales_items")
-        .insert(salesItems);
-
-      if (itemsError) throw itemsError;
-
-      // Create cash_event for shift tracking (all payment methods)
-      if (activeShift?.id) {
-        await supabase.from("cash_events").insert({
-          shift_id: activeShift.id,
-          restaurant_id: restaurant.id,
-          event_type: "sale",
-          amount: subtotal,
-          payment_method: paymentMethod,
-          created_by: user.id,
-          description: `POS Sale ${receiptNumber}`,
-        });
-      }
-
-      // Deduct inventory based on recipes
-      for (const cartItem of cart) {
-        const { data: recipes } = await supabase
-          .from("recipe_ingredients")
-          .select("*, inventory_items(*)")
-          .eq("menu_item_id", cartItem.menuItemId)
-          .eq("restaurant_id", restaurant.id);
-
-        if (recipes && recipes.length > 0) {
-          for (const recipe of recipes) {
-            const totalUsage = recipe.quantity_required * cartItem.quantity;
-            const inventoryItem = recipe.inventory_items;
-
-            if (inventoryItem) {
-              // Record usage
-              await supabase.from("inventory_usage").insert({
-                restaurant_id: restaurant.id,
-                inventory_item_id: recipe.inventory_item_id,
-                quantity_used: totalUsage,
-                unit_cost: inventoryItem.unit_cost,
-                total_cost: totalUsage * inventoryItem.unit_cost,
-                created_by: user.id,
-                shift_id: activeShift?.id || null,
-                notes: `Auto-deducted from sale: ${cartItem.name}`,
-              });
-
-              // Update stock
-              const newStock = Math.max(0, inventoryItem.current_stock - totalUsage);
-              await supabase
-                .from("inventory_items")
-                .update({ current_stock: newStock })
-                .eq("id", recipe.inventory_item_id);
-
-              // Check reorder level
-              if (
-                inventoryItem.reorder_level &&
-                newStock <= inventoryItem.reorder_level
-              ) {
-                const { data: existingRequest } = await supabase
-                  .from("reorder_requests")
-                  .select("id")
-                  .eq("inventory_item_id", recipe.inventory_item_id)
-                  .eq("status", "pending")
-                  .single();
-
-                if (!existingRequest) {
-                  await supabase.from("reorder_requests").insert({
-                    restaurant_id: restaurant.id,
-                    inventory_item_id: recipe.inventory_item_id,
-                    current_stock: newStock,
-                    reorder_level: inventoryItem.reorder_level,
-                    requested_quantity: inventoryItem.reorder_level * 2,
-                  });
-                }
-              }
-            }
-          }
-        }
-      }
-
-      return { transaction, receiptNumber, salesItems };
+      moyasarPaidRef.current = null;
+      return { transaction: saved.transaction, receiptNumber: saved.receiptNumber, salesItems: saved.salesItems };
     },
-    onSuccess: (data) => {
-      if ("offlineReceiptNumber" in data) {
-        // ── Auto-print queued receipt ──────────────────────────────
-        // Cashier still gets a paper receipt for the customer even
-        // though the sale lives in the offline queue. ZATCA snapshot
-        // is null offline (no QR / chain), which the printer accepts.
-        const queuedReceiptNumber = (data as { offlineReceiptNumber: string }).offlineReceiptNumber;
-        if (posHardware.receipt_printer_enabled && posHardware.print_receipt_on_sale) {
-          const queuedReceipt: ReceiptData = {
-            vatRatePercent: vatPercent,
-            pricesVatInclusive: pricesInclusive,
-            restaurantName: restaurant?.name || "Restaurant",
-            receiptNumber: queuedReceiptNumber,
-            date: new Date(),
-            items: cart.map((item) => ({
-              name: item.name,
-              size: item.size,
-              quantity: item.quantity,
-              price: item.price,
-              total: item.price * item.quantity,
-            })),
-            subtotal: cartTotal,
-            tax: 0,
-            total: cartTotal,
-            paymentMethod,
-            customerName: selectedCustomer?.name,
-            header: posHardware.receipt_header || undefined,
-            footer: (posHardware.receipt_footer || "") + "\n[OFFLINE · pending sync]",
-            zatca: null,
-          };
-          const queuedKitchen: KitchenOrderData | null =
-            posHardware.kitchen_printer_enabled && posHardware.print_kitchen_on_sale
-              ? {
-                  orderNumber: queuedReceiptNumber.split("-").pop() || "001",
-                  date: new Date(),
-                  items: cart.map((item) => ({
-                    name: item.name,
-                    size: item.size,
-                    quantity: item.quantity,
-                  })),
-                }
-              : null;
-          handlePOSPrint(queuedReceipt, queuedKitchen, {
-            receiptEnabled: posHardware.receipt_printer_enabled,
-            receiptPrinterType: posHardware.receipt_printer_type,
-            receiptPrinterIp: posHardware.receipt_printer_ip || undefined,
-            receiptPrinterPort: posHardware.receipt_printer_port,
-            kitchenEnabled: posHardware.kitchen_printer_enabled,
-            kitchenPrinterType: posHardware.kitchen_printer_type,
-            kitchenPrinterIp: posHardware.kitchen_printer_ip || undefined,
-            kitchenPrinterPort: posHardware.kitchen_printer_port,
-            drawerEnabled: posHardware.cash_drawer_enabled,
-            drawerAutoOpen: posHardware.cash_drawer_auto_open_cash,
-            drawerKickCode: posHardware.cash_drawer_kick_code,
-            template: (pickTemplateForInvoice(receiptTemplates, invoiceSubtype)?.preset ?? posHardware.receipt_template) as
-              | "simple" | "tax_invoice" | "detailed" | "saudi_bilingual" | "zatca_standard",
-            templateConfig: (() => {
-              const t = pickTemplateForInvoice(receiptTemplates, invoiceSubtype);
-              return t
-                ? {
-                    language: t.language,
-                    paperWidth: t.paper_width,
-                    options: t.options as Record<string, boolean | string | number | null>,
-                    headerNoteEn: t.header_note_en,
-                    headerNoteAr: t.header_note_ar,
-                    footerNoteEn: t.footer_note_en,
-                    footerNoteAr: t.footer_note_ar,
-                  }
-                : undefined;
-            })(),
-            paymentMethod,
-          });
-        }
-
-        if (salesDraftKey) {
-          sessionStorage.removeItem(salesDraftKey);
-        }
-
-        setCart([]);
-        setSelectedCustomer(null);
-        setIsUnpaidSale(false);
-        setCustomerSearchTerm("");
-        setShowCustomerSelect(false);
-        setIsBackdated(false);
-        setBackdatedDate(new Date());
-        setBackdatedTime(format(new Date(), "HH:mm"));
-        setInvoiceSubtype("SIMPLIFIED");
-        setBuyerName("");
-        setBuyerVat("");
-        setBuyerAddress("");
-        setBuyerIdValue("");
-        setDocDiscount("");
-        setDocSurcharge("");
-        setDocCurrency("SAR");
-        setDocFxRate("");
-        setZatcaTouched({
-          buyerName: false,
-          buyerVat: false,
-          buyerIdValue: false,
-          docDiscount: false,
-          docSurcharge: false,
-          docFxRate: false,
-        });
-
-        toast.success(`Queued offline · ${data.offlineReceiptNumber}`, {
-          description: "Will sync automatically when back online.",
-        });
-        if (isUnpaidSale) {
-          void logUnpaidPosting({
-            event: "queued_offline",
-            restaurantId: restaurant?.id,
-            branchId: activeBranchId,
-            userId: user?.id,
-            customerId: selectedCustomer?.id ?? null,
-            receiptNumber: queuedReceiptNumber,
-            cartTotal: cartTotal,
-          });
-          setLastQueuedUnpaidReceipt(queuedReceiptNumber);
-        }
-        return;
-      }
-
-      // Build a single ZATCA snapshot at sale-completion time. The same
-      // snapshot drives the printed receipt, the queued reprint, and
-      // the PDF - guaranteeing the QR / VAT / totals never disagree.
-      const saleTimestamp = new Date().toISOString();
-      const snapshotPrinted = buildZatcaSnapshot(
-        zatcaSettings,
-        { subtotal: cartTotal, tax: 0, total: cartTotal, timestamp: saleTimestamp },
-        "printed",
-      );
-      const snapshotDigital = buildZatcaSnapshot(
-        zatcaSettings,
-        { subtotal: cartTotal, tax: 0, total: cartTotal, timestamp: saleTimestamp },
-        "digital",
-      );
-
-      // Trigger printing if enabled
-      if (posHardware.receipt_printer_enabled && posHardware.print_receipt_on_sale) {
-        const receiptData: ReceiptData = {
-          vatRatePercent: vatPercent,
-          pricesVatInclusive: pricesInclusive,
-          restaurantName: restaurant?.name || "Restaurant",
-          receiptNumber: data.receiptNumber,
-          date: new Date(),
-          items: cart.map(item => ({
-            name: item.name,
-            size: item.size,
-            quantity: item.quantity,
-            price: item.price,
-            total: item.price * item.quantity,
-          })),
-          subtotal: cartTotal,
-          tax: 0,
-          total: cartTotal,
-          paymentMethod: paymentMethod,
-          customerName: selectedCustomer?.name,
-          header: posHardware.receipt_header || undefined,
-          footer: posHardware.receipt_footer || undefined,
-          zatca: snapshotPrinted,
-        };
-
-        // Per-item printer routing (Kitchen vs Bar vs None).
-        // Looks up each cart line in menuItems for its print_route flag —
-        // defaults to 'kitchen' for items added before the column existed.
-        const routeFor = (menuItemId: string): "kitchen" | "bar" | "none" => {
-          const mi = menuItems.find((m) => m.id === menuItemId) as
-            | (MenuItem & { print_route?: string })
-            | undefined;
-          const r = mi?.print_route;
-          return r === "bar" || r === "none" ? r : "kitchen";
-        };
-        const orderNumber = data.receiptNumber.split("-").pop() || "001";
-        const ticketItems = cart.map((item) => ({
-          name: item.name,
-          size: item.size,
-          quantity: item.quantity,
-          route: routeFor(item.menuItemId),
-        }));
-        const kitchenItems = ticketItems.filter((i) => i.route === "kitchen");
-        const barItems = ticketItems.filter((i) => i.route === "bar");
-
-        const kitchenData: KitchenOrderData | null =
-          posHardware.kitchen_printer_enabled &&
-          posHardware.print_kitchen_on_sale &&
-          kitchenItems.length > 0
-            ? {
-                orderNumber,
-                date: new Date(),
-                stationLabel: "KITCHEN",
-                items: kitchenItems.map(({ route: _r, ...rest }) => rest),
-              }
-            : null;
-
-        const barData: KitchenOrderData | null =
-          posHardware.bar_printer_enabled &&
-          posHardware.print_bar_on_sale &&
-          barItems.length > 0
-            ? {
-                orderNumber,
-                date: new Date(),
-                stationLabel: "BAR",
-                items: barItems.map(({ route: _r, ...rest }) => rest),
-              }
-            : null;
-
-        handlePOSPrint(receiptData, kitchenData, {
-          receiptEnabled: posHardware.receipt_printer_enabled,
-          receiptPrinterType: posHardware.receipt_printer_type,
-          receiptPrinterIp: posHardware.receipt_printer_ip || undefined,
-          receiptPrinterPort: posHardware.receipt_printer_port,
-          kitchenEnabled: posHardware.kitchen_printer_enabled,
-          kitchenPrinterType: posHardware.kitchen_printer_type,
-          kitchenPrinterIp: posHardware.kitchen_printer_ip || undefined,
-          kitchenPrinterPort: posHardware.kitchen_printer_port,
-          barData,
-          barEnabled: posHardware.bar_printer_enabled,
-          barPrinterType: posHardware.bar_printer_type,
-          barPrinterIp: posHardware.bar_printer_ip || undefined,
-          barPrinterPort: posHardware.bar_printer_port,
-          drawerEnabled: posHardware.cash_drawer_enabled,
-          drawerAutoOpen: posHardware.cash_drawer_auto_open_cash,
-          drawerKickCode: posHardware.cash_drawer_kick_code,
-          template: (pickTemplateForInvoice(receiptTemplates, invoiceSubtype)?.preset ?? posHardware.receipt_template) as
-            | "simple" | "tax_invoice" | "detailed" | "saudi_bilingual" | "zatca_standard",
-          templateConfig: (() => {
-            const t = pickTemplateForInvoice(receiptTemplates, invoiceSubtype);
-            if (!t) return undefined;
-            return {
-              language: t.language,
-              paperWidth: t.paper_width,
-              options: t.options as Record<string, boolean | string | number | null>,
-              headerNoteEn: t.header_note_en,
-              headerNoteAr: t.header_note_ar,
-              footerNoteEn: t.footer_note_en,
-              footerNoteAr: t.footer_note_ar,
-              buyer:
-                invoiceSubtype === "STANDARD"
-                  ? { name: buyerName || null, vatNumber: buyerVat || null, address: buyerAddress || null, idValue: buyerIdValue || null }
-                  : null,
-            };
-          })(),
-          paymentMethod: paymentMethod,
-        });
-
-      }
-
-      // ZATCA PDF generation. Runs whether or not a printer is wired up,
-      // because the PDF is the legal artifact required by the spec.
-      const snapshotForPdf = snapshotDigital ?? snapshotPrinted;
-      const txnId = (data.transaction as { id?: string } | null)?.id ?? null;
-      const restaurantIdForLog = restaurant?.id ?? null;
-
-      // Phase 2: advance the per-device hash chain (ICV/PIH) and persist
-      // UUID + invoice hash on the transaction. Runs in the background
-      // and is a no-op when no active device is configured (Phase 1 mode).
-      const activeDeviceId = (zatcaSettings as { active_device_id?: string | null } | null)?.active_device_id ?? null;
-      if (txnId && activeDeviceId && snapshotForPdf) {
-        void (async () => {
-          try {
-            const chain = await advanceZatcaChain(activeDeviceId, {
-              receiptNumber: data.receiptNumber,
-              snapshot: snapshotForPdf,
-              items: cart.map((i) => ({ name: i.name, quantity: i.quantity, unitPrice: i.price, total: i.price * i.quantity })),
-              subtotal: cartTotal,
-              tax: 0,
-              total: cartTotal,
-              paymentMethod,
-            });
-            if (chain) {
-              await writeZatcaChainToSale({
-                salesTransactionId: txnId,
-                deviceId: activeDeviceId,
-                chain,
-              });
-              // UBL 2.1 XML - built from the same snapshot + chain values
-              // and uploaded to the private `zatca-xml` bucket. Audit-only
-              // for now (no clearance call); URL is stamped on the sale row.
-              try {
-                const restaurantIdForXml = restaurant?.id ?? null;
-                if (restaurantIdForXml) {
-                  const lines = cart.map((i) => {
-                    const mi = menuItems.find((m) => m.id === i.menuItemId) as
-                      | (typeof menuItems)[number]
-                      | undefined;
-                    const rawCat = (mi as { vat_category?: string } | undefined)?.vat_category;
-                    const vatCategory = (
-                      rawCat === "S" || rawCat === "Z" || rawCat === "E" || rawCat === "O"
-                        ? rawCat
-                        : "S"
-                    ) as "S" | "Z" | "E" | "O";
-                    const reason =
-                      (mi as { vat_exemption_reason_code?: string | null } | undefined)
-                        ?.vat_exemption_reason_code ?? null;
-                    const listed = lineGrossOf(i.price, i.quantity);
-                    const gross = vatCategory === "S" && !pricesInclusive ? roundMoney(listed * (1 + vatRate)) : listed;
-                    const lineExt = vatCategory === "S" ? netFromListed(listed, vatRate, pricesInclusive) : listed;
-                    const taxAmount = roundMoney(gross - lineExt);
-                    return {
-                      name: i.name,
-                      quantity: i.quantity,
-                      unitPrice: vatCategory === "S" ? netFromListed(i.price, vatRate, pricesInclusive) : roundMoney(i.price),
-                      lineExtension: lineExt,
-                      taxAmount,
-                      vatCategory,
-                      vatExemptionReasonCode: reason,
-                    };
-                  });
-                  const lineTaxTotal = sumMoney(lines.map((l) => l.taxAmount));
-                  const lineTaxableTotal = sumMoney(lines.map((l) => l.lineExtension));
-                  const xml = buildSimplifiedTaxInvoiceUbl({
-                    uuid: chain.uuid,
-                    receiptNumber: data.receiptNumber,
-                    issueDateTime: snapshotForPdf.timestamp,
-                    icv: chain.icv,
-                    pih: chain.pih,
-                    qrBase64: snapshotForPdf.qrBase64 ?? null,
-                    seller: {
-                      nameEn: snapshotForPdf.sellerName,
-                      nameAr: snapshotForPdf.sellerNameAr ?? null,
-                      vatNumber: snapshotForPdf.vatNumber,
-                    },
-                    invoiceSubtype,
-                    buyer: invoiceSubtype === "STANDARD" ? {
-                      name: buyerName.trim(),
-                      vatNumber: /^\d{15}$/.test(buyerVat.trim()) ? buyerVat.trim() : null,
-                      address: buyerAddress.trim() || null,
-                      countryCode: "SA",
-                      identification: buyerIdValue.trim()
-                        ? { scheme: buyerIdScheme, value: buyerIdValue.trim() }
-                        : null,
-                    } : null,
-                    currency: docCurrency || restaurant?.currency || "SAR",
-                    taxCurrency: "SAR",
-                    taxExchangeRate: docCurrency && docCurrency !== "SAR"
-                      ? parseFloat(docFxRate) || undefined
-                      : undefined,
-                    lines,
-                    // Adjust totals for document-level allowance/charge so
-                    // <PayableAmount> stays consistent with the cart total.
-                    taxExclusiveAmount: lineTaxableTotal,
-                    taxAmount: roundMoney(lineTaxTotal
-                      + vatFromGross((parseFloat(docSurcharge) || 0) - (parseFloat(docDiscount) || 0), vatRate)),
-                    taxInclusiveAmount: roundMoney(lineTaxableTotal + lineTaxTotal
-                      + ((parseFloat(docSurcharge) || 0) - (parseFloat(docDiscount) || 0))),
-                    allowanceCharges: [
-                      ...((parseFloat(docDiscount) || 0) > 0
-                        ? [{ isCharge: false, amount: parseFloat(docDiscount), reason: "Document-level discount", reasonCode: "95", vatCategory: "S" as const }]
-                        : []),
-                      ...((parseFloat(docSurcharge) || 0) > 0
-                        ? [{ isCharge: true, amount: parseFloat(docSurcharge), reason: "Document-level charge", reasonCode: "ZZZ", vatCategory: "S" as const }]
-                        : []),
-                    ],
-                    paymentMeansCode: paymentMethod === "cash" ? "10" : "30",
-                    vatRatePercent: vatPercent,
-                  });
-                  const xmlUrl = await uploadZatcaXml({
-                    restaurantId: restaurantIdForXml,
-                    receiptNumber: data.receiptNumber,
-                    xml,
-                  });
-                  if (xmlUrl) {
-                    await writeXmlUrlToSale({ salesTransactionId: txnId, xmlUrl });
-                  }
-                  // XAdES sign the unsigned UBL using the device key
-                  // (server-side - private key never leaves the backend).
-                  try {
-                    await supabase.functions.invoke("zatca-sign-invoice", {
-                      body: {
-                        device_id: activeDeviceId,
-                        sales_transaction_id: txnId,
-                        receipt_number: data.receiptNumber,
-                        xml,
-                        invoice_hash: chain.invoiceHash,
-                      },
-                    });
-                    // Submit the signed UBL to Fatoora for clearance/
-                    // reporting. Runs in simulation mode unless the
-                    // ZATCA_BASE_URL secret is configured.
-                    try {
-                      await supabase.functions.invoke("zatca-submit-clearance", {
-                        body: { sales_transaction_id: txnId },
-                      });
-                    } catch (subErr) {
-                      console.warn("[zatca] clearance submission failed", subErr);
-                    }
-                  } catch (signErr) {
-                    console.warn("[zatca] XAdES signing failed", signErr);
-                  }
-                }
-              } catch (xmlErr) {
-                console.warn("[zatca] UBL XML generation failed", xmlErr);
-              }
-            }
-          } catch (e) {
-            console.warn("[zatca] chain advance failed", e);
-          }
-        })();
-      }
-
-      if (
-        zatcaSettings?.qr_enabled &&
-        zatcaSettings?.auto_generate_pdf_receipt &&
-        snapshotForPdf
-      ) {
-        const mode = zatcaSettings.pdf_generation_mode ?? "SOFT";
-        const startedAt = performance.now();
-        const pdfPromise = generateZatcaPdf({
-          receiptNumber: data.receiptNumber,
-          date: saleTimestamp,
-          customerName: selectedCustomer?.name ?? null,
-          paymentMethod,
-          header: posHardware.receipt_header || null,
-          footer: posHardware.receipt_footer || null,
-          currencySymbol: restaurant?.currency || "SAR",
-          items: cart.map((item) => ({
-            name: item.name,
-            size: item.size,
-            quantity: item.quantity,
-            unitPrice: item.price,
-            total: item.price * item.quantity,
-          })),
-          subtotal: cartTotal,
-          tax: 0,
-          total: cartTotal,
-          zatca: { ...snapshotForPdf, showQr: true },
-          mode,
-        });
-
-        // Audit + snapshot persistence runs in the background so the UI
-        // (toast.promise) stays responsive. Errors here are logged but
-        // never bubble - the legal artifact already exists in the toast.
-        const persist = pdfPromise.then(
-          async (res) => {
-            const bytes = pdfBase64ToBytes(res.pdf);
-            let pdfUrl: string | null = null;
-            if (restaurantIdForLog) {
-              pdfUrl = await uploadZatcaPdf({
-                restaurantId: restaurantIdForLog,
-                receiptNumber: data.receiptNumber,
-                pdfBytes: bytes,
-              });
-            }
-            if (txnId) {
-              await writeZatcaSnapshot({
-                salesTransactionId: txnId,
-                snapshot: snapshotForPdf,
-                pdfUrl,
-              });
-            }
-            if (restaurantIdForLog) {
-              await logInvoiceGeneration({
-                restaurantId: restaurantIdForLog,
-                salesTransactionId: txnId,
-                receiptNumber: data.receiptNumber,
-                status: "success",
-                mode,
-                snapshot: snapshotForPdf,
-                pdfUrl,
-                pdfBytes: res.bytes ?? bytes.length,
-                durationMs: Math.round(performance.now() - startedAt),
-                triggeredBy: user?.id ?? null,
-              });
-            }
-          },
-          async (err: Error) => {
-            if (restaurantIdForLog) {
-              await logInvoiceGeneration({
-                restaurantId: restaurantIdForLog,
-                salesTransactionId: txnId,
-                receiptNumber: data.receiptNumber,
-                status: "failed",
-                mode,
-                snapshot: snapshotForPdf,
-                durationMs: Math.round(performance.now() - startedAt),
-                errorMessage: err?.message ?? "Unknown error",
-                triggeredBy: user?.id ?? null,
-              });
-            }
-          },
-        );
-        void persist;
-
-        toast.promise(pdfPromise, {
-          loading: "Generating ZATCA PDF receipt…",
-          success: (res) => {
-            try {
-              const url = pdfBase64ToBlobUrl(res.pdf);
-              window.open(url, "_blank", "noopener");
-              // Best-effort cleanup so we don't leak the object URL.
-              setTimeout(() => URL.revokeObjectURL(url), 60_000);
-            } catch (e) {
-              console.warn("Could not open PDF preview", e);
-            }
-            return "ZATCA PDF receipt ready";
-          },
-          error: (err: Error) => {
-            const msg = err?.message ?? "Unknown error";
-            // STRICT: block silently failing - surface a hard error.
-            // SOFT: warn but don't disrupt the sale flow.
-            return mode === "STRICT"
-              ? `ZATCA PDF failed (STRICT): ${msg}`
-              : `ZATCA PDF skipped: ${msg}`;
-          },
-        });
-      } else if (snapshotForPdf && txnId) {
-        // PDF auto-generation is off but we still have a valid QR snapshot
-        // (e.g. printed on the receipt only). Freeze the QR/VAT snapshot
-        // onto the transaction so reprints remain reproducible, and log
-        // a "skipped" generation row for completeness.
-        void writeZatcaSnapshot({
-          salesTransactionId: txnId,
-          snapshot: snapshotForPdf,
-          pdfUrl: null,
-        });
-        if (restaurantIdForLog) {
-          void logInvoiceGeneration({
-            restaurantId: restaurantIdForLog,
-            salesTransactionId: txnId,
-            receiptNumber: data.receiptNumber,
-            status: "skipped",
-            mode: zatcaSettings?.pdf_generation_mode ?? "SOFT",
-            snapshot: snapshotForPdf,
-            errorMessage: "auto_generate_pdf_receipt is OFF",
-            triggeredBy: user?.id ?? null,
-          });
-        }
-      } else if (zatcaSettings?.qr_enabled && !snapshotForPdf) {
-        // QR is enabled but settings are incomplete (e.g. missing 15-digit
-        // VAT number). Surface this once per sale so the operator notices.
-        toast.warning(
-          "ZATCA QR skipped - complete seller name & 15-digit VAT in Settings → ZATCA",
-        );
-        if (restaurantIdForLog) {
-          void logInvoiceGeneration({
-            restaurantId: restaurantIdForLog,
-            salesTransactionId: txnId,
-            receiptNumber: data.receiptNumber,
-            status: "skipped",
-            mode: zatcaSettings.pdf_generation_mode ?? "SOFT",
-            snapshot: null,
-            errorMessage: "Incomplete ZATCA settings (seller/VAT)",
-            triggeredBy: user?.id ?? null,
-          });
-        }
-      }
-
-      queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
-      queryClient.invalidateQueries({ queryKey: ["sales-items"] });
-      queryClient.invalidateQueries({ queryKey: ["inventory-items"] });
-      queryClient.invalidateQueries({ queryKey: ["customers"] });
-      
-      // Clear sales draft from sessionStorage
-      if (salesDraftKey) {
-        sessionStorage.removeItem(salesDraftKey);
-      }
-      
-      setCart([]);
-      setSelectedCustomer(null);
-      setIsUnpaidSale(false);
-      setCustomerSearchTerm("");
-      setShowCustomerSelect(false);
-      setIsBackdated(false);
-      setBackdatedDate(new Date());
-      setBackdatedTime(format(new Date(), "HH:mm"));
-      setInvoiceSubtype("SIMPLIFIED");
-      setBuyerName("");
-      setBuyerVat("");
-      setBuyerAddress("");
-      setBuyerIdValue("");
-      setDocDiscount("");
-      setDocSurcharge("");
-      setDocCurrency("SAR");
-      setDocFxRate("");
-      setZatcaTouched({
-        buyerName: false,
-        buyerVat: false,
-        buyerIdValue: false,
-        docDiscount: false,
-        docSurcharge: false,
-        docFxRate: false,
-      });
-      const message = isUnpaidSale 
-        ? `Sale recorded as unpaid for ${selectedCustomer?.name}${isBackdated ? ' (backdated)' : ''}`
-        : "Sale recorded successfully!";
-      toast.success(message);
-      setUnpaidPostError(null);
-      trackFunnel("first_order", { unpaid: isUnpaidSale });
-      // Flip linked table to "ordered" once a sale is successfully recorded
-      if (linkedTable?.id) {
-        void supabase
-          .from("pos_tables")
-          .update({ status: "ordered" } as never)
-          .eq("id", linkedTable.id);
-        setLinkedTable(null);
-        // Strip ?table from URL so refresh doesn't re-link
-        if (typeof window !== "undefined") {
-          const url = new URL(window.location.href);
-          url.searchParams.delete("table");
-          window.history.replaceState({}, "", url.toString());
-        }
-      }
-      if (isUnpaidSale && "receiptNumber" in data) {
-        void logUnpaidPosting({
-          event: "succeeded",
-          restaurantId: restaurant?.id,
-          branchId: activeBranchId,
-          userId: user?.id,
-          customerId: selectedCustomer?.id ?? null,
-          receiptNumber: (data as { receiptNumber?: string }).receiptNumber ?? null,
-          cartTotal: cartTotal,
-        });
-      }
-    },
+    onSuccess: (data) => finishSale(data),
     onError: (error: Error) => {
       const rawMsg = error?.message || "Failed to record sale";
       if (isUnpaidSale) {
@@ -2079,6 +1503,768 @@ export default function RecordSale() {
     },
   });
 
+  const [splitBillOpen, setSplitBillOpen] = useState(false);
+  // Open checks: the sheet, whether it adds the cart, and a table to open (from the floor plan).
+  const [checksOpen, setChecksOpen] = useState(false);
+  const [checksWithCart, setChecksWithCart] = useState(false);
+  // Guest QR orders waiting for staff: a badge on "Open checks".
+  const { data: waitingGuestOrders = [] } = useGuestOrders(restaurant?.id, activeBranchId ?? null);
+  const guestOrderCount = waitingGuestOrders.length;
+  const [checkTableId, setCheckTableId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("checkTable"),
+  );
+  useEffect(() => {
+    if (checkTableId) setChecksOpen(true);
+  }, [checkTableId]);
+  /** The guest bill of an open check on the receipt printer: not a tax invoice, no QR. */
+  const printCheckPrebill = (check: CheckDetail) => {
+    const items = check.lines.filter((l) => l.status === "active");
+    handlePOSPrint(
+      {
+        vatRatePercent: vatPercent,
+        pricesVatInclusive: pricesInclusive,
+        restaurantName: restaurant?.name || "Restaurant",
+        receiptNumber: check.checkNumber,
+        date: new Date(),
+        items: items.map((l) => ({ name: l.name, size: l.comboId ? undefined : l.size, quantity: l.quantity, price: l.unitPrice, total: l.lineTotal })),
+        ...receiptTotals({
+          linesListed: check.linesTotal,
+          documentSurcharge: check.serviceCharge,
+          vatRate,
+          pricesInclusive,
+          recorded: { tax: check.tax, total: check.total },
+        }),
+        paymentMethod: "",
+        header: `${t("app.pos.checks.prebillTitle")}${posHardware.receipt_header ? `\n${posHardware.receipt_header}` : ""}`,
+        footer: t("app.pos.checks.notTaxInvoice"),
+        zatca: null,
+      },
+      null,
+      {
+        receiptEnabled: true,
+        receiptPrinterType: posHardware.receipt_printer_type,
+        receiptPrinterIp: posHardware.receipt_printer_ip || undefined,
+        receiptPrinterPort: posHardware.receipt_printer_port,
+        kitchenEnabled: false,
+        kitchenPrinterType: posHardware.kitchen_printer_type,
+        drawerEnabled: false,
+        drawerAutoOpen: false,
+        paymentMethod: "",
+      },
+    );
+  };
+  /** A check was paid: print and stamp each of its sales like any sale (the cart is untouched). */
+  const finishCheckParts = (parts: PaidCheckPart[], check: CheckDetail) => {
+    const label = check.tableLabel ? t("app.pos.checks.table", { label: check.tableLabel }) : check.name || check.checkNumber;
+    parts.forEach((p, i) => {
+      const items: CartItem[] = p.lines.map((l) => ({
+        menuItemId: l.comboId ?? l.menuItemId!,
+        name: l.name,
+        size: (l.comboId ? "combo" : l.size) as CartItem["size"],
+        price: l.unitPrice,
+        quantity: l.quantity,
+        isCombo: !!l.comboId,
+      }));
+      finishSale(
+        { transaction: p.transaction, receiptNumber: p.receiptNumber, salesItems: p.salesItems },
+        {
+          items,
+          listed: sumMoney(items.map((it) => lineGrossOf(it.price, it.quantity))),
+          documentDiscount: p.documentDiscount,
+          documentSurcharge: p.documentSurcharge,
+          tenders: p.payments,
+          count: parts.length,
+          last: i === parts.length - 1,
+          fromCheck: { label },
+        },
+      );
+    });
+  };
+  /** Split bill by item: every guest's part is recorded; print and invoice them in guest order. */
+  const finishBillParts = (parts: RecordedBillPart[]) => {
+    parts.forEach((p, i) => {
+      const items = p.lines.map((l) => {
+        const at = Number(l.key.split(":")[0]);
+        return { ...cart[at], quantity: l.quantity };
+      });
+      const outcome = p.transaction
+        ? { transaction: p.transaction, receiptNumber: p.receiptNumber, salesItems: p.salesItems }
+        : ({ offlineReceiptNumber: p.receiptNumber } as never);
+      finishSale(outcome, {
+        items,
+        listed: sumMoney(items.map((it) => lineGrossOf(it.price, it.quantity))),
+        documentDiscount: p.totals.documentDiscount,
+        documentSurcharge: p.totals.documentSurcharge,
+        tenders: p.payments,
+        count: p.count,
+        last: i === parts.length - 1,
+      });
+    });
+  };
+
+  // finishSale reads the whole sale's state under these names; a split-bill part overrides them.
+  const wholeCart = cart;
+  const wholeCartTotal = cartTotal;
+  const wholeDocDiscount = docDiscount;
+  const wholeDocSurcharge = docSurcharge;
+  const wholePaymentMethod = paymentMethod;
+
+  /**
+   * A sale is recorded (or queued offline): print the receipt and kitchen tickets, stamp the
+   * ZATCA chain, XML and PDF, then reset the screen. Split bill calls it once per guest's part,
+   * in order, with that part's lines, tenders and discount share; the screen resets after the
+   * last part.
+   */
+  function finishSale(data: SaleOutcome, part?: FinishPart) {
+    // A split-bill part prints and invoices its own lines, tenders and discount share.
+    const cart = part ? part.items : wholeCart;
+    const cartTotal = part ? part.listed : wholeCartTotal;
+    const docDiscount = part ? String(part.documentDiscount) : wholeDocDiscount;
+    const docSurcharge = part ? String(part.documentSurcharge) : wholeDocSurcharge;
+    const paymentMethod = part ? (part.tenders.length > 1 ? "split" : part.tenders[0]?.method ?? "cash") : wholePaymentMethod;
+    // Receipt totals in SAR: a part's own amounts, else the whole sale's (zatcaTotals, FX applied).
+    const printedTotals = (recorded?: { tax?: number | null; total?: number | null }) =>
+      receiptTotals({
+        linesListed: part ? part.listed : zatcaTotals.subtotalSar,
+        documentDiscount: part ? part.documentDiscount : zatcaTotals.discountSar,
+        documentSurcharge: part ? part.documentSurcharge : zatcaTotals.surchargeSar,
+        vatRate,
+        pricesInclusive,
+        recorded,
+      });
+    // What the receipt and the invoice say about payment: every tender of a split sale.
+    const printedTenders = part ? (part.tenders.length > 1 ? part.tenders : null) : splitActive ? receiptTenders(tenderParts(splitTenders.tenders)) : null;
+    const printedMethod = printedTenders ? "split" : paymentMethod;
+    // The drawer opens when cash was taken.
+    const drawerMethod = printedTenders ? (printedTenders.some((p) => p.method === "cash") ? "cash" : "card") : paymentMethod;
+    if ("offlineReceiptNumber" in data) {
+      // ── Auto-print queued receipt ──────────────────────────────
+      // Cashier still gets a paper receipt for the customer even
+      // though the sale lives in the offline queue. ZATCA snapshot
+      // is null offline (no QR / chain), which the printer accepts.
+      const queuedReceiptNumber = (data as { offlineReceiptNumber: string }).offlineReceiptNumber;
+      if (posHardware.receipt_printer_enabled && posHardware.print_receipt_on_sale) {
+        const queuedReceipt: ReceiptData = {
+          vatRatePercent: vatPercent,
+          pricesVatInclusive: pricesInclusive,
+          restaurantName: restaurant?.name || "Restaurant",
+          receiptNumber: queuedReceiptNumber,
+          date: new Date(),
+          items: cart.map((item) => ({
+            name: item.name,
+            size: item.size,
+            quantity: item.quantity,
+            price: item.price,
+            total: item.price * item.quantity,
+          })),
+          // What was charged: the document discount/surcharge and VAT are on the receipt.
+          ...printedTotals(),
+          paymentMethod: printedMethod,
+          payments: printedTenders,
+          customerName: selectedCustomer?.name,
+          header: posHardware.receipt_header || undefined,
+          footer: (posHardware.receipt_footer || "") + "\n[OFFLINE · pending sync]",
+          zatca: null,
+        };
+        const queuedKitchen: KitchenOrderData | null =
+          posHardware.kitchen_printer_enabled && posHardware.print_kitchen_on_sale
+            ? {
+                orderNumber: queuedReceiptNumber.split("-").pop() || "001",
+                date: new Date(),
+                items: cart.map((item) => ({
+                  name: item.name,
+                  size: item.size,
+                  quantity: item.quantity,
+                })),
+              }
+            : null;
+        handlePOSPrint(queuedReceipt, queuedKitchen, {
+          receiptEnabled: posHardware.receipt_printer_enabled,
+          receiptPrinterType: posHardware.receipt_printer_type,
+          receiptPrinterIp: posHardware.receipt_printer_ip || undefined,
+          receiptPrinterPort: posHardware.receipt_printer_port,
+          kitchenEnabled: posHardware.kitchen_printer_enabled,
+          kitchenPrinterType: posHardware.kitchen_printer_type,
+          kitchenPrinterIp: posHardware.kitchen_printer_ip || undefined,
+          kitchenPrinterPort: posHardware.kitchen_printer_port,
+          drawerEnabled: posHardware.cash_drawer_enabled,
+          drawerAutoOpen: posHardware.cash_drawer_auto_open_cash,
+          drawerKickCode: posHardware.cash_drawer_kick_code,
+          template: (pickTemplateForInvoice(receiptTemplates, invoiceSubtype)?.preset ?? posHardware.receipt_template) as
+            | "simple" | "tax_invoice" | "detailed" | "saudi_bilingual" | "zatca_standard",
+          templateConfig: (() => {
+            const t = pickTemplateForInvoice(receiptTemplates, invoiceSubtype);
+            return t
+              ? {
+                  language: t.language,
+                  paperWidth: t.paper_width,
+                  options: t.options as Record<string, boolean | string | number | null>,
+                  headerNoteEn: t.header_note_en,
+                  headerNoteAr: t.header_note_ar,
+                  footerNoteEn: t.footer_note_en,
+                  footerNoteAr: t.footer_note_ar,
+                }
+              : undefined;
+          })(),
+          paymentMethod: drawerMethod,
+        });
+      }
+
+      if (part && !part.last) return;
+      if (salesDraftKey) {
+        sessionStorage.removeItem(salesDraftKey);
+      }
+
+      setCart([]);
+      splitTenders.reset();
+      setIsSplit(false);
+      setSelectedCustomer(null);
+      setIsUnpaidSale(false);
+      setCustomerSearchTerm("");
+      setShowCustomerSelect(false);
+      setIsBackdated(false);
+      setBackdatedDate(new Date());
+      setBackdatedTime(format(new Date(), "HH:mm"));
+      setInvoiceSubtype("SIMPLIFIED");
+      setBuyerName("");
+      setBuyerVat("");
+      setBuyerAddress("");
+      setBuyerIdValue("");
+      setDocDiscount("");
+      setDocSurcharge("");
+      setDocCurrency("SAR");
+      setDocFxRate("");
+      setZatcaTouched({
+        buyerName: false,
+        buyerVat: false,
+        buyerIdValue: false,
+        docDiscount: false,
+        docSurcharge: false,
+        docFxRate: false,
+      });
+
+      toast.success(part ? t("app.pos.billSplit.queuedParts", { count: part.count }) : `Queued offline · ${data.offlineReceiptNumber}`, {
+        description: "Will sync automatically when back online.",
+      });
+      if (isUnpaidSale) {
+        void logUnpaidPosting({
+          event: "queued_offline",
+          restaurantId: restaurant?.id,
+          branchId: activeBranchId,
+          userId: user?.id,
+          customerId: selectedCustomer?.id ?? null,
+          receiptNumber: queuedReceiptNumber,
+          cartTotal: cartTotal,
+        });
+        setLastQueuedUnpaidReceipt(queuedReceiptNumber);
+      }
+      return;
+    }
+
+    // Build a single ZATCA snapshot at sale-completion time. The same
+    // snapshot drives the printed receipt, the queued reprint, and
+    // the PDF - guaranteeing the QR / VAT / totals never disagree.
+    const saleTimestamp = new Date().toISOString();
+    // The QR must carry the invoice's real total and VAT: use what the server recorded
+    // (branch rate and pricing mode, document discount/surcharge), not the cart sum with
+    // VAT 0, which made every QR report zero VAT.
+    const savedTx = (data as { transaction?: { subtotal?: number; tax?: number; total?: number } }).transaction;
+    const qrTotals = {
+      subtotal: Number(savedTx?.subtotal ?? cartTotal),
+      tax: Number(savedTx?.tax ?? 0),
+      total: Number(savedTx?.total ?? cartTotal),
+      timestamp: saleTimestamp,
+    };
+    const snapshotPrinted = buildZatcaSnapshot(zatcaSettings, qrTotals, "printed");
+    const snapshotDigital = buildZatcaSnapshot(zatcaSettings, qrTotals, "digital");
+
+    // Trigger printing if enabled
+    if (posHardware.receipt_printer_enabled && posHardware.print_receipt_on_sale) {
+      const receiptData: ReceiptData = {
+        vatRatePercent: vatPercent,
+        pricesVatInclusive: pricesInclusive,
+        restaurantName: restaurant?.name || "Restaurant",
+        receiptNumber: data.receiptNumber,
+        date: new Date(),
+        items: cart.map(item => ({
+          name: item.name,
+          size: item.size,
+          quantity: item.quantity,
+          price: item.price,
+          total: item.price * item.quantity,
+        })),
+        // The recorded total and VAT, with the document discount shown.
+        ...printedTotals({ tax: qrTotals.tax, total: qrTotals.total }),
+        paymentMethod: printedMethod,
+        payments: printedTenders,
+        customerName: selectedCustomer?.name,
+        header: posHardware.receipt_header || undefined,
+        footer: posHardware.receipt_footer || undefined,
+        zatca: snapshotPrinted,
+      };
+
+      // Per-item printer routing (Kitchen vs Bar vs None).
+      // Looks up each cart line in menuItems for its print_route flag —
+      // defaults to 'kitchen' for items added before the column existed.
+      const routeFor = (menuItemId: string): "kitchen" | "bar" | "none" => {
+        const mi = menuItems.find((m) => m.id === menuItemId) as
+          | (MenuItem & { print_route?: string })
+          | undefined;
+        const r = mi?.print_route;
+        return r === "bar" || r === "none" ? r : "kitchen";
+      };
+      const orderNumber = data.receiptNumber.split("-").pop() || "001";
+      const ticketItems = cart.map((item) => ({
+        name: item.name,
+        size: item.size,
+        quantity: item.quantity,
+        route: routeFor(item.menuItemId),
+      }));
+      const kitchenItems = ticketItems.filter((i) => i.route === "kitchen");
+      const barItems = ticketItems.filter((i) => i.route === "bar");
+
+      const kitchenData: KitchenOrderData | null =
+        posHardware.kitchen_printer_enabled &&
+        posHardware.print_kitchen_on_sale &&
+        kitchenItems.length > 0
+          ? {
+              orderNumber,
+              date: new Date(),
+              stationLabel: "KITCHEN",
+              items: kitchenItems.map(({ route: _r, ...rest }) => rest),
+            }
+          : null;
+
+      const barData: KitchenOrderData | null =
+        posHardware.bar_printer_enabled &&
+        posHardware.print_bar_on_sale &&
+        barItems.length > 0
+          ? {
+              orderNumber,
+              date: new Date(),
+              stationLabel: "BAR",
+              items: barItems.map(({ route: _r, ...rest }) => rest),
+            }
+          : null;
+
+      handlePOSPrint(receiptData, kitchenData, {
+        receiptEnabled: posHardware.receipt_printer_enabled,
+        receiptPrinterType: posHardware.receipt_printer_type,
+        receiptPrinterIp: posHardware.receipt_printer_ip || undefined,
+        receiptPrinterPort: posHardware.receipt_printer_port,
+        kitchenEnabled: posHardware.kitchen_printer_enabled,
+        kitchenPrinterType: posHardware.kitchen_printer_type,
+        kitchenPrinterIp: posHardware.kitchen_printer_ip || undefined,
+        kitchenPrinterPort: posHardware.kitchen_printer_port,
+        barData,
+        barEnabled: posHardware.bar_printer_enabled,
+        barPrinterType: posHardware.bar_printer_type,
+        barPrinterIp: posHardware.bar_printer_ip || undefined,
+        barPrinterPort: posHardware.bar_printer_port,
+        drawerEnabled: posHardware.cash_drawer_enabled,
+        drawerAutoOpen: posHardware.cash_drawer_auto_open_cash,
+        drawerKickCode: posHardware.cash_drawer_kick_code,
+        template: (pickTemplateForInvoice(receiptTemplates, invoiceSubtype)?.preset ?? posHardware.receipt_template) as
+          | "simple" | "tax_invoice" | "detailed" | "saudi_bilingual" | "zatca_standard",
+        templateConfig: (() => {
+          const t = pickTemplateForInvoice(receiptTemplates, invoiceSubtype);
+          if (!t) return undefined;
+          return {
+            language: t.language,
+            paperWidth: t.paper_width,
+            options: t.options as Record<string, boolean | string | number | null>,
+            headerNoteEn: t.header_note_en,
+            headerNoteAr: t.header_note_ar,
+            footerNoteEn: t.footer_note_en,
+            footerNoteAr: t.footer_note_ar,
+            buyer:
+              invoiceSubtype === "STANDARD"
+                ? { name: buyerName || null, vatNumber: buyerVat || null, address: buyerAddress || null, idValue: buyerIdValue || null }
+                : null,
+          };
+        })(),
+        paymentMethod: drawerMethod,
+      });
+
+    }
+
+    // ZATCA PDF generation. Runs whether or not a printer is wired up,
+    // because the PDF is the legal artifact required by the spec.
+    const snapshotForPdf = snapshotDigital ?? snapshotPrinted;
+    const txnId = (data.transaction as { id?: string } | null)?.id ?? null;
+    const restaurantIdForLog = restaurant?.id ?? null;
+
+    // Phase 2: the server allocates the device's next ICV/PIH and stamps UUID + invoice hash
+    // on the sale in one transaction (POST /api/v1/zatca/sales/:id/chain), so a failure can
+    // no longer leave a gap in the chain. Runs in the background and is a no-op when no
+    // active device is configured (Phase 1 mode).
+    const activeDeviceId = (zatcaSettings as { active_device_id?: string | null } | null)?.active_device_id ?? null;
+    if (txnId && activeDeviceId && snapshotForPdf) {
+      void (async () => {
+        try {
+          const chain = restaurantIdForLog
+            ? await stampZatcaChain(txnId, {
+                restaurantId: restaurantIdForLog,
+                deviceId: activeDeviceId,
+                sellerName: snapshotForPdf.sellerName,
+                vatNumber: snapshotForPdf.vatNumber,
+                timestamp: snapshotForPdf.timestamp,
+              })
+            : null;
+          if (chain) {
+            // UBL 2.1 XML - built from the same snapshot + chain values
+            // and uploaded to the private `zatca-xml` bucket. Audit-only
+            // for now (no clearance call); URL is stamped on the sale row.
+            try {
+              const restaurantIdForXml = restaurant?.id ?? null;
+              if (restaurantIdForXml) {
+                const lines = cart.map((i) => {
+                  const mi = menuItems.find((m) => m.id === i.menuItemId) as
+                    | (typeof menuItems)[number]
+                    | undefined;
+                  const rawCat = (mi as { vat_category?: string } | undefined)?.vat_category;
+                  const vatCategory = (
+                    rawCat === "S" || rawCat === "Z" || rawCat === "E" || rawCat === "O"
+                      ? rawCat
+                      : "S"
+                  ) as "S" | "Z" | "E" | "O";
+                  const reason =
+                    (mi as { vat_exemption_reason_code?: string | null } | undefined)
+                      ?.vat_exemption_reason_code ?? null;
+                  const listed = lineGrossOf(i.price, i.quantity);
+                  const gross = vatCategory === "S" && !pricesInclusive ? roundMoney(listed * (1 + vatRate)) : listed;
+                  const lineExt = vatCategory === "S" ? netFromListed(listed, vatRate, pricesInclusive) : listed;
+                  const taxAmount = roundMoney(gross - lineExt);
+                  return {
+                    name: i.name,
+                    quantity: i.quantity,
+                    unitPrice: vatCategory === "S" ? netFromListed(i.price, vatRate, pricesInclusive) : roundMoney(i.price),
+                    lineExtension: lineExt,
+                    taxAmount,
+                    vatCategory,
+                    vatExemptionReasonCode: reason,
+                  };
+                });
+                const lineTaxTotal = sumMoney(lines.map((l) => l.taxAmount));
+                const lineTaxableTotal = sumMoney(lines.map((l) => l.lineExtension));
+                const xml = buildSimplifiedTaxInvoiceUbl({
+                  uuid: chain.uuid,
+                  receiptNumber: data.receiptNumber,
+                  issueDateTime: snapshotForPdf.timestamp,
+                  icv: chain.icv,
+                  pih: chain.pih,
+                  qrBase64: snapshotForPdf.qrBase64 ?? null,
+                  seller: {
+                    nameEn: snapshotForPdf.sellerName,
+                    nameAr: snapshotForPdf.sellerNameAr ?? null,
+                    vatNumber: snapshotForPdf.vatNumber,
+                  },
+                  invoiceSubtype,
+                  buyer: invoiceSubtype === "STANDARD" ? {
+                    name: buyerName.trim(),
+                    vatNumber: /^\d{15}$/.test(buyerVat.trim()) ? buyerVat.trim() : null,
+                    address: buyerAddress.trim() || null,
+                    countryCode: "SA",
+                    identification: buyerIdValue.trim()
+                      ? { scheme: buyerIdScheme, value: buyerIdValue.trim() }
+                      : null,
+                  } : null,
+                  currency: docCurrency || restaurant?.currency || "SAR",
+                  taxCurrency: "SAR",
+                  taxExchangeRate: docCurrency && docCurrency !== "SAR"
+                    ? parseFloat(docFxRate) || undefined
+                    : undefined,
+                  lines,
+                  // Adjust totals for document-level allowance/charge so
+                  // <PayableAmount> stays consistent with the cart total.
+                  taxExclusiveAmount: lineTaxableTotal,
+                  taxAmount: roundMoney(lineTaxTotal
+                    + vatFromGross((parseFloat(docSurcharge) || 0) - (parseFloat(docDiscount) || 0), vatRate)),
+                  taxInclusiveAmount: roundMoney(lineTaxableTotal + lineTaxTotal
+                    + ((parseFloat(docSurcharge) || 0) - (parseFloat(docDiscount) || 0))),
+                  allowanceCharges: [
+                    ...((parseFloat(docDiscount) || 0) > 0
+                      ? [{ isCharge: false, amount: parseFloat(docDiscount), reason: "Document-level discount", reasonCode: "95", vatCategory: "S" as const }]
+                      : []),
+                    ...((parseFloat(docSurcharge) || 0) > 0
+                      ? [{ isCharge: true, amount: parseFloat(docSurcharge), reason: "Document-level charge", reasonCode: "ZZZ", vatCategory: "S" as const }]
+                      : []),
+                  ],
+                  paymentMeansCode: paymentMethod === "cash" ? "10" : "30",
+                  paymentMeans: printedTenders ? paymentMeansForTenders(printedTenders) : undefined,
+                  vatRatePercent: vatPercent,
+                });
+                const xmlUrl = await uploadZatcaXml({
+                  restaurantId: restaurantIdForXml,
+                  receiptNumber: data.receiptNumber,
+                  xml,
+                });
+                if (xmlUrl) {
+                  await writeXmlUrlToSale({ restaurantId: restaurantIdForXml, salesTransactionId: txnId, xmlUrl });
+                }
+                // XAdES sign the unsigned UBL using the device key
+                // (server-side - private key never leaves the backend).
+                try {
+                  await db.functions.invoke("zatca-sign-invoice", {
+                    body: {
+                      device_id: activeDeviceId,
+                      sales_transaction_id: txnId,
+                      receipt_number: data.receiptNumber,
+                      xml,
+                      invoice_hash: chain.invoiceHash,
+                    },
+                  });
+                  // Submit the signed UBL to Fatoora for clearance/
+                  // reporting. Runs in simulation mode unless the
+                  // ZATCA_BASE_URL secret is configured.
+                  try {
+                    await db.functions.invoke("zatca-submit-clearance", {
+                      body: { sales_transaction_id: txnId },
+                    });
+                  } catch (subErr) {
+                    console.warn("[zatca] clearance submission failed", subErr);
+                  }
+                } catch (signErr) {
+                  console.warn("[zatca] XAdES signing failed", signErr);
+                }
+              }
+            } catch (xmlErr) {
+              console.warn("[zatca] UBL XML generation failed", xmlErr);
+            }
+          }
+        } catch (e) {
+          console.warn("[zatca] chain advance failed", e);
+        }
+      })();
+    }
+
+    if (
+      zatcaSettings?.qr_enabled &&
+      zatcaSettings?.auto_generate_pdf_receipt &&
+      snapshotForPdf
+    ) {
+      const mode = zatcaSettings.pdf_generation_mode ?? "SOFT";
+      const startedAt = performance.now();
+      const pdfPromise = generateZatcaPdf({
+        receiptNumber: data.receiptNumber,
+        date: saleTimestamp,
+        customerName: selectedCustomer?.name ?? null,
+        paymentMethod: printedMethod,
+        payments: printedTenders,
+        header: posHardware.receipt_header || null,
+        footer: posHardware.receipt_footer || null,
+        currencySymbol: restaurant?.currency || "SAR",
+        items: cart.map((item) => ({
+          name: item.name,
+          size: item.size,
+          quantity: item.quantity,
+          unitPrice: item.price,
+          total: item.price * item.quantity,
+        })),
+        subtotal: qrTotals.subtotal,
+        tax: qrTotals.tax,
+        total: qrTotals.total,
+        zatca: { ...snapshotForPdf, showQr: true },
+        mode,
+      });
+
+      // Audit + snapshot persistence runs in the background so the UI
+      // (toast.promise) stays responsive. Errors here are logged but
+      // never bubble - the legal artifact already exists in the toast.
+      const persist = pdfPromise.then(
+        async (res) => {
+          const bytes = pdfBase64ToBytes(res.pdf);
+          let pdfUrl: string | null = null;
+          if (restaurantIdForLog) {
+            pdfUrl = await uploadZatcaPdf({
+              restaurantId: restaurantIdForLog,
+              receiptNumber: data.receiptNumber,
+              pdfBytes: bytes,
+            });
+          }
+          if (txnId) {
+            await writeZatcaSnapshot({
+              restaurantId: restaurantIdForLog ?? restaurant!.id,
+              salesTransactionId: txnId,
+              snapshot: snapshotForPdf,
+              pdfUrl,
+            });
+          }
+          if (restaurantIdForLog) {
+            await logInvoiceGeneration({
+              restaurantId: restaurantIdForLog,
+              salesTransactionId: txnId,
+              receiptNumber: data.receiptNumber,
+              status: "success",
+              mode,
+              snapshot: snapshotForPdf,
+              pdfUrl,
+              pdfBytes: res.bytes ?? bytes.length,
+              durationMs: Math.round(performance.now() - startedAt),
+              triggeredBy: user?.id ?? null,
+            });
+          }
+        },
+        async (err: Error) => {
+          if (restaurantIdForLog) {
+            await logInvoiceGeneration({
+              restaurantId: restaurantIdForLog,
+              salesTransactionId: txnId,
+              receiptNumber: data.receiptNumber,
+              status: "failed",
+              mode,
+              snapshot: snapshotForPdf,
+              durationMs: Math.round(performance.now() - startedAt),
+              errorMessage: err?.message ?? "Unknown error",
+              triggeredBy: user?.id ?? null,
+            });
+          }
+        },
+      );
+      void persist;
+
+      toast.promise(pdfPromise, {
+        loading: "Generating ZATCA PDF receipt…",
+        success: (res) => {
+          try {
+            const url = pdfBase64ToBlobUrl(res.pdf);
+            window.open(url, "_blank", "noopener");
+            // Best-effort cleanup so we don't leak the object URL.
+            setTimeout(() => URL.revokeObjectURL(url), 60_000);
+          } catch (e) {
+            console.warn("Could not open PDF preview", e);
+          }
+          return "ZATCA PDF receipt ready";
+        },
+        error: (err: Error) => {
+          const msg = err?.message ?? "Unknown error";
+          // STRICT: block silently failing - surface a hard error.
+          // SOFT: warn but don't disrupt the sale flow.
+          return mode === "STRICT"
+            ? `ZATCA PDF failed (STRICT): ${msg}`
+            : `ZATCA PDF skipped: ${msg}`;
+        },
+      });
+    } else if (snapshotForPdf && txnId) {
+      // PDF auto-generation is off but we still have a valid QR snapshot
+      // (e.g. printed on the receipt only). Freeze the QR/VAT snapshot
+      // onto the transaction so reprints remain reproducible, and log
+      // a "skipped" generation row for completeness.
+      void writeZatcaSnapshot({
+        restaurantId: restaurantIdForLog ?? restaurant!.id,
+        salesTransactionId: txnId,
+        snapshot: snapshotForPdf,
+        pdfUrl: null,
+      });
+      if (restaurantIdForLog) {
+        void logInvoiceGeneration({
+          restaurantId: restaurantIdForLog,
+          salesTransactionId: txnId,
+          receiptNumber: data.receiptNumber,
+          status: "skipped",
+          mode: zatcaSettings?.pdf_generation_mode ?? "SOFT",
+          snapshot: snapshotForPdf,
+          errorMessage: "auto_generate_pdf_receipt is OFF",
+          triggeredBy: user?.id ?? null,
+        });
+      }
+    } else if (zatcaSettings?.qr_enabled && !snapshotForPdf) {
+      // QR is enabled but settings are incomplete (e.g. missing 15-digit
+      // VAT number). Surface this once per sale so the operator notices.
+      toast.warning(
+        "ZATCA QR skipped - complete seller name & 15-digit VAT in Settings → ZATCA",
+      );
+      if (restaurantIdForLog) {
+        void logInvoiceGeneration({
+          restaurantId: restaurantIdForLog,
+          salesTransactionId: txnId,
+          receiptNumber: data.receiptNumber,
+          status: "skipped",
+          mode: zatcaSettings.pdf_generation_mode ?? "SOFT",
+          snapshot: null,
+          errorMessage: "Incomplete ZATCA settings (seller/VAT)",
+          triggeredBy: user?.id ?? null,
+        });
+      }
+    }
+
+    queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
+    queryClient.invalidateQueries({ queryKey: ["sales-items"] });
+    queryClient.invalidateQueries({ queryKey: ["inventory-items"] });
+    queryClient.invalidateQueries({ queryKey: ["customers"] });
+    if (part && !part.last) return;
+    if (part?.fromCheck) {
+      toast.success(t("app.pos.checks.paid", { check: part.fromCheck.label, count: part.count }));
+      return;
+    }
+    
+    // Clear sales draft from sessionStorage
+    if (salesDraftKey) {
+      sessionStorage.removeItem(salesDraftKey);
+    }
+    
+    setCart([]);
+    splitTenders.reset();
+    setIsSplit(false);
+    setSelectedCustomer(null);
+    setIsUnpaidSale(false);
+    setCustomerSearchTerm("");
+    setShowCustomerSelect(false);
+    setIsBackdated(false);
+    setBackdatedDate(new Date());
+    setBackdatedTime(format(new Date(), "HH:mm"));
+    setInvoiceSubtype("SIMPLIFIED");
+    setBuyerName("");
+    setBuyerVat("");
+    setBuyerAddress("");
+    setBuyerIdValue("");
+    setDocDiscount("");
+    setDocSurcharge("");
+    setDocCurrency("SAR");
+    setDocFxRate("");
+    setZatcaTouched({
+      buyerName: false,
+      buyerVat: false,
+      buyerIdValue: false,
+      docDiscount: false,
+      docSurcharge: false,
+      docFxRate: false,
+    });
+    const message = part
+      ? t("app.pos.billSplit.recordedParts", { count: part.count })
+      : isUnpaidSale
+      ? `Sale recorded as unpaid for ${selectedCustomer?.name}${isBackdated ? ' (backdated)' : ''}`
+      : "Sale recorded successfully!";
+    toast.success(message);
+    setUnpaidPostError(null);
+    trackFunnel("first_order", { unpaid: isUnpaidSale });
+    // Flip linked table to "ordered" once a sale is successfully recorded
+    if (linkedTable?.id) {
+      void db
+        .from("pos_tables")
+        .update({ status: "ordered" } as never)
+        .eq("id", linkedTable.id);
+      setLinkedTable(null);
+      // Strip ?table from URL so refresh doesn't re-link
+      if (typeof window !== "undefined") {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("table");
+        window.history.replaceState({}, "", url.toString());
+      }
+    }
+    if (isUnpaidSale && "receiptNumber" in data) {
+      void logUnpaidPosting({
+        event: "succeeded",
+        restaurantId: restaurant?.id,
+        branchId: activeBranchId,
+        userId: user?.id,
+        customerId: selectedCustomer?.id ?? null,
+        receiptNumber: (data as { receiptNumber?: string }).receiptNumber ?? null,
+        cartTotal: cartTotal,
+      });
+    }
+  }
+
   // Helper to get default category (first available category)
   const getDefaultExpenseCategoryId = (): string | null => {
     if (expenseCategories && expenseCategories.length > 0) {
@@ -2096,7 +2282,7 @@ export default function RecordSale() {
       if (!restaurant?.id || !user?.id) throw new Error("Missing context");
       // Auto-assign default category if none selected
       const finalCategoryId = expenseCategoryId || getDefaultExpenseCategoryId();
-      const { error } = await supabase.from("expenses").insert({
+      const { error } = await db.from("expenses").insert({
         restaurant_id: restaurant.id,
         created_by: user.id,
         amount: parseFloat(expenseAmount),
@@ -2902,30 +3088,70 @@ export default function RecordSale() {
           {!isUnpaidSale && (
             <div className="space-y-2">
               <Label>{t("app.pos.order.paymentMethod")}</Label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-4 gap-2">
                 <Button
-                  variant={paymentMethod === "cash" ? "default" : "outline"}
+                  variant={!splitActive && paymentMethod === "cash" ? "default" : "outline"}
                   className="gap-1 text-xs sm:text-sm sm:gap-2"
-                  onClick={() => setPaymentMethod("cash")}
+                  onClick={() => { setIsSplit(false); setPaymentMethod("cash"); }}
                 >
                   <Banknote className="h-4 w-4" />
                   <span className="hidden sm:inline">{t("app.pos.order.cash")}</span>
                 </Button>
                 <Button
-                  variant={paymentMethod === "card" ? "default" : "outline"}
+                  variant={!splitActive && paymentMethod === "card" ? "default" : "outline"}
                   className="gap-1 text-xs sm:text-sm sm:gap-2"
-                  onClick={() => setPaymentMethod("card")}
+                  onClick={() => { setIsSplit(false); setPaymentMethod("card"); }}
                 >
                   <CreditCard className="h-4 w-4" />
                   <span className="hidden sm:inline">{t("app.pos.order.card")}</span>
                 </Button>
                 <Button
-                  variant={paymentMethod === "other" ? "default" : "outline"}
+                  variant={!splitActive && paymentMethod === "other" ? "default" : "outline"}
                   className="gap-1 text-xs sm:text-sm sm:gap-2"
-                  onClick={() => setPaymentMethod("other")}
+                  onClick={() => { setIsSplit(false); setPaymentMethod("other"); }}
                 >
                   <Wallet className="h-4 w-4" />
                   <span className="hidden sm:inline">{t("app.pos.order.other")}</span>
+                </Button>
+                <Button
+                  variant={splitActive ? "default" : "outline"}
+                  className="gap-1 text-xs sm:text-sm sm:gap-2"
+                  disabled={!splitAllowed}
+                  aria-label={t("app.pos.recorder.split")}
+                  onClick={() => setIsSplit(true)}
+                >
+                  <SplitSquareHorizontal className="h-4 w-4" />
+                  <span className="hidden sm:inline">{t("app.pos.recorder.split")}</span>
+                </Button>
+              </div>
+              {splitActive && <SplitTenderPanel split={splitTenders} formatCurrency={formatCurrency} />}
+              <Button
+                variant="outline"
+                size="sm"
+                className="w-full gap-1.5"
+                disabled={cart.length === 0 || !splitAllowed || invoiceSubtype === "STANDARD" || recordSaleMutation.isPending}
+                onClick={() => setSplitBillOpen(true)}
+              >
+                <Users className="h-4 w-4" />
+                {t("app.pos.billSplit.open")}
+              </Button>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5"
+                  disabled={cart.length === 0 || recordSaleMutation.isPending}
+                  onClick={() => { setChecksWithCart(true); setChecksOpen(true); }}
+                >
+                  <ChefHat className="h-4 w-4" />
+                  {t("app.pos.checks.sendToKitchen")}
+                </Button>
+                <Button variant="outline" size="sm" className="gap-1.5" onClick={() => { setChecksWithCart(false); setChecksOpen(true); }}>
+                  <ClipboardList className="h-4 w-4" />
+                  {t("app.pos.checks.title")}
+                  {guestOrderCount > 0 && (
+                    <Badge className="ms-1 h-5 px-1.5 text-[10px]" aria-label={t("app.pos.checks.guestOrders.waiting", { count: guestOrderCount })}>{guestOrderCount}</Badge>
+                  )}
                 </Button>
               </div>
             </div>
@@ -2944,7 +3170,7 @@ export default function RecordSale() {
           size="lg"
           className="w-full"
           variant="default"
-          disabled={cart.length === 0 || recordSaleMutation.isPending}
+          disabled={cart.length === 0 || recordSaleMutation.isPending || (splitActive && !splitTenders.ready)}
           onClick={async () => {
             // Reset any prior inline rejection so the alert only reflects
             // the outcome of *this* submit attempt.
@@ -3206,6 +3432,90 @@ export default function RecordSale() {
 
   return (
     <AppLayout>
+      {moyasar.dialog}
+      {restaurant?.id && (
+        <OpenChecksSheet
+          open={checksOpen}
+          onOpenChange={(o) => {
+            setChecksOpen(o);
+            if (!o && checkTableId) {
+              setCheckTableId(null);
+              const url = new URL(window.location.href);
+              url.searchParams.delete("checkTable");
+              window.history.replaceState({}, "", url.toString());
+            }
+          }}
+          restaurantId={restaurant.id}
+          branchId={activeBranchId ?? null}
+          shiftId={(shiftsEnabled ? activeShifts[0]?.id : null) ?? null}
+          vatRate={vatRate}
+          pricesInclusive={pricesInclusive}
+          cart={checksWithCart ? cart.map((c) => ({
+            name: c.name,
+            line: c.isCombo
+              ? { comboId: c.menuItemId, quantity: c.quantity, unitPrice: c.price }
+              : { menuItemId: c.menuItemId, size: (c.size === "combo" ? "regular" : c.size) as SaleLineSize, quantity: c.quantity, unitPrice: c.price },
+          })) : []}
+          onCartAdded={() => { setCart([]); setChecksWithCart(false); }}
+          tableId={checkTableId}
+          chargeCard={
+            moyasar.enabled
+              ? async (amount) => ({
+                  provider: "moyasar",
+                  status: "approved",
+                  reference: await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` }),
+                })
+              : null
+          }
+          onPaid={finishCheckParts}
+          onPrebill={posHardware.receipt_printer_enabled ? printCheckPrebill : undefined}
+          formatCurrency={formatCurrency}
+          restaurantName={restaurant.name}
+        />
+      )}
+      {restaurant?.id && user?.id && (
+        <SplitBillSheet
+          open={splitBillOpen}
+          onOpenChange={setSplitBillOpen}
+          lines={cart.map((c, i) => ({
+            key: `${i}:${c.menuItemId}:${c.size}`,
+            ...(c.isCombo ? { comboId: c.menuItemId } : { menuItemId: c.menuItemId }),
+            name: c.name,
+            size: (c.isCombo || c.size === "combo" ? "regular" : c.size) as SaleLineSize,
+            quantity: c.quantity,
+            unitPrice: c.price,
+          }))}
+          total={zatcaTotals.payable}
+          documentDiscount={zatcaTotals.discountSar}
+          documentSurcharge={zatcaTotals.surchargeSar}
+          vatRate={vatRate}
+          pricesInclusive={pricesInclusive}
+          order={{
+            restaurantId: restaurant.id,
+            branchId: activeBranchId ?? null,
+            shiftId: (shiftsEnabled ? activeShifts[0]?.id : null) ?? null,
+            customerId: selectedCustomer?.id ?? null,
+            tableId: linkedTable?.id ?? null,
+          }}
+          offline={{ cashierId: user.id, branchName: activeBranch?.name ?? null }}
+          chargeCard={
+            moyasar.enabled
+              ? async (amount) => ({
+                  provider: "moyasar",
+                  status: "approved",
+                  reference: await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` }),
+                })
+              : null
+          }
+          onTenders={(amounts) => {
+            splitTenders.fill(amounts);
+            setIsSplit(true);
+          }}
+          onRecorded={finishBillParts}
+          formatCurrency={formatCurrency}
+          restaurantName={restaurant.name}
+        />
+      )}
       <DemoExpiredLock>
       <div className="h-[calc(100vh-4rem)] flex flex-col">
         {/* Minimal POS Header — IBM Windows POS style */}

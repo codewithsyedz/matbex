@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { qk } from "@/lib/query/queryKeys";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -54,7 +54,7 @@ export function OverheadAllocationSettings() {
     queryKey: ["overhead-allocations", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("overhead_allocation")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -80,7 +80,7 @@ export function OverheadAllocationSettings() {
   const createMutation = useMutation({
     mutationFn: async (item: { name: string; monthly_amount: number; branch_id: string | null }) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("overhead_allocation")
         .insert({
           restaurant_id: restaurant.id,
@@ -107,7 +107,7 @@ export function OverheadAllocationSettings() {
 
   const updateMutation = useMutation({
     mutationFn: async (item: { id: string; name: string; monthly_amount: number; branch_id: string | null }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("overhead_allocation")
         .update({
           name: item.name,
@@ -128,7 +128,7 @@ export function OverheadAllocationSettings() {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("overhead_allocation")
         .update({ is_active })
         .eq("id", id);
@@ -143,7 +143,7 @@ export function OverheadAllocationSettings() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("overhead_allocation")
         .delete()
         .eq("id", id);

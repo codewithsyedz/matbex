@@ -12,6 +12,9 @@
     "paths": {
       "@/*": [
         "./src/*"
+      ],
+      "@matbex/client": [
+        "./packages/client/src/index.ts"
       ]
     },
     "noImplicitAny": false,

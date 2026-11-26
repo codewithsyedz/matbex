@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { getMetricsSnapshot, summarizeLatency, type SyncMetricsSnapshot } from "@/lib/offline/metrics";
 import { getQueueSnapshot } from "@/lib/offline/syncEngine";
 import { Activity, RefreshCw, Snowflake, AlertTriangle } from "lucide-react";
@@ -51,7 +51,7 @@ export default function SyncHealth() {
     setLoading(true);
     try {
       const [{ data, error }, snap, queue] = await Promise.all([
-        (supabase as any).from("sync_health_v1").select("*"),
+        (db as any).from("sync_health_v1").select("*"),
         getMetricsSnapshot(),
         getQueueSnapshot(),
       ]);
@@ -104,7 +104,7 @@ export default function SyncHealth() {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold flex items-center gap-2">
             <Activity className="h-6 w-6" /> Sync Health

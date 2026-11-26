@@ -5,7 +5,7 @@ import { ShieldCheck } from "lucide-react";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BranchScopeSelector } from "@/components/branches/BranchScopeSelector";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { usePermissions } from "@/contexts/PermissionsContext";
@@ -66,7 +66,7 @@ export default function Compliance() {
   const { data: staff = [] } = useQuery({
     queryKey: ["compliance-staff", restaurant?.id, scopedBranchId],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("staff")
         .select("id, name")
         .eq("restaurant_id", restaurant!.id)

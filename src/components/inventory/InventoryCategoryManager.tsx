@@ -38,7 +38,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/components/ui/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
@@ -92,7 +92,7 @@ export function InventoryCategoryManager() {
     queryKey: ["inventory-categories", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_categories")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -114,13 +114,13 @@ export function InventoryCategoryManager() {
       if (!restaurant?.id) throw new Error("No restaurant");
 
       if (editingCategory) {
-        const { error } = await supabase
+        const { error } = await db
           .from("inventory_categories")
           .update(categoryData)
           .eq("id", editingCategory.id);
         if (error) throw error;
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("inventory_categories")
           .insert({ ...categoryData, restaurant_id: restaurant.id });
         if (error) throw error;
@@ -143,7 +143,7 @@ export function InventoryCategoryManager() {
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (categoryId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("inventory_categories")
         .delete()
         .eq("id", categoryId);

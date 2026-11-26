@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { format } from "date-fns";
@@ -128,7 +128,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       
-      let query = supabase
+      let query = db
         .from("daily_cogs_submissions")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -154,7 +154,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("daily_cogs_submissions")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -173,7 +173,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
     queryFn: async () => {
       if (!restaurant?.id) return null;
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cogs_historical_stats")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -198,7 +198,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
       if (!restaurant?.id || !user?.id) throw new Error("Not authenticated");
       
       // Check for existing submission
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("daily_cogs_submissions")
         .select("id")
         .eq("restaurant_id", restaurant.id)
@@ -210,7 +210,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
         throw new Error("A submission for this date and shift already exists");
       }
       
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from("daily_cogs_submissions")
         .insert({
           restaurant_id: restaurant.id,
@@ -252,7 +252,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
     }) => {
       const { id, ...updates } = data;
       
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from("daily_cogs_submissions")
         .update(updates)
         .eq("id", id)
@@ -283,7 +283,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
       // Log exception if needed
       if (data.remarks && data.reasonCode) {
         const reason = EXCEPTION_REASONS.find(r => r.value === data.reasonCode);
-        await supabase.from("cogs_exception_logs").insert({
+        await db.from("cogs_exception_logs").insert({
           submission_id: data.id,
           exception_type: "high_food_cost",
           reason_code: data.reasonCode,
@@ -293,7 +293,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
         });
       }
       
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from("daily_cogs_submissions")
         .update({
           status: "submitted",
@@ -322,7 +322,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
     mutationFn: async (id: string) => {
       if (!user?.id) throw new Error("Not authenticated");
       
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from("daily_cogs_submissions")
         .update({
           status: "approved",
@@ -352,7 +352,7 @@ export function useCOGSSubmissions(dateFilter?: { from: Date; to: Date }) {
     mutationFn: async (data: { id: string; reason: string }) => {
       if (!user?.id) throw new Error("Not authenticated");
       
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from("daily_cogs_submissions")
         .update({
           status: "rejected",
@@ -431,7 +431,7 @@ export function useCOGSStockItems(submissionId: string | null) {
     queryFn: async () => {
       if (!submissionId) return [];
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cogs_stock_items")
         .select("*")
         .eq("submission_id", submissionId)
@@ -454,7 +454,7 @@ export function useCOGSStockItems(submissionId: string | null) {
       const category = STOCK_CATEGORIES.find(c => c.value === data.category);
       
       // Check if item exists
-      const { data: existing } = await supabase
+      const { data: existing } = await db
         .from("cogs_stock_items")
         .select("id")
         .eq("submission_id", data.submission_id)
@@ -463,7 +463,7 @@ export function useCOGSStockItems(submissionId: string | null) {
         .single();
       
       if (existing) {
-        const { data: result, error } = await supabase
+        const { data: result, error } = await db
           .from("cogs_stock_items")
           .update({ amount: data.amount, notes: data.notes })
           .eq("id", existing.id)
@@ -472,7 +472,7 @@ export function useCOGSStockItems(submissionId: string | null) {
         if (error) throw error;
         return result;
       } else {
-        const { data: result, error } = await supabase
+        const { data: result, error } = await db
           .from("cogs_stock_items")
           .insert({
             ...data,
@@ -512,7 +512,7 @@ export function useCOGSPurchases(submissionId: string | null) {
     queryFn: async () => {
       if (!submissionId) return [];
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cogs_purchases")
         .select("*")
         .eq("submission_id", submissionId)
@@ -536,7 +536,7 @@ export function useCOGSPurchases(submissionId: string | null) {
     }) => {
       if (!user?.id) throw new Error("Not authenticated");
       
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from("cogs_purchases")
         .insert({
           ...data,
@@ -560,7 +560,7 @@ export function useCOGSPurchases(submissionId: string | null) {
 
   const deletePurchase = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("cogs_purchases")
         .delete()
         .eq("id", id);
@@ -597,7 +597,7 @@ export function useCOGSExceptions(submissionId: string | null) {
     queryFn: async () => {
       if (!submissionId) return [];
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("cogs_exception_logs")
         .select("*")
         .eq("submission_id", submissionId)

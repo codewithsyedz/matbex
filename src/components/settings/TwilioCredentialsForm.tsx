@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Eye, EyeOff, Loader2, KeyRound, Save } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 interface Props {
@@ -42,9 +42,9 @@ export function TwilioCredentialsForm({ tenantId: tenantIdProp }: Props) {
       return;
     }
     (async () => {
-      const { data: u } = await supabase.auth.getUser();
+      const { data: u } = await db.auth.getUser();
       if (!u.user) return;
-      const { data } = await supabase
+      const { data } = await db
         .from("profiles")
         .select("tenant_id")
         .eq("id", u.user.id)
@@ -60,7 +60,7 @@ export function TwilioCredentialsForm({ tenantId: tenantIdProp }: Props) {
     let cancelled = false;
     (async () => {
       setLoading(true);
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("twilio_credentials" as any)
         .select("*")
         .eq("tenant_id", tenantId)
@@ -89,13 +89,13 @@ export function TwilioCredentialsForm({ tenantId: tenantIdProp }: Props) {
 
   const handleSave = async () => {
     setSaving(true);
-    const { data: u } = await supabase.auth.getUser();
+    const { data: u } = await db.auth.getUser();
     const payload = {
       tenant_id: tenantId,
       ...form,
       updated_by: u.user?.id ?? null,
     };
-    const { error } = await supabase
+    const { error } = await db
       .from("twilio_credentials" as any)
       .upsert(payload, { onConflict: "tenant_id" });
     setSaving(false);

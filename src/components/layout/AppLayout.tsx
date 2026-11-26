@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { useLocation } from "react-router-dom";
 import { AppSidebar } from "./AppSidebar";
 import { AppHeader } from "./AppHeader";
@@ -15,6 +15,9 @@ import { PwaInstallPrompt } from "@/components/pwa/PwaInstallPrompt";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { motion } from "framer-motion";
 import { usePrefetchRoute } from "@/hooks/usePrefetchRoute";
+
+// Loaded after startup (not in the entry bundle); the banner appears once its data arrives anyway.
+const ActiveAnnouncements = lazy(() => import("./AnnouncementBanner").then((m) => ({ default: m.ActiveAnnouncements })));
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -79,6 +82,7 @@ export function AppLayout({ children }: AppLayoutProps) {
         <ImpersonationBanner />
         <RoleImpersonationBanner />
         <TrialBanner />
+        <Suspense fallback={null}><ActiveAnnouncements /></Suspense>
         <AppHeader />
         <motion.main
           variants={contentVariants}

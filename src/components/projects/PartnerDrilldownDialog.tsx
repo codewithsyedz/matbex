@@ -31,7 +31,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import {
   FUNDING_LABELS,
@@ -39,9 +39,6 @@ import {
   type ProjectPartner,
   type ProjectTransaction,
 } from "@/hooks/useProjects";
-
-const db = supabase as any;
-
 interface LedgerRow {
   id: string;
   account_id: string;

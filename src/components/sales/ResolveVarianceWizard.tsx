@@ -38,7 +38,7 @@ import { Bookmark, Plus, Star } from "lucide-react";
 import { useVarianceTemplateUsage } from "@/hooks/useVarianceTemplateUsage";
 
 /** Matches [placeholder] tokens. Excludes already-filled ones with no brackets. */
-const PLACEHOLDER_REGEX = /\[([^\[\]\n]{1,60}?)\]/g;
+const PLACEHOLDER_REGEX = /\[([^[\]\n]{1,60}?)\]/g;
 
 function findPlaceholders(text: string): string[] {
   const out: string[] = [];

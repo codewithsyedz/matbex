@@ -18,7 +18,7 @@ import {
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -52,13 +52,15 @@ export function VatRemittancePanel({
   periodEnd,
   vatReturnId,
 }: VatRemittancePanelProps) {
-  const { tenant } = useAuth() as any;
+  const { tenant, profile } = useAuth() as any;
   const { branches, activeBranchId, pinnedBranchId } = useBranch();
   const { format: fmtMoney } = useCurrency();
   const queryClient = useQueryClient();
   const { accounts } = useChartOfAccounts();
 
-  const tenantId = restaurantId ?? tenant?.id;
+  // The ledger is per business (tenant), not per restaurant: a restaurant id here matched
+  // nothing except where the two ids happen to be equal.
+  const tenantId: string | undefined = tenant?.id ?? profile?.tenant_id;
   const [branchId, setBranchId] = useState<string>(pinnedBranchId ?? activeBranchId ?? "all");
   const [open, setOpen] = useState(false);
   const [paymentDate, setPaymentDate] = useState(format(new Date(), "yyyy-MM-dd"));
@@ -81,7 +83,7 @@ export function VatRemittancePanel({
     queryKey: ["vat-payable-balance", tenantId, branchId],
     enabled: !!tenantId && !!vatAccount?.id,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("account_transactions")
         .select("debit, credit")
         .eq("tenant_id", tenantId)
@@ -101,7 +103,7 @@ export function VatRemittancePanel({
     queryKey: ["vat-remittances", tenantId, branchId],
     enabled: !!tenantId,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("vat_remittances" as any)
         .select("*")
         .eq("tenant_id", tenantId)
@@ -123,7 +125,7 @@ export function VatRemittancePanel({
 
   const postMutation = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.rpc("post_vat_remittance" as any, {
+      const { data, error } = await db.rpc("post_vat_remittance" as any, {
         p_payment_date: paymentDate,
         p_amount: Number(amount),
         p_payment_account_id: paymentAccountId,
@@ -157,7 +159,7 @@ export function VatRemittancePanel({
 
   const voidMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.rpc("void_vat_remittance" as any, {
+      const { error } = await db.rpc("void_vat_remittance" as any, {
         p_remittance_id: id,
         p_reason: "Voided from VAT return screen",
       });

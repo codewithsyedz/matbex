@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useMenuCategories } from "@/hooks/useMenuCategories";
 import { motion, AnimatePresence } from "framer-motion";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Capacitor } from "@capacitor/core";
@@ -32,6 +33,10 @@ import {
   AlertCircle,
   RefreshCw,
   Receipt,
+  SplitSquareHorizontal,
+  Users,
+  ChefHat,
+  ClipboardList,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
@@ -56,9 +61,17 @@ import { AdminPinDialog } from "@/components/pos/AdminPinDialog";
 import { EmergencyKioskUnlockDialog } from "@/components/pos/EmergencyKioskUnlockDialog";
 import { KioskWifiDialog } from "@/components/pos/KioskWifiDialog";
 import { recordOfflineSale } from "@/lib/offline/posService";
+import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize } from "@/lib/api/pos";
+import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
+import { SplitBillSheet } from "@/components/pos/SplitBillSheet";
+import { useGuestOrders } from "@/hooks/useGuestOrders";
+import { OpenChecksSheet } from "@/components/pos/OpenChecksSheet";
+import { chargeCardTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders, type SplitTenders } from "@/lib/pos/splitTenders";
+import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
+import { ApiError } from "@/lib/api/http";
 import { isOnline } from "@/lib/offline/connectivity";
 import { useCurrency } from "@/hooks/useCurrency";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { prefetchImages, getCachedImageSrc, rememberImage } from "@/lib/offline/imageCache";
 import { PendingSyncBadge } from "@/components/pos/PendingSyncBadge";
 import { RecordExpenseDialog } from "@/components/expenses/RecordExpenseDialog";
@@ -144,6 +157,8 @@ interface MenuItem {
   full_price?: number | null;
   image_url?: string | null;
   is_chefs_special?: boolean | null;
+  /** A combo package shown as a card; sold as a combo line (the server records its items). */
+  is_combo?: boolean;
 }
 
 type Variant = "quarter" | "half" | "full" | "default";
@@ -156,6 +171,8 @@ interface CartLine {
   price: number;
   qty: number;
   image_url?: string | null;
+  /** The line is a combo package: `id` is the combo's id. */
+  combo?: boolean;
 }
 
 type PaymentMethod = "cash" | "card" | "other";
@@ -190,6 +207,15 @@ export default function RecordSaleMobile() {
   const [cart, setCart] = useState<CartLine[]>([]);
   const [payment, setPayment] = useState<PaymentMethod>("cash");
   const [unpaid, setUnpaid] = useState(false);
+  /** Split tender: the sale is paid by the tenders in splitTenders instead of `payment`. */
+  const [isSplit, setIsSplit] = useState(false);
+  const [splitBillOpen, setSplitBillOpen] = useState(false);
+  const [checksWithCart, setChecksWithCart] = useState(false);
+  // Opened from the floor plan for a table (?checkTable=): its check, or a new one for it.
+  const [checkTableId] = useState<string | null>(() =>
+    typeof window === "undefined" ? null : new URLSearchParams(window.location.search).get("checkTable"),
+  );
+  const [checksOpen, setChecksOpen] = useState(!!checkTableId);
   const [customerOpen, setCustomerOpen] = useState(false);
   const [customerSearch, setCustomerSearch] = useState("");
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -241,7 +267,7 @@ export default function RecordSaleMobile() {
     queryKey: ["pos-tablet-menu", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as MenuItem[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select(
           "id, name, category, selling_price, quarter_price, half_price, full_price, image_url, is_chefs_special",
@@ -271,11 +297,36 @@ export default function RecordSaleMobile() {
     });
   }, [rawMenuItems, priceMap]);
 
+  // Combo packages: shown under their own category as one card each, at the combo price.
+  const combosLabel = t("app.pos.order.combos", { defaultValue: "Combos" });
+  const { data: comboItems = [] } = useQuery({
+    queryKey: ["pos-tablet-combos", restaurant?.id],
+    queryFn: async () => {
+      if (!restaurant?.id) return [] as MenuItem[];
+      const { data, error } = await db
+        .from("combo_packages")
+        .select("id, name, price")
+        .eq("restaurant_id", restaurant.id)
+        .eq("is_active", true)
+        .order("name");
+      if (error) throw error;
+      return (data ?? []).map((c) => ({
+        id: c.id,
+        name: c.name,
+        category: combosLabel,
+        selling_price: Number(c.price) || 0,
+        is_combo: true,
+      })) as MenuItem[];
+    },
+    enabled: !!restaurant?.id,
+  });
+  const sellableItems = useMemo(() => [...menuItems, ...comboItems], [menuItems, comboItems]);
+
   const { data: activeShifts = [] } = useQuery({
     queryKey: ["pos-tablet-shifts", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id")
         .eq("restaurant_id", restaurant.id)
@@ -287,14 +338,14 @@ export default function RecordSaleMobile() {
     enabled: !!restaurant?.id,
   });
 
-  const { data: topSellingData = [] } = useQuery({
+  const { data: topSellingData = [] } = useQuery<{ menuItemId: string; totalSold: number }[]>({
     queryKey: ["top-selling-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
       const thirtyDaysAgo = new Date();
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_items")
         .select("menu_item_id, quantity")
         .eq("restaurant_id", restaurant.id)
@@ -305,7 +356,7 @@ export default function RecordSaleMobile() {
       const aggregated = (data || []).reduce((acc, item) => {
         acc[item.menu_item_id] = (acc[item.menu_item_id] || 0) + item.quantity;
         return acc;
-      }, {} as Record<string, number>);
+      }, {} as Record<string, number>) as Record<string, number>;
 
       const ranked = Object.entries(aggregated)
         .sort(([, a], [, b]) => b - a)
@@ -323,7 +374,7 @@ export default function RecordSaleMobile() {
     queryKey: ["pos-tablet-customers", restaurant?.id, customerBranchId ?? "all"],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Customer[];
-      let qb = supabase
+      let qb = db
         .from("customers")
         .select("id, name, phone, credit_limit, current_balance, credit_status")
         .eq("restaurant_id", restaurant.id)
@@ -354,9 +405,12 @@ export default function RecordSaleMobile() {
     void prefetchImages(menuItems.map((m) => toCdnUrl(m.image_url)));
   }, [menuItems]);
 
+  // Category names (en/ar) for the chips; items store the category key.
+  const { labelOf: categoryLabel } = useMenuCategories(pricingBranchId || null);
+
   const categories = useMemo(() => {
     const set = new Set<string>();
-    menuItems.forEach((m) => m.category && set.add(m.category));
+    sellableItems.forEach((m) => m.category && set.add(m.category));
     const all = Array.from(set);
     // Surface "Main" (case-insensitive) first
     all.sort((a, b) => {
@@ -366,7 +420,7 @@ export default function RecordSaleMobile() {
       return a.localeCompare(b);
     });
     return all;
-  }, [menuItems]);
+  }, [sellableItems]);
 
   useEffect(() => {
     if (categoryInitialized || categories.length === 0) return;
@@ -384,7 +438,7 @@ export default function RecordSaleMobile() {
 
   const visibleItems = useMemo(() => {
     const q = search.trim().toLowerCase();
-    let items = menuItems.filter((m) => {
+    let items = sellableItems.filter((m) => {
       if (category !== ALL && m.category !== category) return false;
       if (q && !m.name.toLowerCase().includes(q)) return false;
       return true;
@@ -398,9 +452,14 @@ export default function RecordSaleMobile() {
       });
     }
     return items;
-  }, [menuItems, search, category, sortByTopSales, salesRankMap]);
+  }, [sellableItems, search, category, sortByTopSales, salesRankMap]);
 
   const { activeBranchId, activeBranch } = useBranch();
+  const moyasar = useMoyasarCheckout(activeBranchId ?? null);
+  // Guest QR orders waiting for staff: a badge on "Open checks".
+  const { data: waitingGuestOrders = [] } = useGuestOrders(restaurant?.id, activeBranchId ?? null);
+  const guestOrderCount = waitingGuestOrders.length;
+  const moyasarPaidRef = useRef<{ intentId: string; amount: number } | null>(null);
   // VAT rate is configured per branch (Settings → Branches).
   const { vatRate, vatPercent, pricesInclusive } = useBranchVatRate(activeBranchId);
 
@@ -456,23 +515,37 @@ export default function RecordSaleMobile() {
     pricesInclusive,
   );
   const total = grossTotal;
+  const splitTenders = useSplitTenders(total);
+  const splitActive = isSplit && !unpaid;
 
-  const queueSaleOffline = async () => {
+  const sizeOf = (v: Variant): SaleLineSize => (v === "default" ? "regular" : v);
+
+  // `idempotencyKey`: the key of the online attempt that just failed, so a sale that did reach
+  // the server is returned, not recorded again, when the queue replays it.
+  const queueSaleOffline = async (idempotencyKey?: string) => {
     if (!restaurant?.id || !user?.id || cart.length === 0) throw new Error("Cart is empty");
 
     const activeShift = activeShifts[0];
     const result = await recordOfflineSale({
-      branchId: activeBranchId ?? restaurant.id,
+      // Queue scope is the restaurant (the sync engine drains by it); the branch rides along.
+      branchId: restaurant.id,
+      saleBranchId: activeBranchId ?? null,
+      idempotencyKey,
       cashierId: user.id,
       shiftId: activeShift?.id || null,
-      paymentMethod: payment,
+      paymentMethod: splitActive ? "split" : payment,
+      payments: splitActive
+        ? toSalePayments(tenderParts(splitTenders.tenders)).map((p) => ({ method: p.method, amount: p.amount, tendered: p.tendered ?? null, cardTerminal: null }))
+        : null,
       customerId: unpaid ? selectedCustomer?.id ?? null : null,
       isUnpaid: unpaid,
       vatRate,
       pricesVatInclusive: pricesInclusive,
       items: cart.map((l) => ({
         menu_item_id: l.id,
+        combo_id: l.combo ? l.id : null,
         name: l.name,
+        size: sizeOf(l.variant),
         quantity: l.qty,
         unit_price: l.price,
       })),
@@ -573,7 +646,7 @@ export default function RecordSaleMobile() {
       }
       return [
         ...prev,
-        { key, id: m.id, name: m.name, variant, price, qty: 1, image_url: toCdnUrl(m.image_url) },
+        { key, id: m.id, name: m.name, variant, price, qty: 1, image_url: toCdnUrl(m.image_url), combo: m.is_combo || undefined },
       ];
     });
     setJustAdded(key);
@@ -656,6 +729,10 @@ export default function RecordSaleMobile() {
 
 
   const submit = useMutation({
+    // The browser may report offline: this mutation queues the sale itself (offline queue), so
+    // it must run anyway. React Query's default ("online") pauses it instead, leaving the
+    // button on "Processing…" and nothing queued.
+    networkMode: "always",
     mutationFn: async () => {
       if (!restaurant?.id || !user?.id || cart.length === 0) throw new Error("Cart is empty");
       if (unpaid && !selectedCustomer) throw new Error("Select a customer for unpaid sale");
@@ -666,88 +743,100 @@ export default function RecordSaleMobile() {
       // Trust `navigator.onLine === false` as the primary signal - the
       // connectivity watcher's cached state can lag behind reality,
       // which would otherwise leave the Pay button hanging on a stuck
-      // Supabase fetch with no timeout.
+      // the API fetch with no timeout.
       const browserOffline =
         typeof navigator !== "undefined" && navigator.onLine === false;
+      const saleKey = crypto.randomUUID();
+      // Split tender: the tenders must pay the total exactly before anything is charged.
+      const splitParts = splitActive ? tenderParts(splitTenders.tenders) : [];
+      if (splitActive && !splitIsComplete(splitTenders.tenders, total)) {
+        throw new Error(t("app.pos.recorder.splitIncomplete"));
+      }
       if (browserOffline || !isOnline()) {
-        return queueSaleOffline();
+        if (splitParts.some((p) => p.approval)) {
+          throw new Error("A card was already charged online; reconnect and press Charge again to record the sale.");
+        }
+        return queueSaleOffline(saleKey);
       }
 
-      const receiptNumber = `RCP-${format(new Date(), "yyyyMMdd")}-${Math.floor(
-        Math.random() * 10000,
-      )
-        .toString()
-        .padStart(4, "0")}`;
+      // One server transaction (POST /api/v1/pos/sales): sale, lines, cash event, stock,
+      // food-cost usage, kitchen ticket. The server prices the lines and numbers the receipt.
+      const saleInput: RecordSaleInput = {
+        restaurantId: restaurant.id,
+        branchId: activeBranchId ?? null,
+        shiftId: activeShift?.id ?? null,
+        customerId: unpaid ? selectedCustomer?.id ?? null : null,
+        ...(splitActive ? {} : { paymentMethod: payment }),
+        settlement: unpaid ? "unpaid" : "paid",
+        lines: cart.map((l) =>
+          l.combo
+            ? { comboId: l.id, quantity: l.qty, unitPrice: l.price }
+            : { menuItemId: l.id, size: sizeOf(l.variant), quantity: l.qty, unitPrice: l.price },
+        ),
+      };
 
-      let tx;
-      let txErr;
+      // Card through Moyasar (when enabled for the POS): the customer pays the server's quoted
+      // total by QR first; the sales API checks the payment again. A payment whose sale failed
+      // to record is reused on the next try.
+      let cardTerminal: RecordSaleInput["cardTerminal"] = null;
+      if (splitActive) {
+        // Each card tender is paid through Moyasar for its own amount (when enabled); without
+        // Moyasar, card tenders are taken on a standalone terminal.
+        const toCharge = moyasar.enabled ? splitParts.filter((p) => p.method === "card" && !p.approval) : [];
+        if (toCharge.length) {
+          const quote = await quoteSale(saleInput);
+          if (Math.abs(quote.total - total) >= 0.005) {
+            throw new Error("The total changed since the cart was loaded; check the cart and the payments, then charge again.");
+          }
+        }
+        await chargeCardTenders(
+          toCharge,
+          async (amount) => {
+            const intentId = await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` });
+            return { provider: "moyasar", status: "approved", reference: intentId } as CardTerminalApproval;
+          },
+          splitTenders.markApproved,
+        );
+      } else if (payment === "card" && !unpaid && moyasar.enabled) {
+        const quote = await quoteSale(saleInput);
+        const kept = moyasarPaidRef.current;
+        const intentId = kept && Math.abs(kept.amount - quote.total) < 0.005
+          ? kept.intentId
+          : await moyasar.charge({ amount: quote.total, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` });
+        moyasarPaidRef.current = { intentId, amount: quote.total };
+        cardTerminal = { provider: "moyasar", status: "approved", reference: intentId };
+      }
+
+      let receiptNumber: string;
       try {
-        const response = await withOnlineWriteTimeout(
-          supabase
-          .from("sales_transactions")
-          .insert({
-            restaurant_id: restaurant.id,
-            shift_id: activeShift?.id || null,
-            payment_method: payment,
-            subtotal,
-            tax: vat,
-            total,
-            receipt_number: receiptNumber,
-            settlement_status: unpaid ? "unpaid" : "paid",
-            paid_amount: unpaid ? 0 : total,
-            customer_id: unpaid ? selectedCustomer?.id ?? null : null,
-            created_at: new Date().toISOString(),
-          } as never)
-          .select()
-          .single(),
+        const saved = await withOnlineWriteTimeout(
+          recordSale(
+            splitActive ? { ...saleInput, payments: toSalePayments(splitParts) } : { ...saleInput, cardTerminal },
+            { idempotencyKey: saleKey },
+          ),
           "Recording sale",
         );
-
-        tx = response.data;
-        txErr = response.error;
+        receiptNumber = saved.receiptNumber;
       } catch (error) {
-        if (isRecoverableNetworkError(error)) {
-          return queueSaleOffline();
+        if (!(error instanceof ApiError) && isRecoverableNetworkError(error)) {
+          if (cardTerminal || splitParts.some((p) => p.approval)) throw new Error("The card payment went through but the sale could not be saved. Check the connection and press Charge again; the customer will not be charged twice.");
+          return queueSaleOffline(saleKey);
+        }
+        if (error instanceof ApiError && error.code === "price_changed") {
+          const changed = (error.details as PriceChangedDetails | undefined)?.lines ?? [];
+          setCart((prev) =>
+            prev.map((l) => {
+              const hit = changed.find((c) => c.menuItemId === l.id && c.size === sizeOf(l.variant));
+              return hit ? { ...l, price: hit.current } : l;
+            }),
+          );
+          void queryClient.invalidateQueries({ queryKey: ["pos-tablet-menu"] });
+          void queryClient.invalidateQueries({ queryKey: ["branch-menu-prices"] });
+          throw new Error("Prices changed since the menu was loaded. The cart now shows the current prices; check the total and charge again.");
         }
         throw error;
       }
-      if (txErr) {
-        if (isRecoverableNetworkError(txErr)) {
-          return queueSaleOffline();
-        }
-        throw txErr;
-      }
-
-      const items = cart.map((l) => ({
-        restaurant_id: restaurant.id,
-        transaction_id: (tx as { id: string }).id,
-        menu_item_id: l.id,
-        quantity: l.qty,
-        unit_price: l.price,
-        total_price: l.price * l.qty,
-      }));
-      const { error: itemsErr } = await withOnlineWriteTimeout(
-        supabase.from("sales_items").insert(items),
-        "Saving sale items",
-      );
-      if (itemsErr) throw itemsErr;
-
-      if (activeShift?.id && !unpaid) {
-        await withOnlineWriteTimeout(
-          supabase.from("cash_events").insert([
-            {
-              shift_id: activeShift.id,
-              restaurant_id: restaurant.id,
-              event_type: "sale",
-              amount: total,
-              payment_method: payment === "other" ? "other" : payment,
-              created_by: user.id,
-              description: `POS Sale ${receiptNumber}`,
-            },
-          ]),
-          "Saving cash event",
-        );
-      }
+      moyasarPaidRef.current = null;
       return { receiptNumber, queuedOffline: false };
     },
     onSuccess: ({ receiptNumber, queuedOffline }) => {
@@ -756,6 +845,8 @@ export default function RecordSaleMobile() {
       );
       setCart([]);
       setPayment("cash");
+      setIsSplit(false);
+      splitTenders.reset();
       setUnpaid(false);
       setSelectedCustomer(null);
       setCartOpen(false);
@@ -778,6 +869,89 @@ export default function RecordSaleMobile() {
 
   return (
     <div className="fixed inset-0 flex bg-muted/30 text-foreground overflow-hidden">
+      {moyasar.dialog}
+      {restaurant?.id && (
+        <OpenChecksSheet
+          open={checksOpen}
+          onOpenChange={setChecksOpen}
+          restaurantId={restaurant.id}
+          branchId={activeBranchId ?? null}
+          shiftId={activeShifts[0]?.id ?? null}
+          vatRate={vatRate}
+          pricesInclusive={pricesInclusive}
+          cart={checksWithCart ? cart.map((l) => ({
+            name: l.name,
+            line: l.combo
+              ? { comboId: l.id, quantity: l.qty, unitPrice: l.price }
+              : { menuItemId: l.id, size: sizeOf(l.variant), quantity: l.qty, unitPrice: l.price },
+          })) : []}
+          onCartAdded={() => { setCart([]); setChecksWithCart(false); setCartOpen(false); }}
+          tableId={checkTableId}
+          chargeCard={
+            moyasar.enabled
+              ? async (amount) => ({
+                  provider: "moyasar",
+                  status: "approved",
+                  reference: await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` }),
+                })
+              : null
+          }
+          onPaid={(parts, check) => {
+            const label = check.tableLabel ? t("app.pos.checks.table", { label: check.tableLabel }) : check.name || check.checkNumber;
+            toast.success(t("app.pos.checks.paid", { check: label, count: parts.length }), {
+              description: parts.map((p) => `${p.receiptNumber} · ${formatCurrency(p.transaction.total)}`).join("\n"),
+            });
+            queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
+          }}
+          formatCurrency={formatCurrency}
+          restaurantName={restaurant.name}
+        />
+      )}
+      {restaurant?.id && user?.id && (
+        <SplitBillSheet
+          open={splitBillOpen}
+          onOpenChange={setSplitBillOpen}
+          lines={cart.map((l) => ({
+            key: l.key,
+            ...(l.combo ? { comboId: l.id } : { menuItemId: l.id }),
+            name: l.name,
+            size: l.combo ? "regular" : sizeOf(l.variant),
+            quantity: l.qty,
+            unitPrice: l.price,
+          }))}
+          total={total}
+          vatRate={vatRate}
+          pricesInclusive={pricesInclusive}
+          order={{ restaurantId: restaurant.id, branchId: activeBranchId ?? null, shiftId: activeShifts[0]?.id ?? null }}
+          offline={{ cashierId: user.id, branchName: activeBranch?.name ?? null }}
+          chargeCard={
+            moyasar.enabled
+              ? async (amount) => ({
+                  provider: "moyasar",
+                  status: "approved",
+                  reference: await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant.name} POS` }),
+                })
+              : null
+          }
+          onTenders={(amounts) => {
+            splitTenders.fill(amounts);
+            setIsSplit(true);
+          }}
+          onRecorded={(parts) => {
+            toast.success(t(parts[0]?.offline ? "app.pos.billSplit.queuedParts" : "app.pos.billSplit.recordedParts", { count: parts.length }), {
+              description: parts.map((p) => `${p.receiptNumber} · ${formatCurrency(p.totals.total)}`).join("\n"),
+            });
+            setCart([]);
+            setPayment("cash");
+            setIsSplit(false);
+            splitTenders.reset();
+            setCartOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["sales-transactions"] });
+          }}
+          formatCurrency={formatCurrency}
+          restaurantName={restaurant.name}
+        />
+      )}
       {/* ============== LEFT: MENU ============== */}
       <div className="flex-1 min-w-0 flex flex-col bg-background">
         {/* Top bar */}
@@ -950,7 +1124,7 @@ export default function RecordSaleMobile() {
                   active={category === c}
                   onClick={() => setCategory(c)}
                 >
-                  {c}
+                  {c === combosLabel ? c : categoryLabel(c)}
                 </CategoryChip>
               ))}
             </div>
@@ -1124,6 +1298,7 @@ export default function RecordSaleMobile() {
           payment={payment}
           unpaid={unpaid}
           setPayment={setPayment}
+          split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true), openChecks: (withCart: boolean) => { setChecksWithCart(withCart); setChecksOpen(true); }, guestOrderCount }}
           setUnpaid={toggleUnpaid}
           changeQty={changeQty}
           removeLine={removeLine}
@@ -1195,6 +1370,7 @@ export default function RecordSaleMobile() {
             payment={payment}
             unpaid={unpaid}
             setPayment={setPayment}
+            split={{ active: splitActive, setActive: setIsSplit, tenders: splitTenders, openBill: () => setSplitBillOpen(true), openChecks: (withCart: boolean) => { setChecksWithCart(withCart); setChecksOpen(true); }, guestOrderCount }}
             setUnpaid={toggleUnpaid}
             changeQty={changeQty}
             removeLine={removeLine}
@@ -1253,8 +1429,11 @@ export default function RecordSaleMobile() {
           </div>
           <ScrollArea className="max-h-[55vh] px-3 py-3">
             {filteredCustomers.length === 0 ? (
-              <div className="text-center text-sm text-muted-foreground py-10">
-                {t("app.pos.mobile.noCustomers")}
+              <div className="text-center text-sm text-muted-foreground py-10 px-4 space-y-1">
+                <p>{t("app.pos.mobile.noCustomers")}</p>
+                {/* Account customers carry a credit limit, so they are added in the back office,
+                    not at the till. */}
+                <p className="text-xs">{t("app.pos.mobile.customersAddedBy")}</p>
               </div>
             ) : (
               <div className="space-y-1.5">
@@ -1558,6 +1737,7 @@ function OrderSummary({
   payment,
   unpaid,
   setPayment,
+  split,
   setUnpaid,
   changeQty,
   removeLine,
@@ -1580,6 +1760,8 @@ function OrderSummary({
   payment: PaymentMethod;
   unpaid: boolean;
   setPayment: (p: PaymentMethod) => void;
+  /** Split tender state (not offered for unpaid sales). */
+  split: { active: boolean; setActive: (v: boolean) => void; tenders: SplitTenders; openBill: () => void; openChecks: (withCart: boolean) => void; guestOrderCount: number };
   setUnpaid: (v: boolean) => void;
   changeQty: (key: string, delta: number) => void;
   removeLine: (key: string) => void;
@@ -1729,25 +1911,67 @@ function OrderSummary({
           <p className="text-[10px] font-semibold tracking-[0.12em] text-muted-foreground uppercase mb-1">
              {t("app.pos.mobile.paymentMethod")}
           </p>
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-4 gap-2">
             <PayButton
-              active={payment === "cash"}
-              onClick={() => setPayment("cash")}
+              active={!split.active && payment === "cash"}
+              onClick={() => { split.setActive(false); setPayment("cash"); }}
               icon={<Banknote className="h-4 w-4" />}
               label={t("app.sales.paymentMethods.cash")}
             />
             <PayButton
-              active={payment === "card"}
-              onClick={() => setPayment("card")}
+              active={!split.active && payment === "card"}
+              onClick={() => { split.setActive(false); setPayment("card"); }}
               icon={<CreditCard className="h-4 w-4" />}
               label={t("app.sales.paymentMethods.card")}
             />
             <PayButton
-              active={payment === "other"}
-              onClick={() => setPayment("other")}
+              active={!split.active && payment === "other"}
+              onClick={() => { split.setActive(false); setPayment("other"); }}
               icon={<MoreHorizontal className="h-4 w-4" />}
               label={t("app.sales.paymentMethods.other")}
             />
+            <PayButton
+              active={split.active}
+              onClick={() => { if (!unpaid) split.setActive(true); }}
+              icon={<SplitSquareHorizontal className="h-4 w-4" />}
+              label={t("app.pos.recorder.split")}
+            />
+          </div>
+          {split.active && (
+            <div className="mt-2">
+              <SplitTenderPanel split={split.tenders} formatCurrency={formatCurrency} />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={split.openBill}
+            disabled={empty || unpaid}
+            className="mt-2 h-10 w-full rounded-xl border-2 border-border bg-card text-sm font-semibold flex items-center justify-center gap-2 hover:border-primary/40 disabled:opacity-50"
+          >
+            <Users className="h-4 w-4" />
+            {t("app.pos.billSplit.open")}
+          </button>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => split.openChecks(true)}
+              disabled={empty || unpaid}
+              className="h-10 rounded-xl border-2 border-border bg-card text-sm font-semibold flex items-center justify-center gap-2 hover:border-primary/40 disabled:opacity-50"
+            >
+              <ChefHat className="h-4 w-4" />
+              {t("app.pos.checks.sendToKitchen")}
+            </button>
+            <button
+              type="button"
+              onClick={() => split.openChecks(false)}
+              className="h-10 rounded-xl border-2 border-border bg-card text-sm font-semibold flex items-center justify-center gap-2 hover:border-primary/40"
+            >
+              <ClipboardList className="h-4 w-4" />
+              {t("app.pos.checks.title")}
+              {split.guestOrderCount > 0 && (
+                <span className="rounded-full bg-primary px-1.5 text-[10px] text-primary-foreground" aria-label={t("app.pos.checks.guestOrders.waiting", { count: split.guestOrderCount })}>{split.guestOrderCount}</span>
+              )}
+            </button>
           </div>
         </div>
 
@@ -1788,7 +2012,7 @@ function OrderSummary({
 
         <Button
           onClick={submit}
-          disabled={submitting || empty}
+          disabled={submitting || empty || (split.active && !split.tenders.ready)}
           className="w-full h-14 rounded-2xl text-base font-semibold"
         >
           {submitting ? (

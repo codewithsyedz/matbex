@@ -3,15 +3,15 @@ import { AlertTriangle } from "lucide-react";
 
 /**
  * Polls the public auth health endpoint. This deliberately bypasses the
- * Supabase client so an expired session or token refresh cannot be mistaken
+ * the API client so an expired session or token refresh cannot be mistaken
  * for a backend outage.
  */
 const POLL_MS = 60_000;
 const DEGRADED_POLL_MS = 10_000;
 const REQUEST_TIMEOUT_MS = 5_000;
 const FAIL_THRESHOLD = 2;
-const HEALTH_URL = `${import.meta.env.VITE_SUPABASE_URL}/auth/v1/health`;
-const PUBLISHABLE_KEY = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+const HEALTH_URL = `${import.meta.env.VITE_API_URL}/auth/v1/health`;
+const PUBLISHABLE_KEY = import.meta.env.VITE_API_KEY;
 
 async function pingBackend(): Promise<boolean> {
   const controller = new AbortController();

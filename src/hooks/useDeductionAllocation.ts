@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 export interface AllocationFineItem {
@@ -38,7 +38,7 @@ export function useDeductionAllocation(payrollId?: string | null) {
   const preview = useQuery({
     queryKey: ["deduction-allocation-preview", payrollId],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("preview_payroll_deduction_allocation", {
+      const { data, error } = await db.rpc("preview_payroll_deduction_allocation", {
         p_payroll_id: payrollId!,
       });
       if (error) throw error;
@@ -55,7 +55,7 @@ export function useDeductionAllocation(payrollId?: string | null) {
       decisions: AllocationDecision[];
       reason: string;
     }) => {
-      const { data, error } = await supabase.rpc("apply_payroll_deduction_allocation", {
+      const { data, error } = await db.rpc("apply_payroll_deduction_allocation", {
         p_payroll_id: payrollId!,
         p_decisions: decisions as unknown as never,
         p_reason: reason,

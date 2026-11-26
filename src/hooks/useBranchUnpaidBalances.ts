@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface UnpaidEntry {
   count: number;
@@ -21,7 +21,7 @@ export function useBranchUnpaidBalances() {
     queryKey: ["branch-unpaid-balances", restaurant?.id, activeBranchId],
     queryFn: async () => {
       if (!restaurant?.id) return {} as Record<string, UnpaidEntry>;
-      let query = supabase
+      let query = db
         .from("sales_transactions")
         .select("customer_id, total")
         .eq("restaurant_id", restaurant.id)

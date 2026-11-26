@@ -1,10 +1,11 @@
 import { useEffect, useState } from "react";
+import { useFeatureCatalog } from "@/hooks/useFeatureCatalog";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Loader2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 interface Props {
@@ -12,24 +13,10 @@ interface Props {
   planId: string | null;
 }
 
-const FEATURE_FLAGS = [
-  { key: "shifts", label: "Shifts & Cash Drawer", description: "Cashier shifts, drawer reconciliation, and cash events" },
-  { key: "daily_profit", label: "Daily Profit", description: "Daily profit calculations and reports" },
-  { key: "accounting", label: "Accounting Module", description: "Chart of accounts, journal entries, and period close" },
-  { key: "inventory", label: "Inventory Module", description: "Stock tracking and purchase management" },
-  { key: "payroll", label: "Payroll Module", description: "Labor cost tracking and payroll management" },
-  { key: "chat", label: "Team Chat", description: "Real-time team messaging and channels" },
-  { key: "cogs", label: "COGS Tracking", description: "Cost of goods sold analysis and reporting" },
-  { key: "menu", label: "Menu Management", description: "Menu items, recipes, and pricing" },
-  { key: "advance_pay", label: "Advance Pay", description: "Employee advance payment feature" },
-  { key: "api_access", label: "API Access", description: "REST API access for integrations" },
-  { key: "multi_location", label: "Multi-Location", description: "Multiple restaurant locations" },
-  { key: "email_reports", label: "Email Reports", description: "Automated email report delivery" },
-  { key: "advanced_reports", label: "Advanced Reports", description: "Advanced analytics and reporting" },
-  { key: "web_builder", label: "Web Builder", description: "Matbex Canvas restaurant website builder" },
-];
 
 export function TenantFeatureToggles({ tenantId, planId }: Props) {
+  // The shared feature catalogue (platform_features).
+  const FEATURE_FLAGS = useFeatureCatalog();
   const [planFlags, setPlanFlags] = useState<Record<string, boolean>>({});
   const [overrides, setOverrides] = useState<Record<string, boolean>>({});
   const [loading, setLoading] = useState(true);
@@ -44,7 +31,7 @@ export function TenantFeatureToggles({ tenantId, planId }: Props) {
     setLoading(true);
     try {
       if (planId) {
-        const { data: plan } = await supabase
+        const { data: plan } = await db
           .from("plans")
           .select("default_feature_flags")
           .eq("id", planId)
@@ -57,7 +44,7 @@ export function TenantFeatureToggles({ tenantId, planId }: Props) {
         setPlanFlags({});
       }
 
-      const { data: tf } = await supabase
+      const { data: tf } = await db
         .from("tenant_features")
         .select("feature_key, enabled")
         .eq("tenant_id", tenantId);
@@ -79,7 +66,7 @@ export function TenantFeatureToggles({ tenantId, planId }: Props) {
   const handleToggle = async (key: string, enabled: boolean) => {
     setSaving(key);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenant_features")
         .upsert(
           { tenant_id: tenantId, feature_key: key, enabled },
@@ -99,7 +86,7 @@ export function TenantFeatureToggles({ tenantId, planId }: Props) {
   const handleResetToPlan = async (key: string) => {
     setSaving(key);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenant_features")
         .delete()
         .eq("tenant_id", tenantId)

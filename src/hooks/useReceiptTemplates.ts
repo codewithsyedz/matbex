@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -50,9 +50,7 @@ export type ReceiptTemplateInput = Omit<
 >;
 
 // Cast: types.ts is regenerated post-migration; use untyped client here.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const db = supabase as any;
-
+ 
 export function useReceiptTemplates() {
   const auth = useAuth() as {
     restaurant?: { id?: string; tenant_id?: string } | null;

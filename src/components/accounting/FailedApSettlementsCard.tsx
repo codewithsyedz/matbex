@@ -4,7 +4,7 @@ import { format } from "date-fns";
 import { AlertTriangle, CheckCircle2, RefreshCw, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -49,7 +49,7 @@ export function FailedApSettlementsCard({ branchId }: { branchId?: string }) {
   const { data, isLoading } = useQuery({
     queryKey: ["failed-ap-settlements", branchId ?? "all"],
     queryFn: async (): Promise<FailedSettlement[]> => {
-      const { data: audits, error } = await supabase
+      const { data: audits, error } = await db
         .from("expense_posting_audit")
         .select("id, expense_id, branch_id, outcome, reason_code, reason_detail, created_at")
         .eq("action", "reconcile")
@@ -68,17 +68,17 @@ export function FailedApSettlementsCard({ branchId }: { branchId?: string }) {
       if (expenseIds.length === 0) return [];
 
       const [successRes, expenseRes, branchRes] = await Promise.all([
-        supabase
+        db
           .from("expense_posting_audit")
           .select("expense_id, created_at")
           .eq("action", "reconcile")
           .eq("outcome", "success")
           .in("expense_id", expenseIds),
-        supabase
+        db
           .from("expenses")
           .select("id, description, amount, expense_date, status, branch_id, deleted_at")
           .in("id", expenseIds),
-        supabase.from("branches").select("id, name"),
+        db.from("branches").select("id, name"),
       ]);
 
       const lastSuccess = new Map<string, string>();
@@ -120,7 +120,7 @@ export function FailedApSettlementsCard({ branchId }: { branchId?: string }) {
 
   const retry = useMutation({
     mutationFn: async (expenseId: string) => {
-      const { data: result, error } = await supabase.rpc("retry_ap_settlement", {
+      const { data: result, error } = await db.rpc("retry_ap_settlement", {
         p_expense_id: expenseId,
         p_reason: "manual retry from AP audit trail",
       });

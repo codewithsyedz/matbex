@@ -26,7 +26,7 @@ export const PointerLockWatchdog = () => {
       const prevLocked = body.getAttribute("data-scroll-locked");
       body.style.pointerEvents = "";
       body.removeAttribute("data-scroll-locked");
-      // eslint-disable-next-line no-console
+       
       console.warn(
         "[PointerLockWatchdog] Restored interactivity:",
         {

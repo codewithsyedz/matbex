@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from "react";
+import { tendersOf } from "@/lib/saleTenders";
 import { useTranslation } from "react-i18next";
 import { useFunnelTracker } from "@/hooks/useFunnelTracker";
 import { Button } from "@/components/ui/button";
@@ -38,7 +39,7 @@ import { Download, TrendingUp, TrendingDown, DollarSign, Clock, FileSpreadsheet,
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useReconciledSales, reconcileDaySales } from "@/lib/reconciledSales";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { format, subDays, startOfDay, endOfDay, eachDayOfInterval, differenceInDays } from "date-fns";
@@ -132,9 +133,9 @@ export default function Reports() {
     queryKey: ["reports-sales", restaurant?.id, branchId, startDateStr, endDateStr],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("sales_transactions")
-        .select("*")
+        .select("*, sale_payments(method,amount)")
         .eq("restaurant_id", restaurant.id)
         .gte("created_at", startDate.toISOString())
         .lte("created_at", endDate.toISOString());
@@ -151,7 +152,7 @@ export default function Reports() {
     queryKey: ["reports-sales-prev", restaurant?.id, branchId, format(prevStartDate, "yyyy-MM-dd"), format(prevEndDate, "yyyy-MM-dd")],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("sales_transactions")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -170,7 +171,7 @@ export default function Reports() {
     queryKey: ["reports-expenses", restaurant?.id, branchId, startDateStr, endDateStr],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("*, expense_categories(*)")
         .eq("restaurant_id", restaurant.id)
@@ -213,7 +214,7 @@ export default function Reports() {
     queryKey: ["reports-expenses-prev", restaurant?.id, branchId, format(prevStartDate, "yyyy-MM-dd"), format(prevEndDate, "yyyy-MM-dd")],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("*, expense_categories(*)")
         .eq("restaurant_id", restaurant.id)
@@ -233,7 +234,7 @@ export default function Reports() {
     queryKey: ["reports-shifts", restaurant?.id, branchId, startDateStr, endDateStr],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("shifts")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -252,7 +253,7 @@ export default function Reports() {
     queryKey: ["reports-overhead", restaurant?.id, branchId],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("overhead_allocation")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -270,7 +271,7 @@ export default function Reports() {
     queryKey: ["reports-payroll", restaurant?.id, branchId, startDateStr, endDateStr],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("payroll_records")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -288,7 +289,7 @@ export default function Reports() {
     queryKey: ["reports-staff", restaurant?.id, branchId],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("staff")
         .select("id, name, payment_type, hourly_rate, monthly_salary, is_active")
         .eq("restaurant_id", restaurant.id)
@@ -309,7 +310,7 @@ export default function Reports() {
       // inventory_usage carries no branch column — scope via branch items.
       let itemIds: string[] | null = null;
       if (branchId) {
-        const { data: bItems, error: bErr } = await supabase
+        const { data: bItems, error: bErr } = await db
           .from("inventory_items")
           .select("id")
           .eq("restaurant_id", restaurant.id)
@@ -318,7 +319,7 @@ export default function Reports() {
         itemIds = (bItems || []).map((i) => i.id);
         if (itemIds.length === 0) return [];
       }
-      let q = supabase
+      let q = db
         .from("inventory_usage")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -337,7 +338,7 @@ export default function Reports() {
     queryKey: ["reports-purchases", restaurant?.id, branchId, startDateStr, endDateStr],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("purchases")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -414,8 +415,8 @@ export default function Reports() {
   // Payment method breakdown
   const paymentBreakdown = salesData.reduce(
     (acc, sale) => {
-      const method = sale.payment_method || "other";
-      acc[method] = (acc[method] || 0) + Number(sale.total);
+      // Split sales count each tender under its own method.
+      for (const part of tendersOf(sale)) acc[part.method] = (acc[part.method] || 0) + part.amount;
       return acc;
     },
     {} as Record<string, number>
@@ -570,12 +571,13 @@ export default function Reports() {
   const paymentMethodsForTable = useMemo(() => {
     const methodMap: Record<string, { total: number; count: number }> = {};
     salesData.forEach((s) => {
-      const method = s.payment_method || "other";
-      if (!methodMap[method]) {
-        methodMap[method] = { total: 0, count: 0 };
+      for (const part of tendersOf(s)) {
+        if (!methodMap[part.method]) {
+          methodMap[part.method] = { total: 0, count: 0 };
+        }
+        methodMap[part.method].total += part.amount;
+        methodMap[part.method].count += 1;
       }
-      methodMap[method].total += Number(s.total);
-      methodMap[method].count += 1;
     });
     return Object.entries(methodMap).map(([method, data]) => ({
       method,

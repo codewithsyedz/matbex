@@ -25,7 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -63,7 +63,7 @@ interface ViewInvoiceDialogProps {
 }
 
 export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialogProps) {
-  const { restaurant, isManager, isOwner, hasFeature } = useAuth();
+  const { restaurant, canPostJournals, hasFeature } = useAuth();
   const { format: formatCurrency } = useCurrency();
   const { accounts } = useChartOfAccounts();
   const [open, setOpen] = useState(false);
@@ -72,13 +72,24 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
   const [posting, setPosting] = useState(false);
   const [selectedAccountId, setSelectedAccountId] = useState<string>(invoice.account_id || "");
   const [signedImageUrl, setSignedImageUrl] = useState<string | null>(null);
+  // An invoice saved as already paid posts its payment too, so it needs to know how.
+  const isPaid = invoice.status === "paid";
+  const [paymentMethod, setPaymentMethod] = useState<"" | "cash" | "bank">("");
 
   const hasAccounting = hasFeature("accounting");
-  const canPost = (isManager || isOwner) && hasAccounting && !invoice.ledger_posted;
+  // Same rule as can_post_journal_entries(): owners, managers, and accountants
+  // when the business allows them to post journals.
+  const canPost = canPostJournals && hasAccounting && !invoice.ledger_posted;
 
-  // Get COGS and Expense accounts for selection
+  // Accounts a purchase can be posted to (same rule as post_purchase_invoice_to_ledger):
+  // expense, cost of sales, or inventory (1200-1299). Cash, bank, receivables and
+  // fixed assets are not valid targets.
   const cogsExpenseAccounts = accounts.filter(
-    (acc) => acc.is_active && (acc.account_type === "cogs" || acc.account_type === "expense" || acc.account_type === "asset")
+    (acc) =>
+      acc.is_active &&
+      (acc.account_type === "cogs" ||
+        acc.account_type === "expense" ||
+        (acc.account_type === "asset" && acc.account_code >= "1200" && acc.account_code < "1300"))
   );
 
   // Get the mapped account details
@@ -96,7 +107,7 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
   const fetchInvoiceItems = async () => {
     setLoading(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("invoice_items")
         .select("*")
         .eq("invoice_id", invoice.id);
@@ -114,7 +125,7 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
     if (!invoice.image_url) return;
     
     try {
-      const { data, error } = await supabase.storage
+      const { data, error } = await db.storage
         .from("invoice-images")
         .createSignedUrl(invoice.image_url.replace("invoice-images/", ""), 3600);
 
@@ -130,12 +141,17 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
       toast.error("Please select an account to post to");
       return;
     }
+    if (isPaid && !paymentMethod) {
+      toast.error("This invoice is marked paid. Choose how it was paid");
+      return;
+    }
 
     setPosting(true);
     try {
-      const { error } = await supabase.rpc("post_purchase_invoice_to_ledger", {
+      const { error } = await db.rpc("post_purchase_invoice_to_ledger", {
         p_invoice_id: invoice.id,
         p_account_id: selectedAccountId,
+        ...(isPaid ? { p_payment_method: paymentMethod } : {}),
       });
 
       if (error) throw error;
@@ -312,7 +328,7 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
                   <span className="font-medium">{mappedAccount?.account_name}</span>
                 </div>
                 <p className="text-muted-foreground text-xs">
-                  This invoice has been posted to the ledger. DR {mappedAccount?.account_name}, CR Accounts Payable.
+                  This invoice has been posted to the ledger: DR {mappedAccount?.account_name} (net) and Input VAT, CR supplier payable{isPaid ? ", then paid" : ""}.
                 </p>
               </div>
             ) : hasAccounting ? (
@@ -323,7 +339,7 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
                   </label>
                   <Select value={selectedAccountId} onValueChange={setSelectedAccountId}>
                     <SelectTrigger>
-                      <SelectValue placeholder="Select COGS/Expense/Asset account" />
+                      <SelectValue placeholder="Select expense, cost or inventory account" />
                     </SelectTrigger>
                     <SelectContent>
                       {cogsExpenseAccounts.map((account) => (
@@ -340,10 +356,30 @@ export function ViewInvoiceDialog({ invoice, onLedgerPosted }: ViewInvoiceDialog
                   </Select>
                 </div>
 
+                {isPaid && (
+                  <div>
+                    <label className="text-sm text-muted-foreground mb-1 block">
+                      Paid from
+                    </label>
+                    <Select value={paymentMethod} onValueChange={(v) => setPaymentMethod(v as "cash" | "bank")}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Cash or bank" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="cash">Cash (1000)</SelectItem>
+                        <SelectItem value="bank">Bank (1010)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      The invoice is marked paid, so the payment is recorded on the invoice date and the supplier balance is cleared.
+                    </p>
+                  </div>
+                )}
+
                 {canPost && (
                   <Button
                     onClick={handlePostToLedger}
-                    disabled={posting || !selectedAccountId}
+                    disabled={posting || !selectedAccountId || (isPaid && !paymentMethod)}
                     className="w-full"
                   >
                     {posting ? (

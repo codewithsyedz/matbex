@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   buildInstallmentReconRows,
@@ -11,8 +11,6 @@ import {
 } from "@/lib/installmentRecon";
 
 /** Untyped client: installment tables are newer than the generated types. */
-const db = supabase as any;
-
 export type { InstallmentReconRow, MatchStatus, ReconLine };
 
 interface Args {

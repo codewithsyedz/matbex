@@ -3,7 +3,7 @@ import { Download, Paperclip, Printer } from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 interface Props {
   /** Storage path (may be prefixed with the bucket name) of the attached invoice. */
@@ -17,7 +17,7 @@ interface Props {
 
 async function signedUrl(path: string) {
   const clean = path.replace("invoice-images/", "");
-  const { data, error } = await supabase.storage.from("invoice-images").createSignedUrl(clean, 3600);
+  const { data, error } = await db.storage.from("invoice-images").createSignedUrl(clean, 3600);
   if (error || !data) throw new Error(error?.message ?? "Could not read the invoice");
   return data.signedUrl;
 }

@@ -56,8 +56,9 @@ import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { usePersistedBranchDateFilter } from "@/hooks/usePersistedBranchDateFilter";
 import { BranchDateRangeFilter, resolvePreset } from "@/components/filters/BranchDateRangeFilter";
-import { supabase } from "@/integrations/supabase/client";
-import { VAT_RATE, roundMoney, splitInclusive, sumMoney } from "@/lib/vatInclusive";
+import { db } from "@/integrations/db/client";
+import { DEFAULT_PRICES_VAT_INCLUSIVE, VAT_RATE, roundMoney, splitInclusive, splitListed, sumMoney } from "@/lib/vatInclusive";
+import { reconcileSaleVat } from "@/lib/api/pos";
 import { VatReceiptDrilldown } from "@/components/reports/VatReceiptDrilldown";
 import { VatIncidentsPanel } from "@/components/reports/VatIncidentsPanel";
 import { VatOutputLedgerReport } from "@/components/reports/VatOutputLedgerReport";
@@ -101,7 +102,7 @@ const chartConfig = {
 } as const;
 
 export default function VatAudit() {
-  const { tenant, user, isOwner, isAccountant } = useAuth() as any;
+  const { tenant, restaurant, user, isOwner, isAccountant } = useAuth() as any;
   const { activeBranchId, pinnedBranchId, branches } = useBranch();
   const { format: fmt } = useCurrency();
   const { t, i18n } = useTranslation();
@@ -131,21 +132,28 @@ export default function VatAudit() {
     return map;
   }, [branches]);
 
+  // Branch pricing mode: inclusive → listed prices contain VAT; exclusive → VAT is added on top.
+  const inclusiveByBranch = useMemo(() => {
+    const map: Record<string, boolean> = {};
+    for (const b of branches as any[]) map[b.id] = (b as any).prices_vat_inclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE;
+    return map;
+  }, [branches]);
+
   const { data, isLoading } = useQuery({
     queryKey: [
       "vat-audit",
-      tenant?.id,
+      restaurant?.id,
       branchId,
       from?.toISOString() ?? null,
       to?.toISOString() ?? null,
     ],
-    enabled: !!tenant?.id && !!from && !!to,
+    enabled: !!restaurant?.id && !!from && !!to,
     staleTime: 60_000,
     queryFn: async (): Promise<AuditRow[]> => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("sales_transactions")
-        .select("id, receipt_number, created_at, branch_id, subtotal, tax, total, zatca_device_id")
-        .eq("restaurant_id", tenant!.id)
+        .select("id, receipt_number, created_at, branch_id, subtotal, tax, total, zatca_device_id, document_discount, document_surcharge")
+        .eq("restaurant_id", restaurant!.id)
         .gte("created_at", from!.toISOString())
         .lte("created_at", to!.toISOString())
         .order("created_at", { ascending: false })
@@ -163,7 +171,7 @@ export default function VatAudit() {
       );
       const deviceNames: Record<string, string> = {};
       if (deviceIds.length) {
-        const { data: devices } = await (supabase as any)
+        const { data: devices } = await (db as any)
           .from("zatca_devices")
           .select("id, name, serial_number")
           .in("id", deviceIds);
@@ -176,7 +184,7 @@ export default function VatAudit() {
       const itemsSum: Record<string, number> = {};
       for (let i = 0; i < ids.length; i += 500) {
         const chunk = ids.slice(i, i + 500);
-        const { data: items, error: iErr } = await (supabase as any)
+        const { data: items, error: iErr } = await (db as any)
           .from("sales_items")
           .select("transaction_id, total_price")
           .in("transaction_id", chunk);
@@ -195,19 +203,25 @@ export default function VatAudit() {
           tax: roundMoney(Number(t.tax ?? 0)),
           total: roundMoney(Number(t.total ?? 0)),
         };
+        const inclusive = inclusiveByBranch[t.branch_id] ?? DEFAULT_PRICES_VAT_INCLUSIVE;
         const lines = itemsSum[t.id] != null ? roundMoney(itemsSum[t.id]) : null;
         const issues: IssueKind[] = [];
 
-        // Expected gross = the line-items sum when known, else the stored total.
-        let expectedGross = lines ?? before.total;
-        if (lines != null && Math.abs(before.total - lines) > TOL) {
-          if (Math.abs(before.total - roundMoney(lines * (1 + rate))) <= TOL) {
+        // Expected split: from the lines (with the document discount/surcharge) in the branch's
+        // pricing mode, else from the stored total with VAT inside. Same rule as the server's
+        // POST /api/v1/pos/sales/:id/vat-reconcile, which is what actually applies the fix.
+        const listed = lines != null
+          ? roundMoney(lines - Number(t.document_discount ?? 0) + Number(t.document_surcharge ?? 0))
+          : null;
+        const after = listed != null ? splitListed(listed, rate, inclusive) : splitInclusive(before.total, rate);
+        const expectedGross = after.gross;
+        if (listed != null && Math.abs(before.total - expectedGross) > TOL) {
+          if (inclusive && Math.abs(before.total - roundMoney(listed * (1 + rate))) <= TOL) {
             issues.push("vat_on_top");
           } else {
             issues.push("items_mismatch");
           }
         }
-        const after = splitInclusive(expectedGross, rate);
         if (before.tax === 0 && expectedGross > 0 && after.vat > 0) issues.push("missing_vat");
         if (
           Math.abs(before.subtotal - after.net) > TOL ||
@@ -244,27 +258,9 @@ export default function VatAudit() {
   const rows = data ?? [];
 
   const reconcileMutation = useMutation({
+    // The server recomputes the split itself and writes the audit_logs entry.
     mutationFn: async (row: AuditRow) => {
-      const { error } = await (supabase as any)
-        .from("sales_transactions")
-        .update({
-          subtotal: row.after.subtotal,
-          tax: row.after.tax,
-          total: row.after.total,
-        })
-        .eq("id", row.id);
-      if (error) throw error;
-
-      // Audit trail entry so the drill-down panel can show who corrected what.
-      await (supabase as any).from("audit_logs").insert({
-        user_id: user?.id ?? null,
-        tenant_id: tenant?.id ?? null,
-        action: "vat_reconcile",
-        entity_type: "sales_transaction",
-        entity_id: row.id,
-        old_data: row.before,
-        new_data: row.after,
-      });
+      await reconcileSaleVat(row.id, restaurant!.id);
     },
     onSuccess: (_d, row) => {
       toast.success(t("reports.vatAudit.success", { receipt: row.receipt }));
@@ -663,7 +659,7 @@ export default function VatAudit() {
       </Card>
 
       <VatIncidentsPanel
-        restaurantId={tenant?.id}
+        restaurantId={restaurant?.id}
         branchId={branchId}
         branchName={(id) =>
           (branches as any[]).find((b) => b.id === id)?.name ?? t("reports.vatAudit.unassigned")

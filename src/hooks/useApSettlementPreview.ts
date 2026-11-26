@@ -1,5 +1,5 @@
 import { useQuery, useQueries } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type PreviewLineKind = "original" | "correction" | "adjustment" | "planned";
 
@@ -61,7 +61,7 @@ function normalize(raw: any): ApSettlementPreview {
 }
 
 async function fetchPreview(expenseId: string): Promise<ApSettlementPreview> {
-  const { data, error } = await (supabase as any).rpc("preview_ap_settlement", {
+  const { data, error } = await (db as any).rpc("preview_ap_settlement", {
     p_expense_id: expenseId,
   });
   if (error) throw error;

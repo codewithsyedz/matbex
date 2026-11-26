@@ -3,7 +3,7 @@
 // Adds Idempotency-Key, X-Terminal-Id, X-Branch-Id, X-Request-Id.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import type { SyncQueueItem } from "./types";
 
 export interface SyncBatchItem {
@@ -22,7 +22,7 @@ export interface SyncResultItem {
   entity_type: SyncQueueItem["entity_type"];
 }
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
+const API_URL = import.meta.env.VITE_API_URL as string;
 
 /** Full request/response trace captured for DLQ forensics. */
 export interface SyncTrace {
@@ -65,11 +65,11 @@ function truncate(v: unknown, max = 8000): unknown {
 
 export function getHealthUrl(): string {
   // Re-uses the auth health endpoint (always 200 OK when project is reachable).
-  return `${SUPABASE_URL}/auth/v1/health`;
+  return `${API_URL}/auth/v1/health`;
 }
 
 export function getHealthHeaders(): Record<string, string> {
-  const apikey = import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string;
+  const apikey = import.meta.env.VITE_API_KEY as string;
   return apikey ? { apikey, Authorization: `Bearer ${apikey}` } : {};
 }
 
@@ -80,7 +80,7 @@ export async function postSyncBatch(opts: {
   /** Optional callback receiving the completed trace (success or failure). */
   onTrace?: (trace: SyncTrace) => void;
 }): Promise<SyncResultItem[]> {
-  const { data: sessionData } = await supabase.auth.getSession();
+  const { data: sessionData } = await db.auth.getSession();
   const token = sessionData.session?.access_token;
   if (!token) throw new Error("Not authenticated");
 
@@ -90,7 +90,7 @@ export async function postSyncBatch(opts: {
   const trace: SyncTrace = {
     batch_id: batchId,
     request_id: requestId,
-    url: `${SUPABASE_URL}/functions/v1/pos-sync`,
+    url: `${API_URL}/functions/v1/pos-sync`,
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -120,7 +120,7 @@ export async function postSyncBatch(opts: {
       headers: {
         ...trace.headers,
         Authorization: `Bearer ${token}`,
-        apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY as string,
+        apikey: import.meta.env.VITE_API_KEY as string,
       },
       body: JSON.stringify({ items: opts.items }),
     });

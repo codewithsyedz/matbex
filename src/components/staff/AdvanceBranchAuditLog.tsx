@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -38,7 +38,7 @@ export function AdvanceBranchAuditLog({ limit = 50 }: { limit?: number }) {
     queryKey: ["advance-branch-audit", limit],
     queryFn: async () => {
       const { data, error } = await (
-        supabase as unknown as {
+        db as unknown as {
           rpc: (
             fn: string,
             args: Record<string, unknown>

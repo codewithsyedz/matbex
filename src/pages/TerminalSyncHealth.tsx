@@ -12,7 +12,7 @@ import {
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useOfflineStatus } from "@/hooks/useOfflineStatus";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Activity, AlertTriangle, RefreshCw, Search, Monitor, Download, Stethoscope, Zap } from "lucide-react";
 import { useTerminalStateRefresh } from "@/hooks/useTerminalStateRefresh";
 import { Link } from "react-router-dom";
@@ -58,17 +58,17 @@ export default function TerminalSyncHealth() {
     queryFn: async () => {
       const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       const [termRes, ackRes, dlqRes] = await Promise.all([
-        supabase
+        db
           .from("pos_terminals")
           .select("terminal_uid, name, branch_id, branch_label, active, last_seen_at")
           .eq("restaurant_id", restaurant!.id),
-        supabase
+        db
           .from("pos_idempotency_keys")
           .select("terminal_uid, created_at, status")
           .eq("restaurant_id", restaurant!.id)
           .order("created_at", { ascending: false })
           .limit(2000),
-        supabase
+        db
           .from("failed_sync_items")
           .select("terminal_id, branch_id, status, error_message, error_category, created_at, event_type, retry_count")
           .eq("restaurant_id", restaurant!.id)

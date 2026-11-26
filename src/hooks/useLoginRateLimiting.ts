@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 interface RateLimitResult {
   blocked: boolean;
@@ -19,7 +19,7 @@ export function useLoginRateLimiting() {
   ): Promise<RateLimitResult> => {
     setIsChecking(true);
     try {
-      const { data, error } = await supabase.functions.invoke("track-login-attempt", {
+      const { data, error } = await db.functions.invoke("track-login-attempt", {
         body: {
           email,
           success,
@@ -46,7 +46,7 @@ export function useLoginRateLimiting() {
   const checkAccountLock = async (email: string): Promise<RateLimitResult> => {
     setIsChecking(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("account_locks")
         .select("*")
         .eq("email", email.toLowerCase())

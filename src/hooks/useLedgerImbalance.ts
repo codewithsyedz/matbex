@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import type { AccountType } from "@/hooks/useChartOfAccounts";
 
@@ -71,7 +71,7 @@ export function useLedgerImbalance({ from, to }: Args) {
       let page = 0;
       const all: ImbalanceRow[] = [];
       while (true) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("account_transactions")
           .select(
             "id, account_id, transaction_date, debit, credit, description, reference_type, batch_id, account:chart_of_accounts(account_code, account_name, account_type)",

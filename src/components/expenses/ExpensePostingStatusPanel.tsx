@@ -4,7 +4,7 @@ import { useExpenseAiJournalAudit } from "@/hooks/useExpenseAiJournalAudit";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useAuth } from "@/contexts/AuthContext";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableHeader, TableHead, TableBody, TableRow, TableCell } from "@/components/ui/table";
@@ -55,7 +55,7 @@ export function ExpensePostingStatusPanel({ expenseId, ledgerPosted, branchId }:
     mutationFn: async () => {
       if (!expenseId || !accountId) throw new Error(t("expenses.journal.selectAccountError"));
       if (reason.trim().length < 3) throw new Error(t("expenses.journal.reasonError"));
-      const { data: result, error } = await supabase.rpc("apply_manual_expense_account_override", {
+      const { data: result, error } = await db.rpc("apply_manual_expense_account_override", {
         p_expense_id: expenseId,
         p_account_id: accountId,
         p_reason: reason.trim(),

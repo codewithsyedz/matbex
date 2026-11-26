@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -76,7 +76,7 @@ export default function AdminEmailInbox() {
   const messagesQuery = useQuery({
     queryKey: ["admin-email-inbox", "messages"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("contact_messages")
         .select(
           "id, name, email, message, kind, company, phone, preferred_date, preferred_slot, created_at",
@@ -91,7 +91,7 @@ export default function AdminEmailInbox() {
   const logsQuery = useQuery({
     queryKey: ["admin-email-inbox", "logs"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("email_send_log")
         .select("id, template_name, recipient_email, status, error_message, metadata, created_at")
         .order("created_at", { ascending: false })

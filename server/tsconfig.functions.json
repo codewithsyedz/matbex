@@ -1,0 +1,6 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "strict": false },
+  "include": ["functions/**/*.ts", "functions/**/*.tsx"],
+  "exclude": ["functions/**/*_test.ts", "node_modules", "dist"]
+}

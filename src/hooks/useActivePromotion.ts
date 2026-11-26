@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface PromotionCampaign {
   id: string;
@@ -24,7 +24,7 @@ export const useActivePromotion = () => {
   return useQuery({
     queryKey: ["active-promotion"],
     queryFn: async (): Promise<PromotionCampaign | null> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("promotion_campaigns")
         .select("id,name,badge_label,headline,subheadline,badge_label_ar,headline_ar,subheadline_ar,perks_ar,max_slots,claimed_slots,discount_percent,locked_price_forever,perks,ends_at,is_active")
         .eq("is_active", true)

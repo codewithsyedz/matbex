@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -20,7 +20,7 @@ export function ProfileSettings() {
 
     setSaving(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("profiles")
         .update({ full_name: fullName })
         .eq("id", user.id);
@@ -59,19 +59,19 @@ export function ProfileSettings() {
       const filePath = `${user.id}/avatar.${fileExt}`;
 
       // Upload to storage
-      const { error: uploadError } = await supabase.storage
+      const { error: uploadError } = await db.storage
         .from("avatars")
         .upload(filePath, file, { upsert: true });
 
       if (uploadError) throw uploadError;
 
       // Get public URL
-      const { data: urlData } = supabase.storage
+      const { data: urlData } = db.storage
         .from("avatars")
         .getPublicUrl(filePath);
 
       // Update profile with avatar URL
-      const { error: updateError } = await supabase
+      const { error: updateError } = await db
         .from("profiles")
         .update({ avatar_url: urlData.publicUrl })
         .eq("id", user.id);

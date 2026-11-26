@@ -11,6 +11,7 @@
  */
 
 import { formatZonedYMD } from "@/lib/timezone";
+import { tendersOf, type SaleTenderRow } from "@/lib/saleTenders";
 
 export interface ClosingTxRow {
   branch_id: string | null;
@@ -20,6 +21,8 @@ export interface ClosingTxRow {
   tax?: number | string | null;
   payment_method?: string | null;
   is_delivery?: boolean | null;
+  /** Tenders (split payments); without them the sale counts under payment_method. */
+  sale_payments?: SaleTenderRow[] | null;
 }
 
 export interface ClosingSummaryRow {
@@ -141,9 +144,13 @@ export function buildClosingReport(input: {
     row.vat += vat;
     row.net += net;
     if (t.is_delivery) row.delivery += gross;
-    else if (t.payment_method === "cash") row.cash += gross;
-    else if (t.payment_method === "card") row.card += gross;
-    else row.other += gross;
+    else {
+      for (const part of tendersOf({ payment_method: t.payment_method ?? null, total: gross, sale_payments: t.sale_payments })) {
+        if (part.method === "cash") row.cash += part.amount;
+        else if (part.method === "card") row.card += part.amount;
+        else row.other += part.amount;
+      }
+    }
   }
 
   for (const a of adjRows || []) {

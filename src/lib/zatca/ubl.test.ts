@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   buildSimplifiedTaxInvoiceUbl,
+  paymentMeansForTenders,
   type BuildUblInput,
   type UblLine,
   type DocumentAllowanceCharge,
@@ -206,5 +207,20 @@ describe("buildSimplifiedTaxInvoiceUbl - money rounding (2 decimals)", () => {
     const xml = buildSimplifiedTaxInvoiceUbl(makeInput({ lines: [l] }));
     // toFixed(2) rounding: 99.999 → 100.00, VAT 15.00 → 115.00
     expect(xml).toContain("<cbc:LineExtensionAmount currencyID=\"SAR\">100.00</cbc:LineExtensionAmount>");
+  });
+});
+describe("split tender payment means", () => {
+  it("emits one PaymentMeans per tender (10 cash, 48 card)", () => {
+    const xml = buildSimplifiedTaxInvoiceUbl(
+      makeInput({ paymentMeans: paymentMeansForTenders([{ method: "cash" }, { method: "card" }]) }),
+    );
+    const codes = [...xml.matchAll(/<cbc:PaymentMeansCode>(\d+)<\/cbc:PaymentMeansCode>/g)].map((m) => m[1]);
+    expect(codes).toEqual(["10", "48"]);
+  });
+
+  it("keeps the single PaymentMeansCode when no tenders are given", () => {
+    const xml = buildSimplifiedTaxInvoiceUbl(makeInput({ paymentMeansCode: "30" }));
+    const codes = [...xml.matchAll(/<cbc:PaymentMeansCode>(\d+)<\/cbc:PaymentMeansCode>/g)].map((m) => m[1]);
+    expect(codes).toEqual(["30"]);
   });
 });

@@ -1,4 +1,4 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type SalePostingSource =
   | "daily_sales"
@@ -24,7 +24,7 @@ export interface LogSalePostingFailureArgs {
  */
 export async function logSalePostingFailure(args: LogSalePostingFailureArgs) {
   try {
-    const { error } = await supabase.rpc("log_sale_posting_failure" as never, {
+    const { error } = await db.rpc("log_sale_posting_failure" as never, {
       _restaurant_id: args.restaurantId,
       _business_date: args.businessDate,
       _error_message: args.errorMessage?.slice(0, 2000) ?? "Unknown error",

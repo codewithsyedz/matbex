@@ -15,7 +15,6 @@ export function DashboardQuotaAlerts() {
   // Quota types to check on dashboard
   const quotaTypes: (keyof QuotaLimits)[] = [
     "users",
-    "menu_items",
     "image_uploads",
     "email_reminders",
   ];

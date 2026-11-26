@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { format } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { Button } from "@/components/ui/button";
@@ -91,7 +91,7 @@ export function EmployeeFinesTable({ fines, isLoading, canApprove }: Props) {
     queryKey: ["fine-settlement-groups", groupIds],
     enabled: groupIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("employee_fines")
         .select(
           "id, amount, recovered_amount, status, applied_payroll_id, installment_group_id, installment_total_amount",
@@ -121,7 +121,7 @@ export function EmployeeFinesTable({ fines, isLoading, canApprove }: Props) {
   })();
 
   const openEvidence = async (path: string) => {
-    const { data, error } = await supabase.storage.from("fine-evidence").createSignedUrl(path, 60);
+    const { data, error } = await db.storage.from("fine-evidence").createSignedUrl(path, 60);
     if (error || !data) {
       toast.error("Could not open evidence");
       return;

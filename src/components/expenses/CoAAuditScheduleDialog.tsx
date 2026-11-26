@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Dialog,
@@ -59,7 +59,7 @@ export function CoAAuditScheduleDialog({ open, onOpenChange }: Props) {
     queryKey: ["coa-audit-schedule", restaurantId],
     queryFn: async () => {
       if (!restaurantId) return null;
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("coa_audit_schedules")
         .select("*")
         .eq("restaurant_id", restaurantId)
@@ -123,7 +123,7 @@ export function CoAAuditScheduleDialog({ open, onOpenChange }: Props) {
         extra_recipients: extraRecipients,
         created_by: profile?.id ?? null,
       };
-      const { error } = await (supabase as any)
+      const { error } = await (db as any)
         .from("coa_audit_schedules")
         .upsert(payload, { onConflict: "restaurant_id" });
       if (error) throw error;

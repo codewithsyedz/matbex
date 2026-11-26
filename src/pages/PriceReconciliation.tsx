@@ -13,7 +13,7 @@ import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -64,7 +64,7 @@ export default function PriceReconciliation() {
     queryKey: ["price-variance", restaurant?.id, branchId ?? "all", from, to],
     enabled: !!restaurant?.id,
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("sales_price_variance" as any, {
+      const { data, error } = await db.rpc("sales_price_variance" as any, {
         _restaurant_id: restaurant!.id,
         _from: from,
         _to: to,
@@ -100,7 +100,7 @@ export default function PriceReconciliation() {
 
   const correct = useMutation({
     mutationFn: async (payload: { id: string; price: number; reason: string }) => {
-      const { data, error } = await supabase.rpc("correct_sale_item_price" as any, {
+      const { data, error } = await db.rpc("correct_sale_item_price" as any, {
         _sale_item_id: payload.id,
         _new_unit_price: payload.price,
         _reason: payload.reason || null,

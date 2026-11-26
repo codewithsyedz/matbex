@@ -75,7 +75,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { exportToCSV, prepareExpensesExportData } from "@/lib/exportUtils";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFeatureFlag } from "@/hooks/useFeatureFlags";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { format, subDays, startOfMonth, endOfMonth } from "date-fns";
@@ -373,7 +373,7 @@ export default function Expenses() {
     queryKey: ["expense-categories", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expense_categories")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -394,7 +394,7 @@ export default function Expenses() {
           account_code: string;
           account_name: string;
         }>;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name")
         .eq("tenant_id", tenantId)
@@ -424,7 +424,7 @@ export default function Expenses() {
           account_name: string;
           account_type: string;
         }>;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenantId)
@@ -448,7 +448,7 @@ export default function Expenses() {
     queryKey: ["suppliers-active", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Array<{ id: string; name: string }>;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("suppliers")
         .select("id, name, is_active")
         .eq("restaurant_id", restaurant.id)
@@ -474,7 +474,7 @@ export default function Expenses() {
           unit_cost: number | null;
           current_stock: number | null;
         }>;
-      const sb = supabase as any;
+      const sb = db as any;
       const result = await sb
         .from("inventory_items")
         .select(
@@ -527,7 +527,7 @@ export default function Expenses() {
 
     let cancelled = false;
     (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("expenses")
         .select("*, expense_categories(*)")
         .eq("id", targetExpenseId)
@@ -564,7 +564,7 @@ export default function Expenses() {
     queryFn: async () => {
       if (!restaurant?.id) return 0;
 
-      let query = supabase
+      let query = db
         .from("expenses")
         .select("*", { count: "exact", head: true })
         .eq("restaurant_id", restaurant.id)
@@ -626,7 +626,7 @@ export default function Expenses() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
 
-      let query = supabase
+      let query = db
         .from("expenses")
         .select("*, expense_categories(*)")
         .eq("restaurant_id", restaurant.id)
@@ -699,7 +699,7 @@ export default function Expenses() {
       const fiscalStart = format(fiscalMonth.start, "yyyy-MM-dd");
       const fiscalEnd = format(fiscalMonth.end, "yyyy-MM-dd");
 
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("amount, expense_date, status")
         .eq("restaurant_id", restaurant.id)
@@ -719,7 +719,7 @@ export default function Expenses() {
     queryKey: ["expenses-all-time-total", restaurant?.id, branchFilterId],
     queryFn: async () => {
       if (!restaurant?.id) return 0;
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("amount")
         .eq("restaurant_id", restaurant.id)
@@ -746,7 +746,7 @@ export default function Expenses() {
       const fiscalStart = format(fiscalMonth.start, "yyyy-MM-dd");
       const fiscalEnd = format(fiscalMonth.end, "yyyy-MM-dd");
 
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("amount")
         .eq("restaurant_id", restaurant.id)
@@ -776,7 +776,7 @@ export default function Expenses() {
       const fiscalStart = format(fiscalMonth.start, "yyyy-MM-dd");
       const fiscalEnd = format(fiscalMonth.end, "yyyy-MM-dd");
 
-      let q = supabase
+      let q = db
         .from("expenses")
         .select("*", { count: "exact", head: true })
         .eq("restaurant_id", restaurant.id)
@@ -861,7 +861,7 @@ export default function Expenses() {
     queryFn: async () => {
       if (!restaurant?.id) return { total: 0, paid: 0, unpaid: 0 };
 
-      let query = supabase
+      let query = db
         .from("expenses")
         .select("amount, status")
         .eq("restaurant_id", restaurant.id)
@@ -936,7 +936,7 @@ export default function Expenses() {
       queryFn: async () => {
         if (!restaurant?.id) return [];
 
-        let query = supabase
+        let query = db
           .from("expenses")
           .select("*, expense_categories(*)")
           .eq("restaurant_id", restaurant.id)
@@ -1034,7 +1034,7 @@ export default function Expenses() {
     ],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let query = supabase
+      let query = db
         .from("expenses")
         .select("amount, status, category_id")
         .eq("restaurant_id", restaurant.id)
@@ -1112,7 +1112,7 @@ export default function Expenses() {
       if (!restaurant?.id || !user?.id) throw new Error("Missing context");
       // Auto-assign default category if none selected
       const finalCategoryId = categoryId || getDefaultCategoryId();
-      const { error } = await supabase.from("expenses").insert({
+      const { error } = await db.from("expenses").insert({
         restaurant_id: restaurant.id,
         created_by: user.id,
         amount: parseFloat(amount),
@@ -1187,7 +1187,7 @@ export default function Expenses() {
       if (nextPaid > totalAmount) {
         throw new Error(`Paid amount cannot exceed ${totalAmount.toFixed(2)}`);
       }
-      const { error } = await supabase
+      const { error } = await db
         .from("expenses")
         .update({
           amount: totalAmount,
@@ -1244,7 +1244,7 @@ export default function Expenses() {
       // definer rights. A plain client-side delete could silently remove 0 rows
       // (RLS) and the following insert then DOUBLED the invoice/expense total.
       if (editItemizedMode && editingExpense.purchase_invoice_id) {
-        const sb = supabase as any;
+        const sb = db as any;
         const rows = editLineItems.map((li) => {
           const qty = parseFloat(li.quantity) || 0;
           const cost = parseFloat(li.unit_cost) || 0;
@@ -1272,7 +1272,7 @@ export default function Expenses() {
       // original lines and the edited lines, then post a single 'adjustment'
       // stock_movement + update current_stock for each item that changed.
       if (editItemizedMode && restaurant?.id && tenantId && user?.id) {
-        const sb2 = supabase as any;
+        const sb2 = db as any;
         const { error: delOriginalMovementsErr } = await sb2
           .from("stock_movements")
           .delete()
@@ -1437,7 +1437,7 @@ export default function Expenses() {
   const addCategoryMutation = useMutation({
     mutationFn: async () => {
       if (!restaurant?.id) throw new Error("Missing restaurant");
-      const { error } = await supabase.from("expense_categories").insert({
+      const { error } = await db.from("expense_categories").insert({
         restaurant_id: restaurant.id,
         name: categoryName,
         color: categoryColor,
@@ -1457,7 +1457,7 @@ export default function Expenses() {
   const updateCategoryMutation = useMutation({
     mutationFn: async () => {
       if (!editingCategory) throw new Error("No category to edit");
-      const { error } = await supabase
+      const { error } = await db
         .from("expense_categories")
         .update({
           name: categoryName,
@@ -1480,7 +1480,7 @@ export default function Expenses() {
   // Soft delete expense mutation
   const deleteExpenseMutation = useMutation({
     mutationFn: async (expenseId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("expenses")
         .update({ deleted_at: new Date().toISOString() })
         .eq("id", expenseId);
@@ -1510,7 +1510,7 @@ export default function Expenses() {
       setLedgerError(null);
       // Fetch current amounts so we can set paid_amount = amount per row.
       // A bulk .in() update can't write per-row values, so we update one-by-one.
-      const { data: rows, error: fetchError } = await supabase
+      const { data: rows, error: fetchError } = await db
         .from("expenses")
         .select("id, amount")
         .in("id", expenseIds);
@@ -1525,7 +1525,7 @@ export default function Expenses() {
 
       const results = await Promise.all(
         (rows || []).map((row: any) =>
-          supabase
+          db
             .from("expenses")
             .update({
               status: "paid" as const,
@@ -1660,7 +1660,7 @@ export default function Expenses() {
         };
       });
 
-      const { error } = await supabase
+      const { error } = await db
         .from("expenses")
         .insert(expensesToInsert);
       if (error) throw error;
@@ -1746,7 +1746,7 @@ export default function Expenses() {
   // still write stock_movements (reference_type='expense'). Rebuild the line
   // items from there so the editor shows them.
   const hydrateLinesFromStockMovements = async (expense: Expense) => {
-    const sb = supabase as any;
+    const sb = db as any;
     const { data, error } = await sb
       .from("stock_movements")
       .select(
@@ -1881,7 +1881,7 @@ export default function Expenses() {
     setEditOriginalLines([]);
     if (expense.purchase_invoice_id) {
       (async () => {
-        const { data, error } = await (supabase as any)
+        const { data, error } = await (db as any)
           .from("invoice_items")
           .select("id, inventory_item_id, description, quantity, unit_price")
           .eq("invoice_id", expense.purchase_invoice_id)
@@ -2088,7 +2088,7 @@ export default function Expenses() {
                     </DropdownMenuItem>
                     <DropdownMenuItem
                       onSelect={async () => {
-                        const { data, error } = await (supabase as any).rpc(
+                        const { data, error } = await (db as any).rpc(
                           "reconcile_expense_ledger",
                           { p_tenant_id: profile?.tenant_id ?? null }
                         );

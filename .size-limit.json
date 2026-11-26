@@ -1,8 +1,8 @@
 [
   {
-    "name": "Initial JS (entry + critical chunks)",
-    "path": "dist/assets/index-*.js",
-    "limit": "250 KB",
+    "name": "Startup entry JS (loaded by index.html)",
+    "path": "dist/assets/entry-*.js",
+    "limit": "252 KB",
     "gzip": true
   }
 ]

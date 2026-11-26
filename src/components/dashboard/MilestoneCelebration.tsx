@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { cn } from "@/lib/utils";
@@ -61,7 +61,7 @@ export function MilestoneCelebration({
     queryKey: ["profit-milestones", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("profit_milestones")
         .select("milestone_type, milestone_value, achieved_at")
         .eq("restaurant_id", restaurant.id);
@@ -75,7 +75,7 @@ export function MilestoneCelebration({
   const createMilestoneMutation = useMutation({
     mutationFn: async (milestone: { type: string; value: number }) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { error } = await supabase
+      const { error } = await db
         .from("profit_milestones")
         .insert({
           restaurant_id: restaurant.id,

@@ -1,4 +1,7 @@
 import { useEffect, useState } from "react";
+import { useFeatureCatalog } from "@/hooks/useFeatureCatalog";
+import { ViewAsTenantDialog } from "@/components/admin/ViewAsTenantDialog";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { useNavigate } from "react-router-dom";
 import { useQueryClient } from "@tanstack/react-query";
 import { CreateTenantDialog } from "@/components/admin/CreateTenantDialog";
@@ -40,8 +43,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
-import { useSuperAdmin } from "@/contexts/SuperAdminContext";
+import { db } from "@/integrations/db/client";
 import { useSuperAdminAudit } from "@/hooks/useSuperAdminAudit";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
@@ -84,24 +86,11 @@ interface Tenant {
   features?: TenantFeature[];
 }
 
-const FEATURE_FLAGS = [
-  { key: "daily_profit", label: "Daily Profit", description: "Daily profit calculations and reports" },
-  { key: "accounting", label: "Accounting Module", description: "Chart of accounts, journal entries, and period close" },
-  { key: "inventory", label: "Inventory Module", description: "Stock tracking and purchase management" },
-  { key: "payroll", label: "Payroll Module", description: "Labor cost tracking and payroll management" },
-  { key: "chat", label: "Team Chat", description: "Real-time team messaging and channels" },
-  { key: "cogs", label: "COGS Tracking", description: "Cost of goods sold analysis and reporting" },
-  { key: "menu", label: "Menu Management", description: "Menu items, recipes, and pricing" },
-  { key: "advance_pay", label: "Advance Pay", description: "Employee advance payment feature" },
-  { key: "api_access", label: "API Access", description: "REST API access for integrations" },
-  { key: "multi_location", label: "Multi-Location", description: "Multiple restaurant locations" },
-  { key: "email_reports", label: "Email Reports", description: "Automated email report delivery" },
-  { key: "advanced_reports", label: "Advanced Reports", description: "Advanced analytics and reporting" },
-];
 
 export default function AdminTenants() {
+  // The shared feature catalogue (platform_features).
+  const FEATURE_FLAGS = useFeatureCatalog();
   const navigate = useNavigate();
-  const { startImpersonation } = useSuperAdmin();
   const { logTenantRename } = useSuperAdminAudit();
   const { tenant: activeTenant, refreshProfile } = useAuth();
   const qc = useQueryClient();
@@ -162,7 +151,7 @@ export default function AdminTenants() {
   };
 
   const fetchPlans = async () => {
-    const { data } = await supabase
+    const { data } = await db
       .from("plans")
       .select("*")
       .eq("is_active", true)
@@ -178,7 +167,7 @@ export default function AdminTenants() {
 
   const fetchTenants = async () => {
     try {
-      const { data: tenantsData, error } = await supabase
+      const { data: tenantsData, error } = await db
         .from("tenants")
         .select("*")
         .order("created_at", { ascending: false });
@@ -189,13 +178,13 @@ export default function AdminTenants() {
       const tenantsWithDetails = await Promise.all(
         (tenantsData || []).map(async (tenant) => {
           // User count
-          const { count: userCount } = await supabase
+          const { count: userCount } = await db
             .from("user_tenant_roles")
             .select("*", { count: "exact", head: true })
             .eq("tenant_id", tenant.id);
 
           // Restaurant count and list
-          const { data: restaurants } = await supabase
+          const { data: restaurants } = await db
             .from("restaurants")
             .select("id, name, status")
             .eq("tenant_id", tenant.id);
@@ -203,7 +192,7 @@ export default function AdminTenants() {
           // Plan details
           let planData = null;
           if (tenant.plan_id) {
-            const { data } = await supabase
+            const { data } = await db
               .from("plans")
               .select("*")
               .eq("id", tenant.plan_id)
@@ -217,7 +206,7 @@ export default function AdminTenants() {
           }
 
           // Tenant features
-          const { data: features } = await supabase
+          const { data: features } = await db
             .from("tenant_features")
             .select("*")
             .eq("tenant_id", tenant.id);
@@ -252,7 +241,7 @@ export default function AdminTenants() {
     setActionLoading(true);
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenants")
         .update({
           status: "suspended",
@@ -280,7 +269,7 @@ export default function AdminTenants() {
     setActionLoading(true);
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenants")
         .update({
           status: "active",
@@ -352,7 +341,7 @@ export default function AdminTenants() {
     if (selectedTenant && finalSlug && finalSlug !== (selectedTenant.slug || "")) {
       setSlugChecking(true);
       try {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("tenants")
           .select("id", { count: "exact", head: true })
           .eq("slug", finalSlug);
@@ -379,7 +368,7 @@ export default function AdminTenants() {
 
     setActionLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenants")
         .update({ name: trimmedName, slug: finalSlug })
         .eq("id", selectedTenant.id);
@@ -455,7 +444,7 @@ export default function AdminTenants() {
     }
     setActionLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke("create-branch", {
+      const { data, error } = await db.functions.invoke("create-branch", {
         body: {
           restaurant_id: branchRestaurantId,
           name: branchForm.name.trim(),
@@ -495,7 +484,7 @@ export default function AdminTenants() {
     try {
       // Update tenant plan
       if (editedPlanId !== selectedTenant.plan_id) {
-        const { error } = await supabase
+        const { error } = await db
           .from("tenants")
           .update({ plan_id: editedPlanId })
           .eq("id", selectedTenant.id);
@@ -507,12 +496,12 @@ export default function AdminTenants() {
         const existing = selectedTenant.features?.find(f => f.feature_key === key);
         
         if (existing) {
-          await supabase
+          await db
             .from("tenant_features")
             .update({ enabled })
             .eq("id", existing.id);
         } else {
-          await supabase
+          await db
             .from("tenant_features")
             .insert({
               tenant_id: selectedTenant.id,
@@ -556,10 +545,9 @@ export default function AdminTenants() {
     );
   };
 
-  const handleViewAsTenant = async (tenant: Tenant) => {
-    await startImpersonation(tenant.id);
-    navigate("/dashboard");
-  };
+  // View as Tenant asks for a reason first (recorded; the business's owners can see it).
+  const [viewAs, setViewAs] = useState<{ id: string; name: string } | null>(null);
+  const handleViewAsTenant = (tenant: Tenant) => setViewAs({ id: tenant.id, name: tenant.name });
 
   const getPlanBadge = (plan: Plan | null | undefined) => {
     if (!plan) return <span className="text-muted-foreground text-xs">No plan</span>;
@@ -571,8 +559,8 @@ export default function AdminTenants() {
     };
 
     return (
-      <span className={`px-2 py-0.5 rounded text-xs font-medium capitalize ${colors[plan.name.toLowerCase()] || colors.free}`}>
-        {plan.name}
+      <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[plan.name.toLowerCase()] || colors.free}`}>
+        {planLabel(plan.name)}
       </span>
     );
   };
@@ -585,6 +573,7 @@ export default function AdminTenants() {
 
   return (
     <>
+      <ViewAsTenantDialog tenant={viewAs} open={!!viewAs} onOpenChange={(o) => { if (!o) setViewAs(null); }} />
       <div className="space-y-6">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight text-foreground">
@@ -602,14 +591,14 @@ export default function AdminTenants() {
                 <CardTitle className="text-lg font-medium">All Tenants</CardTitle>
                 <CardDescription>{tenants.length} total tenants</CardDescription>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="relative">
+              <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+                <div className="relative w-full sm:w-auto">
                   <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
                   <Input
                     placeholder="Search tenants..."
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
-                    className="pl-8 w-64"
+                    className="pl-8 w-full sm:w-64"
                   />
                 </div>
                 <Select value={statusFilter} onValueChange={setStatusFilter}>
@@ -877,9 +866,9 @@ export default function AdminTenants() {
                   {plans.map((plan) => (
                     <SelectItem key={plan.id} value={plan.id}>
                       <span className="flex items-center gap-2">
-                        {plan.name}
+                        {planLabel(plan.name)}
                         <span className="text-muted-foreground text-xs">
-                          ${plan.price}/mo
+                          {sarPrice(plan.price)}/mo
                         </span>
                       </span>
                     </SelectItem>
@@ -898,7 +887,7 @@ export default function AdminTenants() {
               </p>
               <div className="space-y-3">
                 {FEATURE_FLAGS.map((flag) => (
-                  <div key={flag.key} className="flex items-center justify-between">
+                  <div key={flag.key} className="flex flex-wrap items-center justify-between gap-3">
                     <div className="space-y-0.5">
                       <Label className="text-sm font-medium">{flag.label}</Label>
                       <p className="text-xs text-muted-foreground">{flag.description}</p>

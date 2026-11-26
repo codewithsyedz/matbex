@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useFeatureCatalog } from "@/hooks/useFeatureCatalog";
 import {
   Dialog,
   DialogContent,
@@ -21,29 +22,13 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Loader2, Plus, X } from "lucide-react";
 import type { Addon, AddonBillingType } from "@/hooks/useAddons";
 
-const FEATURE_FLAGS = [
-  "daily_profit",
-  "accounting",
-  "inventory",
-  "payroll",
-  "chat",
-  "cogs",
-  "menu",
-  "shifts",
-  "advance_pay",
-  "api_access",
-  "multi_location",
-  "email_reports",
-  "advanced_reports",
-  "web_builder",
-];
 
-const QUOTA_KEYS = ["users", "menu_items", "image_uploads", "email_reminders"];
+const QUOTA_KEYS = ["users", "image_uploads", "email_reminders"];
 
 interface Props {
   open: boolean;
@@ -53,6 +38,8 @@ interface Props {
 }
 
 export function AddonFormDialog({ open, onOpenChange, addon, onSaved }: Props) {
+  // The shared feature catalogue (platform_features).
+  const FEATURE_FLAGS = useFeatureCatalog().map((f) => f.key);
   const [name, setName] = useState("");
   const [slug, setSlug] = useState("");
   const [description, setDescription] = useState("");
@@ -138,8 +125,8 @@ export function AddonFormDialog({ open, onOpenChange, addon, onSaved }: Props) {
       };
 
       const { error } = addon
-        ? await supabase.from("addons" as any).update(payload).eq("id", addon.id)
-        : await supabase.from("addons" as any).insert(payload);
+        ? await db.from("addons" as any).update(payload).eq("id", addon.id)
+        : await db.from("addons" as any).insert(payload);
 
       if (error) throw error;
       toast.success(addon ? "Addon updated" : "Addon created");
@@ -279,7 +266,7 @@ export function AddonFormDialog({ open, onOpenChange, addon, onSaved }: Props) {
               </div>
               {quotas.length === 0 && (
                 <p className="text-xs text-muted-foreground">
-                  Add quota keys (e.g. users, menu_items) to increase tenant limits.
+                  Add quota keys (e.g. users, image_uploads) to increase tenant limits.
                 </p>
               )}
               {quotas.map((q, i) => (

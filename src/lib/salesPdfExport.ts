@@ -1,4 +1,5 @@
 import { format } from "date-fns";
+import { tendersOf, type SaleTenderRow } from "@/lib/saleTenders";
 
 export type BreakdownDetail = "none" | "summary" | "detailed";
 
@@ -18,10 +19,17 @@ interface SaleRow {
   subtotal: number;
   tax: number;
   total: number;
-  payment_method: "cash" | "card" | "other";
+  payment_method: "cash" | "card" | "other" | "split";
+  /** Tenders; a split sale's cash part counts as cash and its card part as card. */
+  sale_payments?: SaleTenderRow[] | null;
   created_at: string;
   shift_id: string | null;
   shift?: { drawers?: { name: string } } | null;
+}
+
+function addTo(bucket: { cash: number; card: number; other: number }, method: string, amount: number) {
+  const key = method === "cash" || method === "card" ? method : "other";
+  bucket[key] += amount;
 }
 
 export function exportSalesPdf(
@@ -36,7 +44,7 @@ export function exportSalesPdf(
   // Aggregate by payment method
   const totals = { cash: 0, card: 0, other: 0, count: 0, sum: 0 };
   rows.forEach(r => {
-    totals[r.payment_method] += Number(r.total) || 0;
+    for (const t of tendersOf(r)) addTo(totals, t.method, t.amount);
     totals.count += 1;
     totals.sum += Number(r.total) || 0;
   });
@@ -48,7 +56,7 @@ export function exportSalesPdf(
     const name = r.shift_id ? (r.shift?.drawers?.name || "Shift") : "Unassigned";
     if (!shiftMap.has(key)) shiftMap.set(key, { name, cash: 0, card: 0, other: 0, count: 0, sum: 0 });
     const e = shiftMap.get(key)!;
-    e[r.payment_method] += Number(r.total) || 0;
+    for (const t of tendersOf(r)) addTo(e, t.method, t.amount);
     e.count += 1;
     e.sum += Number(r.total) || 0;
   });

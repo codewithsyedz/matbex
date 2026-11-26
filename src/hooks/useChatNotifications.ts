@@ -1,6 +1,6 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useLocation } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export function useChatNotifications() {
@@ -44,7 +44,7 @@ export function useChatNotifications() {
   useEffect(() => {
     if (!restaurant?.id || !user?.id) return;
 
-    const channel = supabase
+    const channel = db
       .channel("chat-notifications")
       .on(
         "postgres_changes",
@@ -61,7 +61,7 @@ export function useChatNotifications() {
           if (message.sender_id === user.id) return;
 
           // Fetch sender profile
-          const { data: sender } = await supabase
+          const { data: sender } = await db
             .from("profiles")
             .select("full_name")
             .eq("id", message.sender_id)
@@ -79,7 +79,7 @@ export function useChatNotifications() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [restaurant?.id, user?.id, showNotification]);
 

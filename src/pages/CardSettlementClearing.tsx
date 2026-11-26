@@ -41,6 +41,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useCardSettlementClearing } from "@/hooks/useCardSettlementClearing";
+import { MoyasarPayoutsPanel, type MoyasarPayout } from "@/components/accounting/MoyasarPayoutsPanel";
 import { CardSettlementSetupGuide } from "@/components/accounting/CardSettlementSetupGuide";
 
 export default function CardSettlementClearing() {
@@ -104,6 +105,19 @@ export default function CardSettlementClearing() {
     setGross(balance.outstanding > 0 ? balance.outstanding.toFixed(2) : "");
     setFee("0");
     setDepositDate(format(new Date(), "yyyy-MM-dd"));
+    setDepositOpen(true);
+  };
+
+  /** Prefill the deposit dialog from a Moyasar payout (gross takings, Moyasar fees, payout reference). */
+  const openFromMoyasar = (p: MoyasarPayout) => {
+    setGross(p.gross.toFixed(2));
+    setFee(p.fees.toFixed(2));
+    setDepositDate(p.date);
+    setReference(p.reference);
+    setPeriodFrom(p.period_from ?? "");
+    setPeriodTo(p.period_to ?? "");
+    setNotes(`Moyasar payout ${p.id}: ${p.transactions} transactions, to bank ${p.net.toFixed(2)}`);
+    setBranchId("all");
     setDepositOpen(true);
   };
 
@@ -302,6 +316,8 @@ export default function CardSettlementClearing() {
           </CardContent>
         </Card>
       </div>
+
+      <MoyasarPayoutsPanel onRecord={openFromMoyasar} />
 
       <Card>
         <CardHeader className="pb-3">

@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -104,7 +104,7 @@ export default function AuditLogs() {
 
     setIsLoading(true);
     try {
-      let query = supabase
+      let query = db
         .from("audit_logs")
         .select("*")
         .eq("tenant_id", restaurant.tenant_id)
@@ -128,7 +128,7 @@ export default function AuditLogs() {
       let userMap = new Map<string, string>();
       
       if (userIds.length > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds);
@@ -160,7 +160,7 @@ export default function AuditLogs() {
   useEffect(() => {
     if (!restaurant?.tenant_id || !isOwner) return;
 
-    const channel = supabase
+    const channel = db
       .channel("audit-logs-realtime")
       .on(
         "postgres_changes",
@@ -181,7 +181,7 @@ export default function AuditLogs() {
             // Get user name
             let userName = "Someone";
             if (newLog.user_id) {
-              const { data: userProfile } = await supabase
+              const { data: userProfile } = await db
                 .from("profiles")
                 .select("full_name")
                 .eq("id", newLog.user_id)
@@ -207,7 +207,7 @@ export default function AuditLogs() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [restaurant?.tenant_id, isOwner, profile?.id, page]);
 
@@ -216,7 +216,7 @@ export default function AuditLogs() {
     if (!restaurant?.tenant_id) return [];
 
     try {
-      let query = supabase
+      let query = db
         .from("audit_logs")
         .select("*")
         .eq("tenant_id", restaurant.tenant_id)
@@ -239,7 +239,7 @@ export default function AuditLogs() {
       let userMap = new Map<string, string>();
       
       if (userIds.length > 0) {
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds);

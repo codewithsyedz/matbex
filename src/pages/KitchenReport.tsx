@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { format, startOfDay, endOfDay, subDays } from "date-fns";
 import { CalendarIcon, ChefHat, Download, Clock, CheckCircle2, XCircle, TrendingUp } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -59,7 +59,7 @@ export default function KitchenReport() {
     queryKey: ["kitchen-report", rid, from.toISOString(), to.toISOString(), stationId],
     enabled: !!rid,
     queryFn: async () => {
-      const { data: tickets, error } = await supabase
+      const { data: tickets, error } = await db
         .from("pos_kds_tickets" as any)
         .select("*")
         .eq("restaurant_id", rid)
@@ -70,7 +70,7 @@ export default function KitchenReport() {
       const ids = (tickets || []).map((t: any) => t.id);
       let items: any[] = [];
       if (ids.length) {
-        let q = supabase.from("pos_kds_ticket_items" as any).select("*").in("ticket_id", ids);
+        let q = db.from("pos_kds_ticket_items" as any).select("*").in("ticket_id", ids);
         if (stationId !== "all") q = q.eq("station_id", stationId);
         const { data: it, error: e2 } = await q;
         if (e2) throw e2;

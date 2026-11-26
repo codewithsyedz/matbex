@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useRef, useState } from "react";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -64,7 +64,7 @@ const GATEWAY_HINTS: Record<Gateway, string> = {
   hyperpay: "Online gateway. Requires HYPERPAY_* secrets.",
   stcpay: "Wallet (KSA). Adapter stub - credentials required.",
   paymob: "Online gateway. Adapter stub - credentials required.",
-  moyasar: "Online gateway. Adapter stub - credentials required.",
+  moyasar: "mada, Visa / Mastercard, Apple Pay and STC Pay through your own Moyasar account. The POS shows a QR code the customer pays on their phone; with channel set to Both, online-order customers can also pay when ordering. Add the secret key (sk_test_ to try, sk_live_ for real payments).",
   amazon_ps: "Online gateway. Adapter stub - credentials required.",
   geidea: "Online gateway. Adapter stub - credentials required.",
   hala: "Standalone card terminal. Manual today; API later.",
@@ -85,7 +85,7 @@ export function PaymentGatewaySettings() {
   useEffect(() => {
     if (!user) return;
     (async () => {
-      const { data: profile } = await supabase
+      const { data: profile } = await db
         .from("profiles")
         .select("tenant_id")
         .eq("id", user.id)
@@ -95,7 +95,7 @@ export function PaymentGatewaySettings() {
         return;
       }
       setTenantId(profile.tenant_id);
-      const { data: configs } = await supabase
+      const { data: configs } = await db
         .from("payment_gateway_configs")
         .select("*")
         .eq("tenant_id", profile.tenant_id)
@@ -128,11 +128,26 @@ export function PaymentGatewaySettings() {
     );
   };
 
+  // Each open credentials form registers its save function here (stable per gateway).
+  const credentialSavers = useRef<Partial<Record<Gateway, () => Promise<boolean>>>>({});
+  const registerFns = useRef<Partial<Record<Gateway, (fn: (() => Promise<boolean>) | null) => void>>>({});
+  const registerCredentialSave = (gateway: Gateway) =>
+    (registerFns.current[gateway] ??= (fn) => {
+      if (fn) credentialSavers.current[gateway] = fn;
+      else delete credentialSavers.current[gateway];
+    });
+
   const save = async (gateway: Gateway) => {
     if (!tenantId) return;
     const row = rows.find((r) => r.gateway === gateway);
     if (!row) return;
     setSaving(gateway);
+    // Credentials typed in the form are saved by the same button.
+    const credentialsSaved = (await credentialSavers.current[gateway]?.()) ?? true;
+    if (!credentialsSaved) {
+      setSaving(null);
+      return;
+    }
     const payload: any = {
       tenant_id: tenantId,
       branch_id: null,
@@ -144,7 +159,7 @@ export function PaymentGatewaySettings() {
       refund_enabled: row.refund_enabled ?? true,
       offline_tolerance_minutes: row.offline_tolerance_minutes ?? 5,
     };
-    const { error } = await supabase
+    const { error } = await db
       .from("payment_gateway_configs")
       .upsert(payload, { onConflict: "tenant_id,branch_id,gateway" });
     setSaving(null);
@@ -295,6 +310,7 @@ export function PaymentGatewaySettings() {
                 <PaymentGatewayCredentialsForm
                   tenantId={tenantId}
                   gateway={gateway}
+                  registerSave={registerCredentialSave(gateway)}
                 />
               )}
 

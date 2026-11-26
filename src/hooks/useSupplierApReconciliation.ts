@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface SupplierApReconRow {
@@ -41,7 +41,7 @@ export function useSupplierApReconciliation(branchId?: string | null) {
     staleTime: 1000 * 60 * 2,
     queryFn: async () => {
       // Suppliers + their dedicated AP heads
-      const { data: suppliers, error: supErr } = await supabase
+      const { data: suppliers, error: supErr } = await db
         .from("suppliers")
         .select("id, name, ap_account_id, is_active")
         .eq("restaurant_id", tenantId!)
@@ -49,7 +49,7 @@ export function useSupplierApReconciliation(branchId?: string | null) {
       if (supErr) throw supErr;
 
       // Chart of accounts: dedicated heads + shared AP controls
-      const { data: accounts, error: accErr } = await supabase
+      const { data: accounts, error: accErr } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenantId!)
@@ -70,7 +70,7 @@ export function useSupplierApReconciliation(branchId?: string | null) {
       }
 
       // Expense sub-ledger (open bills carrying a supplier)
-      let expQ = supabase
+      let expQ = db
         .from("expenses")
         .select("id, supplier_id, amount, vat_amount, paid_amount, status, ledger_posted, branch_id")
         .eq("tenant_id", tenantId!)
@@ -90,7 +90,7 @@ export function useSupplierApReconciliation(branchId?: string | null) {
         credit: number;
       }> = [];
       for (const ids of chunk(expenseIds, 150)) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("account_transactions")
           .select("account_id, reference_id, debit, credit, is_voided, branch_id")
           .eq("tenant_id", tenantId!)

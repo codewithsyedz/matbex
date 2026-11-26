@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface AuthRedirectCheckResult {
@@ -14,17 +14,17 @@ export interface AuthRedirectCheckResult {
   origin_allowed: boolean | null;
   expected_allowlist: string[];
   generate_error: string | null;
-  supabase_url: string;
+  api_url: string;
 }
 
 /**
- * Validate that the Supabase Auth redirectTo / domain allowlist is configured
+ * Validate that the Matbex auth redirectTo / domain allowlist is configured
  * correctly for the magic-links we embed in WhatsApp summaries.
  *
  * - `desired_allowed`: the URL we *intend* to use is in our expected allowlist.
  * - `effective_allowed`: the URL GoTrue actually accepted (after silent rewrite)
  *   is in our expected allowlist.
- * - `matches_desired`: GoTrue did not rewrite our redirect - the Supabase
+ * - `matches_desired`: GoTrue did not rewrite our redirect - the the API
  *   project allowlist contains our APP_URL.
  */
 export function useAuthRedirectCheck(opts: { enabled?: boolean } = {}) {
@@ -43,7 +43,7 @@ export function useAuthRedirectCheck(opts: { enabled?: boolean } = {}) {
         throw new Error("No active session. Please sign in again.");
       }
 
-      const { data, error } = await supabase.functions.invoke("validate-auth-redirects", {
+      const { data, error } = await db.functions.invoke("validate-auth-redirects", {
         body: {},
         headers: {
           Authorization: `Bearer ${accessToken}`,

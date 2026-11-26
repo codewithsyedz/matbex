@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   generateCertificationReportBlob,
@@ -34,7 +34,7 @@ export function useZatcaCertificationReports() {
     queryKey: [...QK, tenantId],
     enabled: !!tenantId,
     queryFn: async (): Promise<ZatcaCertificationReport[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("zatca_certification_reports")
         .select("*")
         .eq("tenant_id", tenantId!)
@@ -88,13 +88,13 @@ export function useZatcaCertificationReports() {
         verificationUrl,
       });
       const path = `${tenantId}/${fileName}`;
-      const { error: upErr } = await supabase.storage
+      const { error: upErr } = await db.storage
         .from(BUCKET)
         .upload(path, blob, { contentType: "application/pdf", upsert: false });
       if (upErr) throw upErr;
 
       const completed = input.steps.filter((s) => s.state === "done").length;
-      const { error: insErr } = await supabase
+      const { error: insErr } = await db
         .from("zatca_certification_reports")
         .insert({
           tenant_id: tenantId,
@@ -109,7 +109,7 @@ export function useZatcaCertificationReports() {
           snapshot: JSON.parse(JSON.stringify(snapshot)),
         } as never);
       if (insErr) {
-        await supabase.storage.from(BUCKET).remove([path]);
+        await db.storage.from(BUCKET).remove([path]);
         throw insErr;
       }
       return { blob, fileName, verificationUrl };
@@ -121,7 +121,7 @@ export function useZatcaCertificationReports() {
 
   const download = useMutation({
     mutationFn: async (report: ZatcaCertificationReport) => {
-      const { data, error } = await supabase.storage
+      const { data, error } = await db.storage
         .from(BUCKET)
         .createSignedUrl(report.storage_path, 60);
       if (error || !data) throw error ?? new Error("Could not sign URL");
@@ -131,12 +131,12 @@ export function useZatcaCertificationReports() {
 
   const remove = useMutation({
     mutationFn: async (report: ZatcaCertificationReport) => {
-      const { error: delErr } = await supabase
+      const { error: delErr } = await db
         .from("zatca_certification_reports")
         .delete()
         .eq("id", report.id);
       if (delErr) throw delErr;
-      await supabase.storage.from(BUCKET).remove([report.storage_path]);
+      await db.storage.from(BUCKET).remove([report.storage_path]);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: QK });

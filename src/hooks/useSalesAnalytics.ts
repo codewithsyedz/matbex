@@ -1,9 +1,10 @@
 import { useCachedQuery } from "@/lib/redisCache";
+import { tendersOf, type SaleWithTenders } from "@/lib/saleTenders";
 import { dashboardQueryOptions } from "@/lib/query/queryPolicy";
 import { qk } from "@/lib/query/queryKeys";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { getRestaurantDayBoundsUTC } from "@/lib/timezone";
 import { format } from "date-fns";
 import { useDaypartSettings, getDaypartFor, type DaypartConfig, type DayPart as DPType } from "./useDaypartSettings";
@@ -21,6 +22,8 @@ export interface AnalyticsRow {
   isoWeek: string; // YYYY-Www
   yearMonth: string; // YYYY-MM
   payment_method: string;
+  /** How the sale was paid; a split sale has several tenders. */
+  tenders: { method: string; amount: number }[];
 }
 
 export interface TopSeller {
@@ -108,9 +111,9 @@ export function useSalesAnalytics(from: Date, to: Date) {
       const endBounds = getRestaurantDayBoundsUTC(to, tz);
 
       // 1) Transactions in window
-      let txQuery = supabase
+      let txQuery = db
         .from("sales_transactions")
-        .select("id, total, created_at, payment_method")
+        .select("id, total, created_at, payment_method, sale_payments(method,amount)")
         .eq("restaurant_id", restaurantId!)
         .gte("created_at", startBounds.start.toISOString())
         .lt("created_at", endBounds.endExclusive.toISOString());
@@ -129,7 +132,7 @@ export function useSalesAnalytics(from: Date, to: Date) {
       for (let i = 0; i < txIds.length; i += CHUNK) {
         const slice = txIds.slice(i, i + CHUNK);
         if (!slice.length) break;
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("sales_items")
           .select("transaction_id, menu_item_id, quantity, total_price")
           .in("transaction_id", slice);
@@ -141,7 +144,7 @@ export function useSalesAnalytics(from: Date, to: Date) {
       const menuIds = Array.from(new Set(items.map((i) => i.menu_item_id)));
       const nameById = new Map<string, string>();
       if (menuIds.length) {
-        const { data: mitems } = await supabase
+        const { data: mitems } = await db
           .from("menu_items")
           .select("id, name")
           .in("id", menuIds);
@@ -161,6 +164,7 @@ export function useSalesAnalytics(from: Date, to: Date) {
           isoWeek: isoWeekLabel(d),
           yearMonth: ymd.slice(0, 7),
           payment_method: String(t.payment_method ?? "other"),
+          tenders: tendersOf(t as SaleWithTenders),
         };
       });
 

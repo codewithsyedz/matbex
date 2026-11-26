@@ -1,8 +1,9 @@
 import { useMemo } from "react";
+import { tendersOf } from "@/lib/saleTenders";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { getRestaurantDayBoundsUTC } from "@/lib/timezone";
 
@@ -76,11 +77,12 @@ export function useCardSalesByBranch({ from, to, branchId }: Args) {
         created_at: string;
       }[] = [];
       while (true) {
-        let q: any = (supabase as any)
+        let q: any = (db as any)
           .from("sales_transactions")
-          .select("branch_id, total, tax, created_at")
+          .select("branch_id, total, tax, created_at, payment_method, sale_payments(method,amount)")
           .eq("restaurant_id", restaurantId!)
-          .eq("payment_method", "card")
+          // Split sales are included for their card tenders only.
+          .in("payment_method", ["card", "split"])
           .gte("created_at", start.toISOString())
           .lt("created_at", endExclusive.toISOString());
         if (branchKey) q = q.eq("branch_id", branchKey);
@@ -89,14 +91,22 @@ export function useCardSalesByBranch({ from, to, branchId }: Args) {
           .range(page * pageSize, page * pageSize + pageSize - 1);
         if (error) throw error;
         const batch = (data ?? []) as any[];
-        txns.push(...batch);
+        for (const r of batch) {
+          if (r.payment_method !== "split") { txns.push(r); continue; }
+          const total = Number(r.total) || 0;
+          const card = tendersOf(r).filter((t) => t.method === "card").reduce((s, t) => s + t.amount, 0);
+          if (!card) continue;
+          // VAT in the card part, pro rata to the sale's VAT.
+          const tax = total ? Math.round((Number(r.tax) || 0) * (card / total) * 100) / 100 : 0;
+          txns.push({ branch_id: r.branch_id, total: card, tax, created_at: r.created_at });
+        }
         if (batch.length < pageSize) break;
         page += 1;
         if (page > 50) break;
       }
 
       // 2. Declared card sales from day-end summaries
-      let sq = supabase
+      let sq = db
         .from("daily_sales_summary")
         .select("branch_id, sales_date, card_sales")
         .eq("tenant_id", tenantId!)
@@ -107,7 +117,7 @@ export function useCardSalesByBranch({ from, to, branchId }: Args) {
       if (sumErr) throw sumErr;
 
       // 3. Acquirer settlement deposits covering this period
-      let dq = (supabase as any)
+      let dq = (db as any)
         .from("card_settlement_deposits")
         .select("branch_id, deposit_date, gross_amount, fee_amount, is_reversed")
         .eq("tenant_id", tenantId!)
@@ -119,7 +129,7 @@ export function useCardSalesByBranch({ from, to, branchId }: Args) {
       if (depErr) throw depErr;
 
       // 4. Branch names
-      const { data: branchRows } = await supabase.from("branches").select("id, name");
+      const { data: branchRows } = await db.from("branches").select("id, name");
       const branchNames: Record<string, string> = {};
       (branchRows ?? []).forEach((b: any) => (branchNames[b.id] = b.name));
 

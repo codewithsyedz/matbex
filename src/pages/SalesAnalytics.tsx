@@ -114,10 +114,13 @@ export default function SalesAnalytics() {
     // Payment method breakdown (all drill kinds, but primarily for daypart)
     const paymentMap = new Map<string, { orders: number; revenue: number }>();
     matchedRows.forEach((r) => {
-      const pm = r.payment_method || "other";
-      const cur = paymentMap.get(pm) ?? { orders: 0, revenue: 0 };
-      cur.orders++; cur.revenue += r.total;
-      paymentMap.set(pm, cur);
+      // A split sale counts once under each method it used, with that tender's amount.
+      const tenders = r.tenders?.length ? r.tenders : [{ method: r.payment_method || "other", amount: r.total }];
+      for (const tp of tenders) {
+        const cur = paymentMap.get(tp.method) ?? { orders: 0, revenue: 0 };
+        cur.orders++; cur.revenue += tp.amount;
+        paymentMap.set(tp.method, cur);
+      }
     });
     const paymentBreakdown = Array.from(paymentMap.entries())
       .map(([method, v]) => ({ method, ...v }))

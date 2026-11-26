@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -154,7 +154,7 @@ export function useViolationTypes() {
   const query = useQuery({
     queryKey: ["violation-types", restaurant?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("fine_violation_types")
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -169,8 +169,8 @@ export function useViolationTypes() {
     mutationFn: async (input: Partial<ViolationType> & { name_en: string; code: string }) => {
       const payload = { ...input, restaurant_id: restaurant!.id };
       const { error } = input.id
-        ? await supabase.from("fine_violation_types").update(payload).eq("id", input.id)
-        : await supabase.from("fine_violation_types").insert(payload);
+        ? await db.from("fine_violation_types").update(payload).eq("id", input.id)
+        : await db.from("fine_violation_types").insert(payload);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -191,7 +191,7 @@ export function useDeductionSettings() {
   const query = useQuery({
     queryKey: ["deduction-settings", restaurant?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("payroll_deduction_settings")
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -211,7 +211,7 @@ export function useDeductionSettings() {
 
   const saveSettings = useMutation({
     mutationFn: async (input: Partial<DeductionSettings>) => {
-      const { error } = await supabase.from("payroll_deduction_settings").insert({
+      const { error } = await db.from("payroll_deduction_settings").insert({
         restaurant_id: restaurant!.id,
         branch_id: input.branch_id ?? null,
         effective_from: input.effective_from ?? today,
@@ -241,7 +241,7 @@ export function useFineCapacity(staffId?: string | null, payrollMonth?: string, 
   return useQuery({
     queryKey: ["fine-capacity", staffId, payrollMonth, excludeFineId],
     queryFn: async () => {
-      const { data, error } = await supabase.rpc("get_employee_fine_capacity", {
+      const { data, error } = await db.rpc("get_employee_fine_capacity", {
         p_staff_id: staffId!,
         p_payroll_month: payrollMonth!,
         p_exclude_fine_id: excludeFineId ?? null,
@@ -275,7 +275,7 @@ export function useEmployeeFines(filters: FineFilters = {}) {
       filters,
     ],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("employee_fines")
         .select("*, staff:staff_id(id,name,role), violation_type:violation_type_id(id,name_en,name_ar)")
         .eq("restaurant_id", restaurant!.id)
@@ -306,7 +306,7 @@ export function useEmployeeFines(filters: FineFilters = {}) {
 
   const createFine = useMutation({
     mutationFn: async (input: CreateFineInput) => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("employee_fines")
         .insert({
           restaurant_id: restaurant!.id,
@@ -362,7 +362,7 @@ export function useEmployeeFines(filters: FineFilters = {}) {
       if (status === "rejected") patch.rejection_reason = reason ?? null;
       if (status === "cancelled") patch.cancellation_reason = reason ?? null;
 
-      const { error } = await supabase.from("employee_fines").update(patch).eq("id", id);
+      const { error } = await db.from("employee_fines").update(patch).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -377,7 +377,7 @@ export function useEmployeeFines(filters: FineFilters = {}) {
 
   const updateAmount = useMutation({
     mutationFn: async ({ id, amount }: { id: string; amount: number }) => {
-      const { error } = await supabase.from("employee_fines").update({ amount }).eq("id", id);
+      const { error } = await db.from("employee_fines").update({ amount }).eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -403,7 +403,7 @@ export function useFineAudit(fineId?: string) {
   return useQuery({
     queryKey: ["fine-audit", fineId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("employee_fine_audit")
         .select("*")
         .eq("fine_id", fineId!)

@@ -31,19 +31,21 @@ interface AlertDialogContentProps
   /** Optional accessible description. When omitted, an sr-only fallback
    *  keeps Radix's accessibility requirement satisfied. */
   description?: string;
+  /** Classes for the backdrop, e.g. a higher z-index when opened from inside another dialog. */
+  overlayClassName?: string;
 }
 
 const AlertDialogContent = React.forwardRef<
   React.ElementRef<typeof AlertDialogPrimitive.Content>,
   AlertDialogContentProps
->(({ className, children, description, ...props }, ref) => {
+>(({ className, children, description, overlayClassName, ...props }, ref) => {
   const hasOwnDescription = hasDescendantOfType(
     children,
     AlertDialogPrimitive.Description.displayName ?? "AlertDialogDescription",
   );
   return (
     <AlertDialogPortal>
-      <AlertDialogOverlay />
+      <AlertDialogOverlay className={overlayClassName} />
       <AlertDialogPrimitive.Content
         ref={ref}
         className={cn(

@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export function ManualStockAdjustmentDialog({ open, onOpenChange, defaultItemId,
     queryKey: ['inventory-items-for-adjust', restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [] as Array<{ id: string; name: string; unit: string | null; stock_unit: string | null; current_stock: number | null }>;
-      const sb = supabase as any;
+      const sb = db as any;
       const result = await sb
         .from('inventory_items')
         .select('id, name, unit, stock_unit, current_stock')
@@ -99,13 +99,13 @@ export function ManualStockAdjustmentDialog({ open, onOpenChange, defaultItemId,
       const stockBefore = currentStock;
       const stockAfter = stockBefore + signedDelta;
 
-      const { error: updateErr } = await supabase
+      const { error: updateErr } = await db
         .from('inventory_items')
         .update({ current_stock: stockAfter, updated_at: new Date().toISOString() })
         .eq('id', selected.id);
       if (updateErr) throw updateErr;
 
-      const sb = supabase as any;
+      const sb = db as any;
       const fullReason = [reasonLabel, notes].filter(Boolean).join(' - ');
       const { data: movementRow, error: movementErr } = await sb
         .from('stock_movements')

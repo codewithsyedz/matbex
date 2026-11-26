@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -67,7 +67,7 @@ export function useChecklistTemplates() {
   const templates = useQuery({
     queryKey: ["checklist-templates", restaurant?.id, activeBranchId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_checklist_templates")
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -90,7 +90,7 @@ export function useChecklistTemplates() {
   const items = useQuery({
     queryKey: ["checklist-items", restaurant?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_checklist_items")
         .select("*")
         .eq("restaurant_id", restaurant!.id)
@@ -117,7 +117,7 @@ export function useChecklistRun(templateId: string | null, runDate: string) {
   const run = useQuery({
     queryKey: ["checklist-run", templateId, runDate, activeBranchId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_checklist_runs")
         .select("*")
         .eq("template_id", templateId!)
@@ -133,7 +133,7 @@ export function useChecklistRun(templateId: string | null, runDate: string) {
   const runItems = useQuery({
     queryKey: ["checklist-run-items", run.data?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_checklist_run_items")
         .select("*")
         .eq("run_id", run.data!.id);
@@ -152,7 +152,7 @@ export function useChecklistRun(templateId: string | null, runDate: string) {
 
   const ensureRun = async () => {
     if (run.data?.id) return run.data.id;
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("compliance_checklist_runs")
       .insert({
         restaurant_id: restaurant!.id,
@@ -169,7 +169,7 @@ export function useChecklistRun(templateId: string | null, runDate: string) {
   const toggleItem = useMutation({
     mutationFn: async ({ itemId, checked, note }: { itemId: string; checked: boolean; note?: string }) => {
       const runId = await ensureRun();
-      const { error } = await supabase.from("compliance_checklist_run_items").upsert(
+      const { error } = await db.from("compliance_checklist_run_items").upsert(
         {
           restaurant_id: restaurant!.id,
           run_id: runId,
@@ -190,7 +190,7 @@ export function useChecklistRun(templateId: string | null, runDate: string) {
   const markCompleted = useMutation({
     mutationFn: async (staffId?: string | null) => {
       const runId = await ensureRun();
-      const { error } = await supabase
+      const { error } = await db
         .from("compliance_checklist_runs")
         .update({
           completed_by: user?.id ?? null,
@@ -210,7 +210,7 @@ export function useChecklistRun(templateId: string | null, runDate: string) {
   const markReviewed = useMutation({
     mutationFn: async (comments: string) => {
       const runId = await ensureRun();
-      const { error } = await supabase
+      const { error } = await db
         .from("compliance_checklist_runs")
         .update({
           reviewed_by: user?.id ?? null,
@@ -230,7 +230,7 @@ export function useChecklistRun(templateId: string | null, runDate: string) {
   const approve = useMutation({
     mutationFn: async ({ signature, comments }: { signature: string; comments: string }) => {
       const runId = await ensureRun();
-      const { error } = await supabase
+      const { error } = await db
         .from("compliance_checklist_runs")
         .update({
           approved_by: user?.id ?? null,
@@ -266,7 +266,7 @@ export function useChecklistCompletion(from: string, to: string) {
   return useQuery({
     queryKey: ["checklist-runs-summary", restaurant?.id, activeBranchId, from, to],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("compliance_checklist_runs")
         .select("id, branch_id, template_id, run_date, completed_at, reviewed_at, approved_at")
         .eq("restaurant_id", restaurant!.id)

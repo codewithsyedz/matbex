@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export interface ExpenseAiJournalAudit {
   id: string;
@@ -21,7 +21,7 @@ export function useExpenseAiJournalAudit(expenseId: string | null | undefined) {
     enabled: Boolean(expenseId),
     queryFn: async () => {
       if (!expenseId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("ai_expense_journal_audit")
         .select(`
           id, selected_account_id, confidence, classification, rationale,

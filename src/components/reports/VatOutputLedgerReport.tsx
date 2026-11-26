@@ -11,7 +11,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { BranchBadge, branchDisplayLabel } from "@/components/branch/BranchBadge";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { roundMoney, sumMoney } from "@/lib/vatInclusive";
 
 interface BatchRow {
@@ -76,7 +76,7 @@ export function VatOutputLedgerReport({
     enabled: !!tenantId && !!from && !!to,
     staleTime: 60_000,
     queryFn: async (): Promise<VatLedgerDayRow[]> => {
-      const { data: accounts, error: aErr } = await (supabase as any)
+      const { data: accounts, error: aErr } = await (db as any)
         .from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenantId);
@@ -92,7 +92,7 @@ export function VatOutputLedgerReport({
       if (!accountIds.length) return [];
       const isVatAccount = new Set(vatIds);
 
-      let q = (supabase as any)
+      let q = (db as any)
         .from("account_transactions")
         .select("id, transaction_date, branch_id, account_id, debit, credit, batch_id")
         .eq("tenant_id", tenantId)
@@ -114,7 +114,7 @@ export function VatOutputLedgerReport({
       const batchMeta: Record<string, any> = {};
       for (let i = 0; i < batchIds.length; i += 300) {
         const chunk = batchIds.slice(i, i + 300);
-        const { data: batches } = await (supabase as any)
+        const { data: batches } = await (db as any)
           .from("journal_entry_batches")
           .select("id, reference_number, description, entry_type, approval_status, is_posted")
           .in("id", chunk);

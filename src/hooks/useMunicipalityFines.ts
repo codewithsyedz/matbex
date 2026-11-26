@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -54,7 +54,7 @@ export function useMunicipalityFines(range?: { from?: string; to?: string }) {
   const query = useQuery({
     queryKey: ["municipality-fines", rid, activeBranchId, range],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("municipality_fines")
         .select("*, branch:branches(id,name)")
         .eq("restaurant_id", rid!)
@@ -80,11 +80,11 @@ export function useMunicipalityFines(range?: { from?: string; to?: string }) {
       const payload: Record<string, unknown> = { ...input, restaurant_id: rid! };
       delete payload.branch;
       if (input.id) {
-        const { error } = await supabase.from("municipality_fines").update(payload as never).eq("id", input.id);
+        const { error } = await db.from("municipality_fines").update(payload as never).eq("id", input.id);
         if (error) throw error;
         return input.id;
       }
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("municipality_fines")
         .insert(payload as never)
         .select("id")
@@ -101,7 +101,7 @@ export function useMunicipalityFines(range?: { from?: string; to?: string }) {
 
   const postToExpense = useMutation({
     mutationFn: async (id: string) => {
-      const { data, error } = await supabase.rpc("post_municipality_fine_to_expense", { _fine_id: id });
+      const { data, error } = await db.rpc("post_municipality_fine_to_expense", { _fine_id: id });
       if (error) throw error;
       return data as string;
     },
@@ -117,7 +117,7 @@ export function useMunicipalityFines(range?: { from?: string; to?: string }) {
 
   const softDelete = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("municipality_fines")
         .update({ deleted_at: new Date().toISOString() } as never)
         .eq("id", id);

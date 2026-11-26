@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
+import { useTableChanges } from "@/hooks/useTableChanges";
 
 export interface Shift {
   id: string;
@@ -58,7 +59,7 @@ export function useShiftsData() {
     if (!restaurant?.id) return;
 
     try {
-      let shiftsQuery = supabase
+      let shiftsQuery = db
         .from("shifts")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -69,7 +70,7 @@ export function useShiftsData() {
       if (error) throw error;
 
       // Get drawer names
-      let drawersQ = supabase
+      let drawersQ = db
         .from("drawers")
         .select("id, name")
         .eq("restaurant_id", restaurant.id);
@@ -81,7 +82,7 @@ export function useShiftsData() {
       // Get staff names for cashier mapping
       const staffIds = [...new Set(shiftsData?.map((s) => s.cashier_staff_id).filter(Boolean) || [])] as string[];
       const { data: staffData } = staffIds.length > 0 
-        ? await supabase.from("staff").select("id, name").in("id", staffIds)
+        ? await db.from("staff").select("id, name").in("id", staffIds)
         : { data: [] };
 
       const staffMap = new Map<string, string>(staffData?.map((s): [string, string] => [s.id, s.name]) || []);
@@ -89,7 +90,7 @@ export function useShiftsData() {
       // Fallback to profiles for legacy data
       const userIds = [...new Set(shiftsData?.filter(s => !s.cashier_staff_id).map((s) => s.cashier_user_id) || [])] as string[];
       const { data: profilesData } = userIds.length > 0
-        ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
+        ? await db.from("profiles").select("id, full_name").in("id", userIds)
         : { data: [] };
 
       const profileMap = new Map<string, string>(profilesData?.map((p): [string, string] => [p.id, p.full_name || "Unknown"]) || []);
@@ -113,7 +114,7 @@ export function useShiftsData() {
     if (!restaurant?.id) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff")
         .select("id, name, role, is_active")
         .eq("restaurant_id", restaurant.id)
@@ -131,7 +132,7 @@ export function useShiftsData() {
     if (!restaurant?.id) return;
 
     try {
-      let q = supabase
+      let q = db
         .from("drawers")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -150,7 +151,7 @@ export function useShiftsData() {
     if (!restaurant?.id) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shift_templates")
         .select("*")
         .eq("restaurant_id", restaurant.id);
@@ -171,31 +172,18 @@ export function useShiftsData() {
   useEffect(() => {
     if (restaurant?.id) {
       fetchAll();
-
-      // Real-time subscription for shifts
-      const channel = supabase
-        .channel("shifts-realtime")
-        .on(
-          "postgres_changes",
-          {
-            event: "*",
-            schema: "public",
-            table: "shifts",
-            filter: `restaurant_id=eq.${restaurant.id}`,
-          },
-          () => {
-            fetchShifts();
-          }
-        )
-        .subscribe();
-
-      return () => {
-        supabase.removeChannel(channel);
-      };
     }
     // refetch when branch switch happens
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurant?.id, activeBranchId]);
+
+  // Live updates for shifts (event channel, topic "sales").
+  useTableChanges({
+    topic: "sales",
+    restaurantId: restaurant?.id,
+    tables: ["shifts"],
+    onChange: () => fetchShifts(),
+  });
 
   const getOpenShiftForDrawer = (drawerId: string) => {
     return shifts.find((s) => s.drawer_id === drawerId && s.status === "open");

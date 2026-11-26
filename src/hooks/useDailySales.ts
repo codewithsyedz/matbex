@@ -1,5 +1,6 @@
+import { tendersOf, type SaleWithTenders } from '@/lib/saleTenders';
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -31,6 +32,8 @@ export interface DailySalesSummary {
   card_sales: number;
   delivery_sales: number;
   other_sales: number;
+  /** Sales put on customers' tabs (posted to Customer Accounts receivable, not cash). */
+  account_sales?: number;
   total_sales: number;
   pos_reported_total: number | null;
   system_calculated_total: number | null;
@@ -115,6 +118,23 @@ function parseDailySalesError(error: Error | string): { message: string; field?:
   return { message: message || 'An error occurred while saving sales data.' };
 }
 
+/**
+ * What each customer sale of the day put on the customer's tab (sale_account_amounts,
+ * migration 20261111190452). End of Day leaves these out of cash/card and posts them to the
+ * Customer Accounts receivable.
+ */
+async function fetchAccountAmounts(restaurantId: string, branchId: string | null, from: Date, to: Date) {
+  const { data, error } = await db.rpc("sale_account_amounts", {
+    p_restaurant_id: restaurantId,
+    p_branch_id: branchId as string,
+    p_from: from.toISOString(),
+    p_to: to.toISOString(),
+  });
+  if (error) throw error;
+  return new Map<string, number>((data ?? []).map((r: { sale_id: string; on_account: number }) => [r.sale_id, Number(r.on_account) || 0]));
+}
+const sumAccount = (m: Map<string, number>) => Math.round([...m.values()].reduce((a, b) => a + b, 0) * 100) / 100;
+
 export function useDailySales(date?: string) {
   const { user, restaurant, tenant } = useAuth();
   const { activeBranchId, isAllBranches, hasMultipleBranches, isBranchReady } = useBranch();
@@ -135,7 +155,7 @@ export function useDailySales(date?: string) {
     queryFn: async (): Promise<DailySalesSummary | null> => {
       if (!restaurant?.id || !date) return null;
 
-      let q = supabase
+      let q = db
         .from('daily_sales_summary')
         .select('*')
         .eq('restaurant_id', restaurant.id)
@@ -156,7 +176,7 @@ export function useDailySales(date?: string) {
       if (!restaurant?.id || !date) return 0;
 
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(`${date}T12:00:00Z`), tz);
-      let q = supabase
+      let q = db
         .from('sales_transactions')
         .select('total')
         .eq('restaurant_id', restaurant.id)
@@ -180,6 +200,8 @@ export function useDailySales(date?: string) {
         card: 0,
         delivery: 0,
         other: 0,
+        /** Put on customers' tabs: left out of cash/card, posted as receivable. */
+        account: 0,
         transactions: [] as Array<{
           id: string;
           receipt_number: string | null;
@@ -187,6 +209,8 @@ export function useDailySales(date?: string) {
           total: number;
           created_at: string;
           bucket: 'cash' | 'card' | 'delivery' | 'other';
+          /** Part of the sale put on the customer's tab (not taken at the till). */
+          on_account: number;
         }>,
         startISO: '',
         endExclusiveISO: '',
@@ -195,9 +219,9 @@ export function useDailySales(date?: string) {
       if (!restaurant?.id || !date) return empty;
 
       const { start, endExclusive } = getRestaurantDayBoundsUTC(new Date(`${date}T12:00:00Z`), tz);
-      let q = supabase
+      let q = db
         .from('sales_transactions')
-        .select('id,receipt_number,total,payment_method,created_at')
+        .select('id,receipt_number,total,payment_method,created_at,sale_payments(method,amount)')
         .eq('restaurant_id', restaurant.id)
         .gte('created_at', start.toISOString())
         .lt('created_at', endExclusive.toISOString())
@@ -206,9 +230,10 @@ export function useDailySales(date?: string) {
       const { data, error } = await q;
 
       if (error) throw error;
-      const [overrides, rules] = await Promise.all([
+      const [overrides, rules, onAccount] = await Promise.all([
         fetchPaymentMap(restaurant.id),
         fetchPaymentRules(restaurant.id),
+        fetchAccountAmounts(restaurant.id, activeBranchId ?? null, start, endExclusive),
       ]);
       const acc = {
         ...empty,
@@ -218,17 +243,26 @@ export function useDailySales(date?: string) {
         timezone: tz,
       };
       for (const r of data || []) {
-        const amt = Number(r.total) || 0;
-        const bucket = bucketForPaymentMethod(r.payment_method as string, overrides, rules);
-        acc[bucket] += amt;
-        acc.transactions.push({
-          id: r.id as string,
-          receipt_number: (r as { receipt_number: string | null }).receipt_number,
-          payment_method: (r.payment_method as string) ?? null,
-          total: amt,
-          created_at: r.created_at as string,
-          bucket,
-        });
+        // A split sale counts each tender in its own bucket (cash part as cash, card part as card).
+        const parts = tendersOf(r as SaleWithTenders);
+        // A tab sale's unpaid part was not taken at the till: it is not cash or card.
+        let owedPart = onAccount.get(r.id as string) ?? 0;
+        acc.account += owedPart;
+        for (const part of parts) {
+          const bucket = bucketForPaymentMethod(part.method, overrides, rules);
+          const owed = Math.min(owedPart, part.amount > 0 ? part.amount : owedPart);
+          owedPart -= owed;
+          acc[bucket] += part.amount - owed;
+          acc.transactions.push({
+            id: r.id as string,
+            receipt_number: (r as { receipt_number: string | null }).receipt_number,
+            payment_method: part.method,
+            total: part.amount,
+            created_at: r.created_at as string,
+            bucket,
+            on_account: owed,
+          });
+        }
       }
       return acc;
     },
@@ -249,7 +283,7 @@ export function useDailySales(date?: string) {
 
       // Calculate system total
       const { start: cStart, endExclusive: cEnd } = getRestaurantDayBoundsUTC(new Date(`${data.sales_date}T12:00:00Z`), tz);
-      let txQ = supabase
+      let txQ = db
         .from('sales_transactions')
         .select('total')
         .eq('restaurant_id', restaurant.id)
@@ -259,8 +293,9 @@ export function useDailySales(date?: string) {
       const { data: txData } = await txQ;
       
       const systemCalcTotal = txData?.reduce((sum, t) => sum + (Number(t.total) || 0), 0) || 0;
+      const accountSales = sumAccount(await fetchAccountAmounts(restaurant.id, activeBranchId ?? null, cStart, cEnd));
 
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from('daily_sales_summary')
         .insert({
           tenant_id: tenant.id,
@@ -271,6 +306,7 @@ export function useDailySales(date?: string) {
           card_sales: data.card_sales,
           delivery_sales: data.delivery_sales,
           other_sales: data.other_sales || 0,
+          account_sales: accountSales,
           pos_reported_total: data.pos_reported_total,
           system_calculated_total: systemCalcTotal,
           variance_notes: data.variance_notes,
@@ -283,7 +319,7 @@ export function useDailySales(date?: string) {
 
       // Create delivery breakdown if provided
       if (data.delivery_breakdown && data.delivery_breakdown.length > 0) {
-        const { error: breakdownError } = await supabase
+        const { error: breakdownError } = await db
           .from('daily_delivery_breakdown')
           .insert(
             data.delivery_breakdown.map(b => ({
@@ -323,8 +359,9 @@ export function useDailySales(date?: string) {
       // keep the total captured when the row was first created, otherwise the
       // variance shown on the day-end screen is computed against stale data.
       let systemCalcTotal: number | undefined;
+      let accountSales: number | undefined;
       if (restaurant?.id) {
-        const { data: existing } = await supabase
+        const { data: existing } = await db
           .from('daily_sales_summary')
           .select('sales_date, branch_id')
           .eq('id', id)
@@ -334,7 +371,7 @@ export function useDailySales(date?: string) {
             new Date(`${existing.sales_date}T12:00:00Z`),
             tz,
           );
-          let sysQ = supabase
+          let sysQ = db
             .from('sales_transactions')
             .select('total')
             .eq('restaurant_id', restaurant.id)
@@ -344,14 +381,16 @@ export function useDailySales(date?: string) {
           if (scopeBranch) sysQ = sysQ.eq('branch_id', scopeBranch);
           const { data: sysRows } = await sysQ;
           systemCalcTotal = (sysRows || []).reduce((sum, t) => sum + (Number(t.total) || 0), 0);
+          accountSales = sumAccount(await fetchAccountAmounts(restaurant.id, scopeBranch ?? null, uStart, uEnd));
         }
       }
 
-      const { data: result, error } = await supabase
+      const { data: result, error } = await db
         .from('daily_sales_summary')
         .update({
           ...updateData,
           ...(systemCalcTotal !== undefined ? { system_calculated_total: systemCalcTotal } : {}),
+          ...(accountSales !== undefined ? { account_sales: accountSales } : {}),
           updated_at: new Date().toISOString(),
         })
         .eq('id', id)
@@ -387,7 +426,7 @@ export function useDailySales(date?: string) {
         updatePayload.variance_status = 'resolved';
       }
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('daily_sales_summary')
         .update(updatePayload)
         .eq('id', id)
@@ -428,7 +467,7 @@ export function useDeliveryBreakdown(dailySalesId?: string) {
     queryFn: async () => {
       if (!dailySalesId) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('daily_delivery_breakdown')
         .select('*')
         .eq('daily_sales_id', dailySalesId)

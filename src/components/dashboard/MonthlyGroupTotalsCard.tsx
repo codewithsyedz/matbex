@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BarChart3, RefreshCw, Info, ChevronDown, CalendarIcon, X, Columns3 } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -237,7 +237,7 @@ export function MonthlyGroupTotalsCard() {
         return { data: all, error: null };
       };
       const buildSales = () => {
-        let q = supabase
+        let q = db
           .from("daily_sales_summary")
           .select("id, sales_date, total_sales, branch_id")
           .eq("restaurant_id", restaurantId!)
@@ -247,7 +247,7 @@ export function MonthlyGroupTotalsCard() {
         return q.order("id", { ascending: true });
       };
       const buildExpenses = () => {
-        let q = supabase
+        let q = db
           .from("expenses")
           .select("id, expense_date, amount, branch_id")
           .eq("restaurant_id", restaurantId!)

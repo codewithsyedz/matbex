@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useToast } from "@/hooks/use-toast";
 import { toast as sonnerToast } from "sonner";
 import { useToastSettings } from "@/hooks/useToastSettings";
@@ -203,6 +203,7 @@ function buildNotificationActions(notification: Notification): NotificationActio
 
 const ACTION_LABELS: Record<string, string> = {
   expense_recorded: "New Expense",
+  payment_captured_after_cancel: "Paid After Cancel",
   SHIFT_TIMESTAMP_OVERRIDE: "Shift Override",
   DELETE: "Deletion",
   BULK_DELETE: "Bulk Delete",
@@ -303,7 +304,7 @@ export function NotificationCenter() {
     const fetchSoundPrefs = async () => {
       if (!profile?.id || !tenant?.id) return;
       
-      const { data } = await supabase
+      const { data } = await db
         .from("notification_preferences")
         .select("sound_enabled, sound_volume, sound_theme")
         .eq("user_id", profile.id)
@@ -342,7 +343,7 @@ export function NotificationCenter() {
     if (!profile?.id) return;
 
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("in_app_notifications")
         .select("*")
         .eq("user_id", profile.id)
@@ -363,7 +364,7 @@ export function NotificationCenter() {
   const subscribeToNotifications = () => {
     if (!profile?.id) return () => {};
 
-    const channel = supabase
+    const channel = db
       .channel("notifications-realtime")
       .on(
         "postgres_changes",
@@ -444,7 +445,7 @@ export function NotificationCenter() {
       .subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   };
 
@@ -488,7 +489,7 @@ export function NotificationCenter() {
 
   const markAsRead = async (notificationId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("in_app_notifications")
         .update({ is_read: true, read_at: new Date().toISOString() })
         .eq("id", notificationId);
@@ -510,7 +511,7 @@ export function NotificationCenter() {
     if (!profile?.id) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("in_app_notifications")
         .update({ is_read: true, read_at: new Date().toISOString() })
         .eq("user_id", profile.id)
@@ -536,7 +537,7 @@ export function NotificationCenter() {
     if (!batchId) return;
     setDecidingId(notification.id);
     try {
-      const { error } = await supabase.rpc("approve_journal_entry", {
+      const { error } = await db.rpc("approve_journal_entry", {
         p_batch_id: batchId,
       });
       if (error) throw error;
@@ -560,7 +561,7 @@ export function NotificationCenter() {
     if (!reason || !reason.trim()) return;
     setDecidingId(notification.id);
     try {
-      const { error } = await supabase.rpc("reject_journal_entry", {
+      const { error } = await db.rpc("reject_journal_entry", {
         p_batch_id: batchId,
         p_reason: reason.trim(),
       });

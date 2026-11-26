@@ -1,4 +1,8 @@
 import { useEffect, useState } from "react";
+import { TenantClosureCard } from "@/components/admin/TenantClosureCard";
+import { TenantEntitlementsCard } from "@/components/admin/TenantEntitlementsCard";
+import { ViewAsTenantDialog } from "@/components/admin/ViewAsTenantDialog";
+import { planLabel } from "@/lib/billing/planLabel";
 import { useParams, useNavigate } from "react-router-dom";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,8 +17,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
-import { useSuperAdmin } from "@/contexts/SuperAdminContext";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import {
   ArrowLeft,
@@ -41,6 +44,7 @@ import { TenantUsersManager } from "@/components/admin/TenantUsersManager";
 import { TenantChatSettings } from "@/components/admin/TenantChatSettings";
 import { TenantFeatureToggles } from "@/components/admin/TenantFeatureToggles";
 import { TenantAddonsManager } from "@/components/admin/TenantAddonsManager";
+import { TenantBillingManager } from "@/components/admin/TenantBillingManager";
 import { TenantBranchesManager } from "@/components/admin/TenantBranchesManager";
 import { TenantLocationsManager } from "@/components/admin/TenantLocationsManager";
 import { TenantDataResidency } from "@/components/admin/TenantDataResidency";
@@ -101,7 +105,7 @@ interface Tenant {
 export default function AdminTenantDetails() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { startImpersonation } = useSuperAdmin();
+  const [viewAsOpen, setViewAsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [resendingCreds, setResendingCreds] = useState(false);
   const [tenant, setTenant] = useState<Tenant | null>(null);
@@ -120,7 +124,7 @@ export default function AdminTenantDetails() {
 
     try {
       // Fetch tenant
-      const { data: tenantData, error: tenantError } = await supabase
+      const { data: tenantData, error: tenantError } = await db
         .from("tenants")
         .select("*")
         .eq("id", id)
@@ -131,7 +135,7 @@ export default function AdminTenantDetails() {
       // Fetch plan
       let planData = null;
       if (tenantData.plan_id) {
-        const { data } = await supabase
+        const { data } = await db
           .from("plans")
           .select("id, name, price")
           .eq("id", tenantData.plan_id)
@@ -142,7 +146,7 @@ export default function AdminTenantDetails() {
       setTenant({ ...tenantData, plan: planData, settings: tenantData.settings as Record<string, unknown> || {} });
 
       // Fetch restaurants
-      const { data: restaurantsData } = await supabase
+      const { data: restaurantsData } = await db
         .from("restaurants")
         .select("id, name, status, created_at")
         .eq("tenant_id", id)
@@ -151,7 +155,7 @@ export default function AdminTenantDetails() {
       setRestaurants(restaurantsData || []);
 
       // Fetch users with roles
-      const { data: usersData } = await supabase
+      const { data: usersData } = await db
         .from("user_tenant_roles")
         .select("user_id, role")
         .eq("tenant_id", id);
@@ -159,7 +163,7 @@ export default function AdminTenantDetails() {
       // Fetch profiles for users
       if (usersData && usersData.length > 0) {
         const userIds = usersData.map((u) => u.user_id);
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds);
@@ -172,7 +176,7 @@ export default function AdminTenantDetails() {
       }
 
       // Fetch activity logs
-      const { data: logsData } = await supabase
+      const { data: logsData } = await db
         .from("tenant_activity_logs")
         .select("*")
         .eq("tenant_id", id)
@@ -190,21 +194,21 @@ export default function AdminTenantDetails() {
 
       if (restaurantIds.length > 0) {
         // Total shifts
-        const { count: shiftsCount } = await supabase
+        const { count: shiftsCount } = await db
           .from("shifts")
           .select("*", { count: "exact", head: true })
           .in("restaurant_id", restaurantIds)
           .gte("created_at", thirtyDaysAgo);
 
         // Total sales transactions
-        const { count: transactionsCount } = await supabase
+        const { count: transactionsCount } = await db
           .from("sales_transactions")
           .select("*", { count: "exact", head: true })
           .in("restaurant_id", restaurantIds)
           .gte("created_at", thirtyDaysAgo);
 
         // Total sales value
-        const { data: salesData } = await supabase
+        const { data: salesData } = await db
           .from("sales_transactions")
           .select("total")
           .in("restaurant_id", restaurantIds)
@@ -283,14 +287,15 @@ export default function AdminTenantDetails() {
 
   return (
     <div className="space-y-6">
+        <ViewAsTenantDialog tenant={{ id: tenant.id, name: tenant.name }} open={viewAsOpen} onOpenChange={setViewAsOpen} />
         {/* Header */}
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
           <Button variant="ghost" size="icon" onClick={() => navigate("/admin/tenants")}>
             <ArrowLeft className="h-4 w-4" />
           </Button>
-          <div className="flex-1">
+          <div className="min-w-0 flex-1">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-md bg-muted flex items-center justify-center">
+              <div className="h-10 w-10 shrink-0 rounded-md bg-muted flex items-center justify-center">
                 <Building2 className="h-5 w-5 text-muted-foreground" />
               </div>
               <div>
@@ -301,14 +306,11 @@ export default function AdminTenantDetails() {
               </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <Button
               variant="outline"
               size="sm"
-              onClick={async () => {
-                await startImpersonation(tenant.id);
-                navigate("/dashboard");
-              }}
+              onClick={() => setViewAsOpen(true)}
             >
               <Eye className="h-4 w-4 mr-2" />
               View as Tenant
@@ -325,7 +327,7 @@ export default function AdminTenantDetails() {
                 ) return;
                 setResendingCreds(true);
                 try {
-                  const { data, error } = await supabase.functions.invoke(
+                  const { data, error } = await db.functions.invoke(
                     "admin-resend-trial-credentials",
                     { body: { tenant_id: tenant.id } },
                   );
@@ -362,14 +364,14 @@ export default function AdminTenantDetails() {
             {getStatusBadge(tenant.status)}
             {tenant.plan && (
               <Badge variant="outline" className="capitalize">
-                {tenant.plan.name}
+                {planLabel(tenant.plan.name)}
               </Badge>
             )}
           </div>
         </div>
 
         {/* Quick Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 gap-3 md:grid-cols-4 md:gap-4">
           <Card className="border-border/40">
             <CardContent className="pt-6">
               <div className="flex items-center gap-3">
@@ -428,6 +430,7 @@ export default function AdminTenantDetails() {
         <Tabs defaultValue="overview" className="space-y-4">
           <TabsList className="flex flex-wrap h-auto">
             <TabsTrigger value="overview">Overview</TabsTrigger>
+            <TabsTrigger value="billing">Billing</TabsTrigger>
             <TabsTrigger value="activity">Activity Log</TabsTrigger>
             <TabsTrigger value="sessions">Sessions</TabsTrigger>
             <TabsTrigger value="exports">Exports</TabsTrigger>
@@ -441,6 +444,7 @@ export default function AdminTenantDetails() {
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
+            <TenantClosureCard tenantId={tenant.id} tenantName={tenant.name} />
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {/* Tenant Info */}
               <Card className="border-border/40">
@@ -455,7 +459,7 @@ export default function AdminTenantDetails() {
                     </div>
                     <div>
                       <p className="text-muted-foreground">Plan</p>
-                      <p className="font-medium capitalize">{tenant.plan?.name || "No plan"}</p>
+                      <p className="font-medium">{planLabel(tenant.plan?.name)}</p>
                     </div>
                     {tenant.trial_ends_at && (
                       <div>
@@ -603,8 +607,13 @@ export default function AdminTenantDetails() {
             <TenantChatSettings tenantId={tenant.id} />
           </TabsContent>
 
-          <TabsContent value="modules">
+          <TabsContent value="modules" className="space-y-4">
+            <TenantEntitlementsCard tenantId={tenant.id} />
             <TenantFeatureToggles tenantId={tenant.id} planId={tenant.plan_id} />
+          </TabsContent>
+
+          <TabsContent value="billing">
+            <TenantBillingManager tenantId={tenant.id} />
           </TabsContent>
 
           <TabsContent value="addons">

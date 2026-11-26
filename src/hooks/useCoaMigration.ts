@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { buildMigrationPlan, type MigrationRow } from "@/lib/coaMigrationPlan";
@@ -37,7 +37,7 @@ export function useCoaMigration() {
         const label = row.target ? `${row.target.code} ${row.target.name}` : row.existing?.account_name ?? "account";
         try {
           if (row.action === "create" && row.target) {
-            const { error } = await supabase.from("chart_of_accounts").insert({
+            const { error } = await db.from("chart_of_accounts").insert({
               tenant_id: tenantId,
               account_code: row.target.code,
               account_name: row.target.name,
@@ -50,7 +50,7 @@ export function useCoaMigration() {
           } else if (row.existing && row.changes.length > 0) {
             const patch: Record<string, string> = {};
             row.changes.forEach((c) => { patch[c.field] = c.to; });
-            const { error } = await supabase
+            const { error } = await db
               .from("chart_of_accounts")
               .update(patch)
               .eq("id", row.existing.id)

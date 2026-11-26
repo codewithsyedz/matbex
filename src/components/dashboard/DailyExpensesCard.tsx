@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -39,7 +39,7 @@ export function DailyExpensesCard() {
       const endDate = selectedDate;
       const startDate = subDays(endDate, 6);
 
-      let expensesQuery = supabase
+      let expensesQuery = db
         .from("expenses")
         .select("amount, expense_date, category_id, expense_categories(name, color)")
         .eq("restaurant_id", restaurant.id)

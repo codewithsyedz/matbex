@@ -11,7 +11,7 @@ import {
   CollapsibleContent,
   CollapsibleTrigger,
 } from "@/components/ui/collapsible";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useAuth } from "@/contexts/AuthContext";
 import { InstallmentVatCorrectionDialog } from "@/components/accounting/InstallmentVatCorrectionDialog";
@@ -42,31 +42,35 @@ export function VatRecoverableReconciliationPanel({
   branchId = null,
 }: Props) {
   const { format: formatCurrency } = useCurrency();
-  const { isOwner, isAccountant } = useAuth() as any;
+  const { isOwner, isAccountant, tenant, profile } = useAuth() as any;
+  // Accounts and ledger lines belong to the business (tenant); expenses and invoices to the
+  // restaurant. Filtering tenant_id by the restaurant id matched nothing except where the two
+  // ids happen to be equal.
+  const tenantId: string | undefined = tenant?.id ?? profile?.tenant_id;
   const [correctionPlanId, setCorrectionPlanId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["vat-recoverable-recon", restaurantId, dateFrom, dateTo, branchId],
-    enabled: !!restaurantId && !!dateFrom && !!dateTo,
+    queryKey: ["vat-recoverable-recon", tenantId, restaurantId, dateFrom, dateTo, branchId],
+    enabled: !!tenantId && !!restaurantId && !!dateFrom && !!dateTo,
     queryFn: async () => {
-      const { data: accounts, error: accErr } = await supabase
+      const { data: accounts, error: accErr } = await db
         .from("chart_of_accounts")
         .select("id, account_code, account_name")
-        .eq("tenant_id", restaurantId!);
+        .eq("tenant_id", tenantId!);
       if (accErr) throw accErr;
 
       const vatAccounts = (accounts ?? []).filter((a: any) =>
         isInputVatAccount(a.account_code, a.account_name),
       );
       const accountIds = vatAccounts.map((a: any) => a.id);
-      const accountById = new Map(vatAccounts.map((a: any) => [a.id, a]));
+      const accountById = new Map<any, any>(vatAccounts.map((a: any) => [a.id, a]));
 
       let lines: any[] = [];
       if (accountIds.length) {
-        let q = supabase
+        let q = db
           .from("account_transactions")
           .select("batch_id, account_id, debit, credit, transaction_date, is_voided")
-          .eq("tenant_id", restaurantId!)
+          .eq("tenant_id", tenantId!)
           .in("account_id", accountIds)
           .gte("transaction_date", dateFrom)
           .lte("transaction_date", dateTo);
@@ -83,7 +87,7 @@ export function VatRecoverableReconciliationPanel({
       const batchIds = [...new Set(lines.map((l) => l.batch_id).filter(Boolean))] as string[];
       let batches: any[] = [];
       if (batchIds.length) {
-        const { data: b, error: bErr } = await supabase
+        const { data: b, error: bErr } = await db
           .from("journal_entry_batches")
           .select("id, reference_number, journal_type, batch_date, is_posted")
           .in("id", batchIds);
@@ -91,7 +95,7 @@ export function VatRecoverableReconciliationPanel({
         batches = b ?? [];
       }
 
-      let expQ = supabase
+      let expQ = db
         .from("expenses")
         .select("vat_amount")
         .eq("restaurant_id", restaurantId!)
@@ -100,19 +104,19 @@ export function VatRecoverableReconciliationPanel({
         .lte("expense_date", dateTo);
       if (branchId) expQ = expQ.eq("branch_id", branchId);
 
-      let instQ = (supabase as any)
+      let instQ = (db as any)
         .from("installment_plans")
         .select(
           "id, description, supplier_name, provider, purchase_date, branch_id, vat_amount, finance_vat_amount, status",
         )
-        .eq("tenant_id", restaurantId!)
+        .eq("tenant_id", tenantId!)
         .gte("purchase_date", dateFrom)
         .lte("purchase_date", dateTo);
       if (branchId) instQ = instQ.eq("branch_id", branchId);
 
       const [expRes, purRes, instRes] = await Promise.all([
         expQ,
-        supabase
+        db
           .from("purchase_invoices")
           .select("tax_amount")
           .eq("restaurant_id", restaurantId!)
@@ -138,7 +142,7 @@ export function VatRecoverableReconciliationPanel({
           (postedVatByBatch.get(l.batch_id) ?? 0) + Number(l.debit || 0) - Number(l.credit || 0),
         );
       }
-      const plansById = new Map(
+      const plansById = new Map<any, any>(
         ((instRes.data ?? []) as any[]).map((p: any) => [String(p.id), p]),
       );
       const rowsWithGap = installmentBreakdown.rows.map((r) => {

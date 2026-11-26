@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 const TOKEN_KEY = "matbex_customer_token";
 const CUSTOMER_KEY = "matbex_customer";
@@ -46,7 +46,7 @@ export function useCustomerAuth() {
   }, []);
 
   const sendOtp = useCallback(async (phone: string) => {
-    const { data, error } = await supabase.functions.invoke("customer-send-otp", {
+    const { data, error } = await db.functions.invoke("customer-send-otp", {
       body: { phone },
     });
     if (error) throw new Error(error.message);
@@ -56,7 +56,7 @@ export function useCustomerAuth() {
 
   const verifyOtp = useCallback(
     async (phone: string, code: string, name?: string) => {
-      const { data, error } = await supabase.functions.invoke("customer-verify-otp", {
+      const { data, error } = await db.functions.invoke("customer-verify-otp", {
         body: { phone, code, name },
       });
       if (error) throw new Error(error.message);
@@ -72,7 +72,7 @@ export function useCustomerAuth() {
     async (path: string, init?: RequestInit) => {
       const token = state.token ?? localStorage.getItem(TOKEN_KEY);
       if (!token) throw new Error("Not signed in");
-      const url = `https://${import.meta.env.VITE_SUPABASE_PROJECT_ID}.supabase.co/functions/v1/customer-orders${path}`;
+      const url = `${import.meta.env.VITE_API_URL}/functions/v1/customer-orders${path}`;
       const res = await fetch(url, {
         ...init,
         headers: {

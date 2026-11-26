@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Building2, Receipt, TrendingUp, CalendarIcon, RefreshCw, Info, ChevronDown } from "lucide-react";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -79,7 +79,7 @@ export function AllBranchesTotalsCard({ dateRange, periodLabel }: Props) {
     refetchOnWindowFocus: false,
     queryFn: async () => {
       const loadPosSales = async (branchId: string | null) => {
-        const { data, error } = await (supabase as any).rpc("dashboard_sales_summary", {
+        const { data, error } = await (db as any).rpc("dashboard_sales_summary", {
           p_restaurant_id: restaurantId,
           p_start: bounds.startDateUTC,
           p_end: bounds.endDateUTC,
@@ -89,7 +89,7 @@ export function AllBranchesTotalsCard({ dateRange, periodLabel }: Props) {
         return Number(data?.[0]?.net_sales ?? 0);
       };
       const loadExpenses = async (branchId: string | null) => {
-        const { data, error } = await (supabase as any).rpc("dashboard_expense_summary", {
+        const { data, error } = await (db as any).rpc("dashboard_expense_summary", {
           p_restaurant_id: restaurantId,
           p_start_date: bounds.startDate,
           p_end_date: bounds.endDate,
@@ -100,7 +100,7 @@ export function AllBranchesTotalsCard({ dateRange, periodLabel }: Props) {
       };
 
       // Declared day-close totals (11–11 business day submitted by the branch).
-      const { data: declaredRows, error: declaredErr } = await supabase
+      const { data: declaredRows, error: declaredErr } = await db
         .from("daily_sales_summary")
         .select("branch_id, total_sales, sales_date")
         .eq("restaurant_id", restaurantId!)

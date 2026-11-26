@@ -9,11 +9,13 @@
 
 export const CANONICAL = {
   /** Root page wrapper of an authenticated (in-shell) page. */
-  containerWidth: "max-w-6xl",
-  containerVertical: ["py-4", "md:py-6"],
-  containerRhythm: ["space-y-4", "md:space-y-6"],
+  // Updated 2026-11-11 to the layout the app actually uses (97 pages): the previous
+  // max-w-6xl / py-4 / font-light tokens described a design the app had moved away from.
+  containerWidth: "max-w-7xl",
+  containerVertical: ["py-5", "md:py-7"],
+  containerRhythm: ["space-y-5", "md:space-y-6"],
   /** Page title typography. */
-  h1: ["text-2xl", "font-light", "tracking-tight"],
+  h1: ["text-2xl", "md:text-3xl", "font-semibold", "tracking-tight"],
   /** Card rhythm. */
   cardHeaderPadding: "pb-3",
   cardTitleType: ["text-base", "font-medium"],

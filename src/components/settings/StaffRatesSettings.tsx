@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { qk } from "@/lib/query/queryKeys";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -46,7 +46,7 @@ export function StaffRatesSettings() {
     queryKey: ["staff-rates", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_rates")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -62,7 +62,7 @@ export function StaffRatesSettings() {
     queryKey: ["team-members-for-rates", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("user_roles")
         .select("user_id, profiles:user_id(full_name)")
         .eq("restaurant_id", restaurant.id);
@@ -75,7 +75,7 @@ export function StaffRatesSettings() {
   const createMutation = useMutation({
     mutationFn: async (item: { user_id: string; hourly_rate: number; role_type: string }) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_rates")
         .insert({
           restaurant_id: restaurant.id,
@@ -101,7 +101,7 @@ export function StaffRatesSettings() {
 
   const updateMutation = useMutation({
     mutationFn: async (item: { id: string; hourly_rate: number; role_type: string }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("staff_rates")
         .update({
           hourly_rate: item.hourly_rate,
@@ -121,7 +121,7 @@ export function StaffRatesSettings() {
 
   const toggleMutation = useMutation({
     mutationFn: async ({ id, is_active }: { id: string; is_active: boolean }) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("staff_rates")
         .update({ is_active })
         .eq("id", id);
@@ -136,7 +136,7 @@ export function StaffRatesSettings() {
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("staff_rates")
         .delete()
         .eq("id", id);

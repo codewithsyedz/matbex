@@ -14,16 +14,16 @@ import 'screens/gate_screen.dart';
 const _apiBase = String.fromEnvironment(
   'MATBEX_API_BASE',
   defaultValue:
-      'https://tlkyubkbbqwmzjaogavb.supabase.co/functions/v1/terminal-api',
+      'https://api.matbex.com/functions/v1/terminal-api',
 );
 const _apiBase = String.fromEnvironment(
   'SUFRA_API_BASE',
   defaultValue:
-      'https://tlkyubkbbqwmzjaogavb.supabase.co/functions/v1/terminal-api',
+      'https://api.matbex.com/functions/v1/terminal-api',
 );
 const _supabaseUrl = String.fromEnvironment(
   'SUPABASE_URL',
-  defaultValue: 'https://tlkyubkbbqwmzjaogavb.supabase.co',
+  defaultValue: 'https://api.matbex.com',
 );
 const _supabaseAnonKey = String.fromEnvironment(
   'SUPABASE_ANON_KEY',

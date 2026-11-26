@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 
@@ -63,7 +63,7 @@ export function useTenantDomain() {
     queryKey: ["tenant-domain", tenantId],
     queryFn: async () => {
       if (!tenantId) return null;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_domains")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -88,7 +88,7 @@ export function useTenantDomain() {
     queryKey: ["tenant-domain-ssl-poll", domain?.id],
     queryFn: async () => {
       if (!domain?.id) return null;
-      const { data, error } = await supabase.functions.invoke("poll-domain-ssl", {
+      const { data, error } = await db.functions.invoke("poll-domain-ssl", {
         body: { domain_id: domain.id },
       });
       if (error) throw error;
@@ -125,7 +125,7 @@ export function useTenantDomain() {
       if (!tenantId) return null;
       
       // Try to fetch existing page
-      const { data: existingPage, error: fetchError } = await supabase
+      const { data: existingPage, error: fetchError } = await db
         .from("tenant_pages")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -140,7 +140,7 @@ export function useTenantDomain() {
       }
       
       // Auto-create a new landing page for this tenant
-      const { data: newPage, error: createError } = await supabase
+      const { data: newPage, error: createError } = await db
         .from("tenant_pages")
         .insert({
           tenant_id: tenantId,
@@ -177,7 +177,7 @@ export function useTenantDomain() {
           { page_id: newPage.id, block_type: 'cta', block_order: 4, content: { heading: 'Ready to Dine?', description: 'Book your table today', button_text: 'Make a Reservation', button_link: '#' }, is_visible: true },
         ];
         
-        await supabase.from("tenant_page_blocks").insert(defaultBlocks);
+        await db.from("tenant_page_blocks").insert(defaultBlocks);
       }
       
       return newPage as TenantPage;
@@ -190,7 +190,7 @@ export function useTenantDomain() {
     const normalized = subdomain.toLowerCase().replace(/[^a-z0-9-]/g, "");
     if (normalized.length < 3) return false;
     
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("tenant_domains")
       .select("id")
       .eq("subdomain", normalized)
@@ -210,7 +210,7 @@ export function useTenantDomain() {
       
       // Check if domain record exists
       if (domain) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("tenant_domains")
           .update({ 
             subdomain: normalized,
@@ -224,7 +224,7 @@ export function useTenantDomain() {
         if (error) throw error;
         return data;
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("tenant_domains")
           .insert({
             tenant_id: tenantId,
@@ -260,7 +260,7 @@ export function useTenantDomain() {
       const verificationToken = generateVerificationToken();
       
       if (domain) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("tenant_domains")
           .update({ 
             custom_domain: normalized,
@@ -277,7 +277,7 @@ export function useTenantDomain() {
         if (error) throw error;
         return data;
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("tenant_domains")
           .insert({
             tenant_id: tenantId,
@@ -312,7 +312,7 @@ export function useTenantDomain() {
       if (!domain?.custom_domain) throw new Error("No custom domain to verify");
 
       // Optimistically mark as verifying
-      await supabase
+      await db
         .from("tenant_domains")
         .update({
           domain_status: "verifying",
@@ -320,7 +320,7 @@ export function useTenantDomain() {
         })
         .eq("id", domain.id);
 
-      const { data, error } = await supabase.functions.invoke("verify-custom-domain", {
+      const { data, error } = await db.functions.invoke("verify-custom-domain", {
         body: { domain_id: domain.id },
       });
 
@@ -353,7 +353,7 @@ export function useTenantDomain() {
     mutationFn: async () => {
       if (!domain) throw new Error("No domain record");
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_domains")
         .update({ 
           custom_domain: null,
@@ -385,7 +385,7 @@ export function useTenantDomain() {
       if (!tenantId) throw new Error("No tenant ID");
       
       if (page) {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("tenant_pages")
           .update({ 
             ...pageData,
@@ -398,7 +398,7 @@ export function useTenantDomain() {
         if (error) throw error;
         return data;
       } else {
-        const { data, error } = await supabase
+        const { data, error } = await db
           .from("tenant_pages")
           .insert({
             tenant_id: tenantId,
@@ -427,7 +427,7 @@ export function useTenantDomain() {
     mutationFn: async () => {
       if (!page) throw new Error("No page to publish");
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenant_pages")
         .update({ 
           is_published: true,

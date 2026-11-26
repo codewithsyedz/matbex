@@ -1,4 +1,7 @@
 import { useState, useEffect } from "react";
+import { PlanFeatureMap } from "@/components/admin/PlanFeatureMap";
+import { useFeatureCatalog } from "@/hooks/useFeatureCatalog";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, Loader2, Crown, Zap, Building2, Save, DollarSign, Check, X } from "lucide-react";
 
@@ -24,27 +27,12 @@ interface Plan {
   stripe_price_id?: string | null;
 }
 
-const FEATURE_FLAGS = [
-  { key: "daily_profit", label: "Daily Profit", description: "Daily profit calculations and reports" },
-  { key: "accounting", label: "Accounting Module", description: "Chart of accounts, journal entries, and period close" },
-  { key: "inventory", label: "Inventory Module", description: "Stock tracking and purchase management" },
-  { key: "payroll", label: "Payroll Module", description: "Labor cost tracking and payroll management" },
-  { key: "chat", label: "Team Chat", description: "Real-time team messaging and channels" },
-  { key: "cogs", label: "COGS Tracking", description: "Cost of goods sold analysis and reporting" },
-  { key: "menu", label: "Menu Management", description: "Menu items, recipes, and pricing" },
-  { key: "advance_pay", label: "Advance Pay", description: "Employee advance payment feature" },
-  { key: "api_access", label: "API Access", description: "REST API access for integrations" },
-  { key: "multi_location", label: "Multi-Location", description: "Multiple restaurant locations" },
-  { key: "email_reports", label: "Email Reports", description: "Automated email report delivery" },
-  { key: "advanced_reports", label: "Advanced Reports", description: "Advanced analytics and reporting" },
-];
 
 const QUOTA_FIELDS = [
   { key: "users", label: "Total Users" },
   { key: "owner", label: "Owners" },
   { key: "manager", label: "Managers" },
   { key: "cashier", label: "Cashiers" },
-  { key: "menu_items", label: "Menu Items" },
   { key: "image_uploads", label: "Image Uploads" },
   { key: "email_reminders", label: "Email Reminders" },
 ];
@@ -66,6 +54,8 @@ const emptyPlan: Omit<Plan, 'id'> = {
 };
 
 export default function AdminPlans() {
+  // The shared feature catalogue (platform_features).
+  const FEATURE_FLAGS = useFeatureCatalog();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -80,7 +70,7 @@ export default function AdminPlans() {
 
   const fetchPlans = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("plans")
         .select("*")
         .order("price", { ascending: true });
@@ -179,7 +169,7 @@ export default function AdminPlans() {
       };
 
       if (editingPlan) {
-        const { error } = await supabase
+        const { error } = await db
           .from("plans")
           .update(payload)
           .eq("id", editingPlan.id);
@@ -187,7 +177,7 @@ export default function AdminPlans() {
         if (error) throw error;
         toast.success("Plan updated successfully");
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("plans")
           .insert(payload);
 
@@ -207,7 +197,7 @@ export default function AdminPlans() {
 
   const handleDelete = async (planId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("plans")
         .delete()
         .eq("id", planId);
@@ -224,7 +214,7 @@ export default function AdminPlans() {
 
   const togglePlanActive = async (plan: Plan) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("plans")
         .update({ is_active: !plan.is_active })
         .eq("id", plan.id);
@@ -244,7 +234,7 @@ export default function AdminPlans() {
 
   return (
     <div className="space-y-6">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-semibold tracking-tight text-foreground">
               Manage Plans
@@ -283,7 +273,7 @@ export default function AdminPlans() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="price">Price ($/month)</Label>
+                      <Label htmlFor="price">Price (SAR per branch per month, excl. VAT)</Label>
                       <Input
                         id="price"
                         type="number"
@@ -292,19 +282,6 @@ export default function AdminPlans() {
                         onChange={(e) => setFormData(prev => ({ ...prev, price: parseFloat(e.target.value) || 0 }))}
                       />
                     </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="stripe_price_id">Stripe Price ID</Label>
-                    <Input
-                      id="stripe_price_id"
-                      value={formData.stripe_price_id || ""}
-                      onChange={(e) => setFormData(prev => ({ ...prev, stripe_price_id: e.target.value }))}
-                      placeholder="price_..."
-                    />
-                    <p className="text-xs text-muted-foreground">
-                      Optional: Link to a Stripe price for automated billing
-                    </p>
                   </div>
 
                   <div className="flex items-center space-x-2">
@@ -409,7 +386,6 @@ export default function AdminPlans() {
                     <TableHead>Plan</TableHead>
                     <TableHead>Price</TableHead>
                     <TableHead>Features</TableHead>
-                    <TableHead>Stripe ID</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead className="text-right">Actions</TableHead>
                   </TableRow>
@@ -426,25 +402,20 @@ export default function AdminPlans() {
                             <div className="h-8 w-8 rounded-md bg-primary/10 flex items-center justify-center text-primary">
                               {getPlanIcon(plan.name)}
                             </div>
-                            <span className="font-medium capitalize">{plan.name}</span>
+                            <span className="font-medium">{planLabel(plan.name)}</span>
+                            {planLabel(plan.name).toLowerCase() !== plan.name.toLowerCase() && (
+                              <span className="text-xs text-muted-foreground">({plan.name})</span>
+                            )}
                           </div>
                         </TableCell>
                         <TableCell>
-                          ${plan.price}/{plan.billing_interval}
+                          <span className="tabular-nums">{sarPrice(plan.price)}</span>
+                          <span className="text-muted-foreground">/{plan.billing_interval === "monthly" ? "branch/month" : plan.billing_interval}</span>
                         </TableCell>
                         <TableCell>
                           <Badge variant="secondary">
                             {enabledFeatures} / {FEATURE_FLAGS.length}
                           </Badge>
-                        </TableCell>
-                        <TableCell>
-                          {plan.stripe_price_id ? (
-                            <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
-                              {plan.stripe_price_id.slice(0, 20)}...
-                            </code>
-                          ) : (
-                            <span className="text-muted-foreground text-sm">-</span>
-                          )}
                         </TableCell>
                         <TableCell>
                           <Badge variant={plan.is_active ? "default" : "secondary"}>
@@ -507,6 +478,8 @@ export default function AdminPlans() {
             )}
           </CardContent>
         </Card>
+
+        <PlanFeatureMap />
     </div>
   );
 }

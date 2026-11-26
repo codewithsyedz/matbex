@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { useTranslation } from "react-i18next";
 import { format } from "date-fns";
-import { ArrowUpRight, ClipboardCheck, Package, Percent, Plus, RefreshCw, Wallet } from "lucide-react";
+import { AlertTriangle, ArrowUpRight, ClipboardCheck, Package, Percent, Plus, RefreshCw, Wallet } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -10,6 +11,7 @@ import { getFiscalMonthRange, useFiscalSettings } from "@/hooks/useFiscalSetting
 import { getTenantTodayDate } from "@/lib/timezone";
 import { expenseAttention, summarizeAccountantExpenses } from "@/lib/accountantDashboard";
 import { useAccountantDashboard } from "@/hooks/useAccountantDashboard";
+import { useCardSettlementClearing } from "@/hooks/useCardSettlementClearing";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -20,7 +22,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { RecordExpenseDialog } from "@/components/expenses/RecordExpenseDialog";
 import { QuickAddInventoryItemDialog } from "@/components/expenses/QuickAddInventoryItemDialog";
 import { RouteSeo } from "@/components/seo/RouteSeo";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export default function AccountantDashboard() {
   const { i18n } = useTranslation(); const ar = i18n.language.startsWith("ar");
@@ -38,7 +40,7 @@ export default function AccountantDashboard() {
   useEffect(() => {
     if (!query.dataUpdatedAt || restaurant?.id !== "fe1a4d9e-1595-43ba-a47a-37575a9a55b9") return;
     let cancelled = false;
-    supabase.functions.invoke("accountant-pending-alerts", { body: {} }).then(({data,error}) => {
+    db.functions.invoke("accountant-pending-alerts", { body: {} }).then(({data,error}) => {
       if (!cancelled) setEmailStatus(error ? "error" : data?.status || null);
     });
     return () => { cancelled = true; };
@@ -51,6 +53,93 @@ export default function AccountantDashboard() {
   const filteredPending = pending.filter(e => reviewFilter === "all" || expenseAttention(e) === reviewFilter);
   const lowStock = (data?.inventory || []).filter(i => i.reorder_level !== null && Number(i.current_stock) <= Number(i.reorder_level));
   const scope = new URLSearchParams({ from, to, branch: branch || "all" }).toString();
+  // Sales missing from the ledger (all dates): closed days not posted, and days with POS sales
+  // but no End of Day. Until fixed, revenue, VAT and cash in the books are short.
+  const missingSales = useQuery({
+    queryKey: ["accountant-missing-sales", restaurant?.id, branch],
+    enabled: !!restaurant?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      let q = db.from("daily_sales_summary").select("total_sales")
+        .eq("restaurant_id", restaurant!.id).in("status", ["closed", "approved"])
+        .or("ledger_posted.is.null,ledger_posted.eq.false");
+      if (branch) q = q.eq("branch_id", branch);
+      const [unposted, noEod] = await Promise.all([
+        q,
+        db.rpc("days_without_end_of_day" as never, { p_restaurant_id: restaurant!.id, p_branch_id: branch } as never),
+      ]);
+      if (unposted.error) throw unposted.error;
+      if (noEod.error) throw noEod.error;
+      const u = (unposted.data || []) as Array<{ total_sales: number }>;
+      const n = ((noEod.data || []) as unknown) as Array<{ pos_total: number }>;
+      return {
+        unpostedDays: u.length, unpostedTotal: u.reduce((s, r) => s + Number(r.total_sales || 0), 0),
+        noEodDays: n.length, noEodTotal: n.reduce((s, r) => s + Number(r.pos_total || 0), 0),
+      };
+    },
+  });
+  const ms = missingSales.data;
+  // Month-end: card money still in transit (1015) and whether last month is locked. Locking a
+  // month stops anything changing it afterwards (new postings and voids alike).
+  const card = useCardSettlementClearing({ branchId: branch }).balance;
+  const lastMonthEnd = format(new Date(new Date().getFullYear(), new Date().getMonth(), 0), "yyyy-MM-dd");
+  const lastMonthLabel = format(new Date(new Date().getFullYear(), new Date().getMonth() - 1, 1), "MMMM yyyy");
+  const locks = useQuery({
+    queryKey: ["accountant-period-locks", restaurant?.id],
+    enabled: !!restaurant?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { data, error } = await db.from("fiscal_period_locks").select("period_end")
+        .eq("restaurant_id", restaurant!.id).eq("is_locked", true)
+        .order("period_end", { ascending: false }).limit(1);
+      if (error) throw error;
+      return (data?.[0]?.period_end as string | undefined) ?? null;
+    },
+  });
+  const lastLockedEnd = locks.data;
+  const lastMonthOpen = locks.isSuccess && (!lastLockedEnd || lastLockedEnd < lastMonthEnd);
+  const cardOutstanding = Number(card.outstanding || 0);
+  // Stock count: has last month's food cost been booked (post_stock_count_true_up, STOCK-<code>-YYYYMM)?
+  const lastMonthKey = lastMonthEnd.slice(0, 7).replace("-", "");
+  const stockCount = useQuery({
+    queryKey: ["accountant-stock-count", restaurant?.tenant_id, lastMonthKey],
+    enabled: !!restaurant?.tenant_id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const { count, error } = await db.from("journal_entry_batches").select("id", { count: "exact", head: true })
+        .eq("tenant_id", restaurant!.tenant_id).like("reference_number", `STOCK-%-${lastMonthKey}`);
+      if (error) throw error;
+      return count ?? 0;
+    },
+  });
+  const stockCountMissing = stockCount.isSuccess && stockCount.data === 0;
+  // Rent and overheads: accrued for last month (post_overhead_month_accrual, OHACC-YYYYMM-*)? And
+  // salaries for past periods that never reached the ledger.
+  const overheadAccrual = useQuery({
+    queryKey: ["accountant-overhead-accrual", restaurant?.id, lastMonthKey],
+    enabled: !!restaurant?.id,
+    staleTime: 60_000,
+    queryFn: async () => {
+      const [items, accrued, payroll] = await Promise.all([
+        db.from("overhead_allocation").select("id", { count: "exact", head: true })
+          .eq("restaurant_id", restaurant!.id).eq("is_active", true).gt("monthly_amount", 0).lte("created_at", `${lastMonthEnd}T23:59:59`),
+        db.from("journal_entry_batches").select("id", { count: "exact", head: true })
+          .eq("tenant_id", restaurant!.tenant_id).like("reference_number", `OHACC-${lastMonthKey}%`),
+        db.from("payroll_records").select("amount").eq("restaurant_id", restaurant!.id)
+          .eq("ledger_posted", false).lte("period_end", lastMonthEnd),
+      ]);
+      if (items.error) throw items.error;
+      if (accrued.error) throw accrued.error;
+      if (payroll.error) throw payroll.error;
+      return {
+        missing: (items.count ?? 0) > 0 && (accrued.count ?? 0) === 0,
+        payrollCount: payroll.data?.length ?? 0,
+        payrollTotal: (payroll.data || []).reduce((s, r: { amount: number | null }) => s + Number(r.amount || 0), 0),
+      };
+    },
+  });
+  const overheadMissing = !!overheadAccrual.data?.missing;
+  const payrollUnposted = overheadAccrual.data?.payrollCount ?? 0;
   const reasons = { mapping: L("Account missing", "حساب مفقود"), posting: L("Awaiting posting", "بانتظار الترحيل"), approval: L("Awaiting approval", "بانتظار الموافقة"), vat: L("VAT review", "مراجعة الضريبة") };
   const tiles = [
     { label: L("Input VAT · posted", "ضريبة المدخلات · مرحّلة"), value: money(data?.postedInputVat || 0), detail: L("Expense VAT recorded", "ضريبة المصروفات المسجلة") + " · " + money(totals.vat), icon: Percent, path: "/reports/vat-audit" },
@@ -73,6 +162,25 @@ export default function AccountantDashboard() {
       <div className="space-y-1"><Label htmlFor="accountant-to">{L("To", "إلى")}</Label><Input id="accountant-to" type="date" value={to} min={from} onChange={e => setTo(e.target.value || null)} /></div>
     </div>
     {query.isError ? <div role="alert" className="border border-destructive p-4 text-destructive">{L("Could not load accounting data", "تعذر تحميل بيانات الحسابات")}<Button variant="outline" className="ms-3" onClick={() => query.refetch()}>{L("Retry", "إعادة المحاولة")}</Button></div> : <>
+    {(lastMonthOpen || cardOutstanding > 0.005 || stockCountMissing || overheadMissing || payrollUnposted > 0) && <div role="status" className="rounded-md border bg-card p-4 space-y-2">
+      <p className="font-medium flex items-center gap-2"><ClipboardCheck className="h-4 w-4 text-primary" />{L("Month-end", "إقفال الشهر")}</p>
+      <ul className="text-sm space-y-1">
+        {cardOutstanding > 0.005 && <li className="flex flex-wrap items-center gap-2">{L("Card sales waiting for the payout to be recorded", "مبيعات بطاقات بانتظار تسجيل التحويل")} · <span className="font-medium tabular-nums">{money(cardOutstanding)}</span>{card.oldestTakingDate && <span className="text-muted-foreground">{L(`oldest ${card.oldestTakingDate}`, `الأقدم ${card.oldestTakingDate}`)}</span>} <Link className="text-primary underline" to="/accounting/card-settlement-clearing">{L("Record payouts from the bank statement", "سجّل التحويلات من كشف البنك")}</Link></li>}
+        {stockCountMissing && <li className="flex flex-wrap items-center gap-2">{L(`No stock count posted for ${lastMonthLabel}: food cost for the month is not booked`, `لا يوجد جرد مخزون مرحّل لشهر ${lastMonthLabel}: تكلفة الطعام للشهر غير مسجلة`)} <Link className="text-primary underline" to="/cogs-trueup">{L("Enter the month-end count", "أدخل جرد نهاية الشهر")}</Link></li>}
+        {overheadMissing && <li className="flex flex-wrap items-center gap-2">{L(`Rent and overheads not accrued for ${lastMonthLabel}`, `الإيجار والمصاريف الثابتة غير مستحقة لشهر ${lastMonthLabel}`)} <Link className="text-primary underline" to="/accounting/daily-overhead">{L("Post the month-end accrual", "رحّل استحقاق نهاية الشهر")}</Link></li>}
+        {payrollUnposted > 0 && <li className="flex flex-wrap items-center gap-2">{L(`${payrollUnposted} salary record(s) not in the ledger`, `${payrollUnposted} سجل راتب غير مرحّل`)} · <span className="font-medium tabular-nums">{money(overheadAccrual.data?.payrollTotal || 0)}</span> <Link className="text-primary underline" to="/staff/payroll-journal">{L("Review in the Payroll Journal", "راجعها في دفتر الرواتب")}</Link></li>}
+        {lastMonthOpen && <li className="flex flex-wrap items-center gap-2">{L(`${lastMonthLabel} is not locked`, `شهر ${lastMonthLabel} غير مقفل`)}{lastLockedEnd ? <span className="text-muted-foreground">{L(`last locked to ${lastLockedEnd}`, `آخر إقفال حتى ${lastLockedEnd}`)}</span> : <span className="text-muted-foreground">{L("no month has been locked yet", "لم يُقفل أي شهر بعد")}</span>} <Link className="text-primary underline" to="/accounting?tab=period-close">{L("Review and lock in Period Close", "راجع وأقفل من إقفال الفترة")}</Link></li>}
+      </ul>
+      <p className="text-xs text-muted-foreground">{L("Lock a month once its sales, expenses and payouts are in: nothing can change it afterwards.", "أقفل الشهر بعد ترحيل مبيعاته ومصروفاته وتحويلاته؛ لا يمكن تغييره بعدها.")}</p>
+    </div>}
+    {ms && (ms.unpostedDays > 0 || ms.noEodDays > 0) && <div role="alert" className="rounded-md border border-amber-500/40 bg-amber-500/10 p-4 space-y-2">
+      <p className="font-medium flex items-center gap-2"><AlertTriangle className="h-4 w-4 text-amber-600" />{L("Sales missing from the ledger", "مبيعات غير مرحّلة إلى الدفتر")}</p>
+      <p className="text-sm text-muted-foreground">{L("Until these are fixed, revenue, VAT and cash in the books are short. All dates, selected branch.", "حتى تُعالج، تكون الإيرادات والضريبة والنقد في الدفاتر ناقصة. جميع التواريخ، الفرع المحدد.")}</p>
+      <ul className="text-sm space-y-1">
+        {ms.unpostedDays > 0 && <li className="flex flex-wrap items-center gap-2">{L(`${ms.unpostedDays} closed day(s) not posted`, `${ms.unpostedDays} يوم مغلق غير مرحّل`)} · <span className="font-medium tabular-nums">{money(ms.unpostedTotal)}</span> <Link className="text-primary underline" to="/daily-profit">{L("Post them", "ترحيلها")}</Link></li>}
+        {ms.noEodDays > 0 && <li className="flex flex-wrap items-center gap-2">{L(`${ms.noEodDays} day(s) with sales but no End of Day`, `${ms.noEodDays} يوم فيه مبيعات بلا إقفال يومي`)} · <span className="font-medium tabular-nums">{money(ms.noEodTotal)}</span> <Link className="text-primary underline" to="/sales">{L("Close them in Sales → Day-End", "أقفلها من المبيعات ← نهاية اليوم")}</Link></li>}
+      </ul>
+    </div>}
     <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">{tiles.map(tile => <a key={tile.path} href={tile.path.startsWith("#") ? tile.path : `${tile.path}?${scope}`} className="rounded-md border bg-card p-4 flex flex-col gap-3 hover:border-primary focus-visible:outline focus-visible:outline-primary min-w-0">
       <span className="flex items-center justify-between text-sm text-muted-foreground"><span className="flex gap-2 items-center"><tile.icon className="h-4 w-4 text-primary" />{tile.label}</span><ArrowUpRight className="h-4 w-4 shrink-0" /></span>
       {query.isLoading ? <Skeleton className="h-8 w-32" /> : <span className="text-2xl font-semibold tabular-nums break-words">{tile.value}</span>}<span className="text-xs text-muted-foreground">{tile.detail}</span>

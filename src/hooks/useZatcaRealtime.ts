@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /**
@@ -27,7 +27,7 @@ export function useZatcaRealtime() {
       qc.invalidateQueries({ queryKey: ["zatca", "devices"] });
     };
 
-    const channel = supabase.channel(`zatca-compliance-${tenantId ?? restaurantId}`);
+    const channel = db.channel(`zatca-compliance-${tenantId ?? restaurantId}`);
 
     if (restaurantId) {
       channel.on(
@@ -68,7 +68,7 @@ export function useZatcaRealtime() {
     channel.subscribe();
 
     return () => {
-      supabase.removeChannel(channel);
+      db.removeChannel(channel);
     };
   }, [qc, restaurantId, tenantId]);
 }

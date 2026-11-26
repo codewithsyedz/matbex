@@ -41,7 +41,7 @@ import {
 } from "@/components/ui/tooltip";
 import { z } from "zod";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -347,7 +347,7 @@ export function DayEndAdjustmentDialog({
     enabled: open && !!tenant?.id && !!businessDate,
     staleTime: 10_000,
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("day_end_adjustments")
         .select("id, amount, reason, notes, created_at, created_by")
         .eq("scope", scope)
@@ -426,7 +426,11 @@ export function DayEndAdjustmentDialog({
   // sees what they are about to post (mirrors post_day_end_adjustment_to_ledger).
   const absAmount = Math.abs(numericAmount);
   const isOverage = numericAmount > 0;
-  const ledgerRows = Number.isFinite(numericAmount) && numericAmount !== 0
+  // Daily-sales adjustments explain why the counted figures differ from POS; End of Day
+  // posts those counted figures, so the adjustment itself makes no ledger entry
+  // (post_day_end_adjustment_to_ledger, migration 20261113115807).
+  const memoOnly = scope === "daily_sales";
+  const ledgerRows = !memoOnly && Number.isFinite(numericAmount) && numericAmount !== 0
     ? isOverage
       ? [
           { account: "1000 - Cash on Hand", debit: absAmount, credit: 0 },
@@ -439,7 +443,11 @@ export function DayEndAdjustmentDialog({
     : [];
   const totalDebit = ledgerRows.reduce((s, r) => s + r.debit, 0);
   const totalCredit = ledgerRows.reduce((s, r) => s + r.credit, 0);
-  const balanced = Math.abs(totalDebit - totalCredit) < 0.005 && totalDebit > 0;
+  // For a memo-only (daily-sales) adjustment there is nothing to balance: it can be recorded
+  // once it has an amount.
+  const balanced = memoOnly
+    ? Number.isFinite(numericAmount) && numericAmount !== 0
+    : Math.abs(totalDebit - totalCredit) < 0.005 && totalDebit > 0;
 
   // Adjusted-Total preview - only when the parent passes reconciliation
   // context. Mirrors the math used by DailySalesRecorder so what the user
@@ -565,7 +573,12 @@ export function DayEndAdjustmentDialog({
       doc.text("Credit", pageW - margin, y, { align: "right" });
       y += 12;
       doc.setFont("helvetica", "normal");
-      if (ledgerRows.length === 0) {
+      if (memoOnly) {
+        doc.setTextColor(120);
+        doc.text("No journal entry: End of Day posts the counted cash and card as sales (with VAT).", margin, y);
+        doc.setTextColor(0);
+        y += 14;
+      } else if (ledgerRows.length === 0) {
         doc.setTextColor(120);
         doc.text("(enter an amount to see ledger lines)", margin, y);
         doc.setTextColor(0);
@@ -646,6 +659,14 @@ export function DayEndAdjustmentDialog({
                     from what the POS rang up. A <strong>day-end adjustment</strong>{" "}
                     records that difference so the books match reality.
                   </p>
+                  {memoOnly ? (
+                    <p className="text-muted-foreground">
+                      Recorded as the explanation for the day's variance; <strong>no separate journal entry</strong>.
+                  End of Day posts the cash and card you counted as sales (with VAT), so this money is
+                  already in Cash on Hand and in revenue. Booking it again here would count it twice.
+                    </p>
+                  ) : (
+                  <>
                   <ul className="list-disc pl-4 space-y-0.5">
                     <li>
                       <strong>Overage (+)</strong>: extra cash found.
@@ -712,6 +733,8 @@ export function DayEndAdjustmentDialog({
                       </tbody>
                     </table>
                   </div>
+                  </>
+                  )}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
@@ -788,8 +811,9 @@ export function DayEndAdjustmentDialog({
         </div>
         {posTotal > 0 && (
           <p className="text-[11px] text-muted-foreground">
-            POS Reported is set, so the Adjusted Total tracks POS - the journal
-            entry only re-balances Cash on Hand vs. Cash Over/Short.
+            {memoOnly
+              ? "POS Reported is set, so the Adjusted Total tracks POS; End of Day posts the counted figures."
+              : "POS Reported is set, so the Adjusted Total tracks POS - the journal entry only re-balances Cash on Hand vs. Cash Over/Short."}
           </p>
         )}
       </div>
@@ -813,7 +837,7 @@ export function DayEndAdjustmentDialog({
 
     setSubmitting(true);
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("day_end_adjustments")
         .insert({
           tenant_id: tenant.id,
@@ -839,7 +863,7 @@ export function DayEndAdjustmentDialog({
 
       if (error) throw error;
 
-      const { error: postError } = await supabase.rpc(
+      const { error: postError } = await db.rpc(
         "post_day_end_adjustment_to_ledger" as never,
         { p_adjustment_id: data!.id } as never
       );
@@ -1229,6 +1253,14 @@ export function DayEndAdjustmentDialog({
             </div>
           </div>
 
+          {memoOnly ? (
+            <div className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
+              Recorded as the explanation for the day's variance; <strong>no separate journal entry</strong>.
+                  End of Day posts the cash and card you counted as sales (with VAT), so this money is
+                  already in Cash on Hand and in revenue. Booking it again here would count it twice.
+            </div>
+          ) : (
+          <>
           {/* Live double-entry preview - shown on the form step so the user
               sees the exact accounts and DR/CR amounts before clicking Review. */}
           <div className="space-y-1.5">
@@ -1315,15 +1347,23 @@ export function DayEndAdjustmentDialog({
               </p>
             )}
           </div>
+          </>
+          )}
 
           <ReconciliationPreview />
 
           <Alert>
             <AlertTriangle className="h-4 w-4" />
             <AlertDescription className="text-xs">
-              Posts a balanced journal entry between{" "}
-              <strong>Cash on Hand (1000)</strong> and{" "}
-              <strong>Cash Over/Short (6999)</strong>. Cannot be edited later - only voided by an admin.
+              {memoOnly ? (
+                <>No journal entry: End of Day posts the counted cash and card as sales. Cannot be edited later - only reversed by an owner or manager.</>
+              ) : (
+                <>
+                  Posts a balanced journal entry between{" "}
+                  <strong>Cash on Hand (1000)</strong> and{" "}
+                  <strong>Cash Over/Short (6999)</strong>. Cannot be edited later - only voided by an admin.
+                </>
+              )}
             </AlertDescription>
           </Alert>
         </div>
@@ -1347,6 +1387,15 @@ export function DayEndAdjustmentDialog({
             </div>
           </div>
 
+          {memoOnly ? (
+            <div>
+              <Label className="text-xs">Journal entry</Label>
+              <div className="mt-1 rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
+                No journal entry: End of Day posts the counted cash and card as sales (with VAT), so
+                this money is already in Cash on Hand and revenue. This records the reason.
+              </div>
+            </div>
+          ) : (
           <div>
             <Label className="text-xs">Journal entry preview</Label>
             <div className="mt-1 rounded-md border overflow-hidden">
@@ -1393,6 +1442,7 @@ export function DayEndAdjustmentDialog({
                 : "Out of balance - cannot post"}
             </p>
           </div>
+          )}
 
           <ReconciliationPreview />
 
@@ -1507,6 +1557,12 @@ export function DayEndAdjustmentDialog({
               <strong>{businessDate}</strong>. Once written it is immutable.
             </AlertDialogDescription>
           </AlertDialogHeader>
+          {memoOnly ? (
+            <div className="rounded-md border bg-muted/30 p-2 text-[11px] text-muted-foreground">
+                No journal entry: End of Day posts the counted cash and card as sales (with VAT), so
+                this money is already in Cash on Hand and revenue. This records the reason.
+              </div>
+          ) : (
           <div className="rounded-md border overflow-hidden">
             <table className="w-full text-xs">
               <thead className="bg-muted/50 text-muted-foreground">
@@ -1540,13 +1596,14 @@ export function DayEndAdjustmentDialog({
               </tbody>
             </table>
           </div>
+          )}
           <p
             className={`text-[11px] inline-flex items-center gap-1 ${
               balanced ? "text-emerald-600" : "text-destructive"
             }`}
           >
             <CheckCircle2 className="h-3 w-3" />
-            {balanced ? "Balanced - debits equal credits" : "Out of balance"}
+            {balanced ? (memoOnly ? "Ready to record" : "Balanced - debits equal credits") : "Out of balance"}
           </p>
           {finalCheck?.andCloseDay && (
             <p className="text-[11px] text-muted-foreground">
@@ -1611,9 +1668,9 @@ export function DayEndAdjustmentDialog({
             <div>
               <dt className="font-medium">Day-end adjustment</dt>
               <dd className="text-muted-foreground text-xs mt-0.5">
-                A balanced journal entry between Cash on Hand (1000) and Cash
-                Over/Short (6999) that records the variance. It re-balances
-                cash only - it does not change revenue.
+                {memoOnly
+                  ? "The recorded reason the counted figures differ from POS. End of Day posts the counted cash and card as sales, so it makes no journal entry of its own."
+                  : "A balanced journal entry between Cash on Hand (1000) and Cash Over/Short (6999) that records the variance. It re-balances cash only - it does not change revenue."}
               </dd>
             </div>
             <div>

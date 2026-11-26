@@ -15,7 +15,7 @@ Drop-in API collections for Android / iOS POS terminal apps integrating with the
 
 | Variable | Example | Notes |
 |----------|---------|-------|
-| `baseUrl` | `https://tlkyubkbbqwmzjaogavb.supabase.co/functions/v1/terminal-api` | Function base URL |
+| `baseUrl` | `https://api.matbex.com/functions/v1/terminal-api` | Function base URL |
 | `anonKey` | `eyJhbGciOi...` | Supabase publishable key (safe in client) |
 | `deviceKey` | `RAW_KEY_FROM_PAIR` | Returned **once** by `POST /pair` |
 | `cashierJwt` | `eyJhbGciOi...` | Supabase Auth access token of the logged-in cashier |
@@ -223,7 +223,7 @@ amounts all throw before a request leaves the device.
 
 ```dart
 final client = MatbexTerminalClient(
-  baseUrl: 'https://tlkyubkbbqwmzjaogavb.supabase.co/functions/v1/terminal-api',
+  baseUrl: 'https://api.matbex.com/functions/v1/terminal-api',
 );
 await client.loadDeviceKey();              // from secure storage if previously paired
 client.setCashierJwt(supabase.auth.currentSession!.accessToken);

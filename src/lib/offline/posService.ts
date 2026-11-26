@@ -14,7 +14,7 @@ import { isOnline } from "./connectivity";
 import { requestBackgroundSync } from "./backgroundSync";
 import { computeChecksum } from "./checksum";
 import { nextLamport } from "./lamport";
-import { lineGross, splitListed, sumMoney, VAT_RATE, DEFAULT_PRICES_VAT_INCLUSIVE } from "@/lib/vatInclusive";
+import { lineGross, roundMoney, splitListed, sumMoney, VAT_RATE, DEFAULT_PRICES_VAT_INCLUSIVE } from "@/lib/vatInclusive";
 
 /**
  * Build the { version, checksum } pair every new offline row must carry.
@@ -33,17 +33,43 @@ async function stampIntegrity(
 }
 
 export interface OfflineCartItem {
+  /** For a combo line, the combo's id (also in combo_id). */
   menu_item_id: string;
+  /** Set when the line is a combo package: the server records its component items. */
+  combo_id?: string | null;
   name: string;
+  /** Price tier ("regular" | "quarter" | "half" | "full"). */
+  size?: string | null;
   quantity: number;
   unit_price: number;
 }
 
+export interface OfflineTender {
+  method: "cash" | "card" | "other";
+  amount: number;
+  tendered?: number | null;
+  /** Approval from the integrated terminal (Hala); online-only gateways cannot queue. */
+  cardTerminal?: { provider: "hala"; status: string; reference?: string | null; response?: Record<string, unknown> | null } | null;
+}
+
 export interface RecordOfflineSaleInput {
+  /** Offline queue scope: the restaurant id (the sync engine drains by it). */
   branchId: string;
+  /** The branch the sale belongs to (sent to the API with the replay). */
+  saleBranchId?: string | null;
+  /**
+   * Idempotency key of the ORDER; pass the key of the online attempt that just failed so a
+   * sale that did reach the server is not recorded twice when the queue replays it.
+   */
+  idempotencyKey?: string;
   cashierId: string;
   shiftId: string | null;
   paymentMethod: string;
+  /**
+   * Split tender: the tenders that paid the sale (cash, and card approved on the terminal).
+   * Replayed as `payments` to POST /api/v1/pos/sales; amounts add up to the total.
+   */
+  payments?: OfflineTender[] | null;
   customerId?: string | null;
   customerPhone?: string | null;
   customerEmail?: string | null;
@@ -55,14 +81,32 @@ export interface RecordOfflineSaleInput {
   pricesVatInclusive?: boolean;
   /** Resolved pricing branch label, printed on the receipt. */
   branchName?: string | null;
+  /**
+   * Split bill by item: the cart (`items`) divided between guests, one sale per part. Queued as
+   * ONE order and replayed through POST /api/v1/pos/sales/bill-split, which keeps the receipt
+   * number printed for each part. `total` is the part's total at these prices (localPartTotals),
+   * and its payments add up to it.
+   */
+  billParts?: { items: OfflineCartItem[]; payments: OfflineTender[]; total: number }[] | null;
+  /**
+   * Document discount / surcharge in listed amounts (same pricing mode as the lines), applied
+   * before VAT is split, as POST /api/v1/pos/sales does. For a split bill they are the cart's,
+   * spread over the parts by the server.
+   */
+  documentDiscount?: number;
+  documentSurcharge?: number;
 }
 
 export interface RecordOfflineSaleResult {
   localOrderId: string;
   receiptNumber: string;
+  /** Split bill: the receipt number printed for each part, in part order. */
+  receiptNumbers?: string[];
   total: number;
   offline: boolean;
 }
+
+const nearMoney = (a: number, b: number) => Math.abs(a - b) < 0.005;
 
 export async function recordOfflineSale(
   input: RecordOfflineSaleInput,
@@ -70,21 +114,50 @@ export async function recordOfflineSale(
   const terminalId = await getTerminalId();
   const now = new Date();
   const businessDate = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
-  const listedTotal = sumMoney(input.items.map((i) => lineGross(i.unit_price, i.quantity)));
+  const documentDiscount = roundMoney(input.documentDiscount ?? 0);
+  const documentSurcharge = roundMoney(input.documentSurcharge ?? 0);
+  const linesTotal = sumMoney(input.items.map((i) => lineGross(i.unit_price, i.quantity)));
+  if (documentDiscount > linesTotal + documentSurcharge) throw new Error("Discount is larger than the order");
+  const listedTotal = roundMoney(linesTotal - documentDiscount + documentSurcharge);
   const { net: subtotal, vat: tax, gross: total } = splitListed(
     listedTotal,
     input.vatRate ?? VAT_RATE,
     input.pricesVatInclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE,
   );
-  const receiptNumber = await generateLocalReceiptNumber(now);
+  const billParts = input.billParts?.length ? input.billParts : null;
+  const receiptNumbers: string[] = [];
+  if (billParts) {
+    for (const [i, part] of billParts.entries()) {
+      if (!nearMoney(sumMoney(part.payments.map((t) => t.amount)), part.total)) {
+        throw new Error(`Guest ${i + 1}: payments add up to ${sumMoney(part.payments.map((t) => t.amount)).toFixed(2)}, their part is ${part.total.toFixed(2)}`);
+      }
+      receiptNumbers.push(await generateLocalReceiptNumber(now));
+    }
+  }
+  const receiptNumber = receiptNumbers[0] ?? (await generateLocalReceiptNumber(now));
+  const billTotal = billParts ? sumMoney(billParts.map((p) => p.total)) : null;
 
   const orderLocalId = crypto.randomUUID();
   const paymentLocalId = crypto.randomUUID();
   const invoiceLocalId = crypto.randomUUID();
 
+  const tenders = input.payments?.length ? input.payments : null;
+  const saleMethod = tenders && tenders.length > 1 ? "split" : tenders?.[0]?.method ?? input.paymentMethod;
+  if (tenders && !nearMoney(sumMoney(tenders.map((t) => t.amount)), total)) {
+    throw new Error(`Tenders add up to ${sumMoney(tenders.map((t) => t.amount)).toFixed(2)}, the sale total is ${total.toFixed(2)}`);
+  }
+
   const orderPayload = await protectPayload({
     receipt_number: receiptNumber,
-    payment_method: input.paymentMethod,
+    payment_method: saleMethod,
+    payments: tenders
+      ? tenders.map((t) => ({
+          method: t.method,
+          amount: t.amount,
+          tendered: t.tendered ?? null,
+          card_terminal: t.cardTerminal ?? null,
+        }))
+      : null,
     subtotal,
     tax,
     total,
@@ -100,8 +173,35 @@ export async function recordOfflineSale(
     vat_rate: input.vatRate ?? VAT_RATE,
     prices_vat_inclusive: input.pricesVatInclusive ?? DEFAULT_PRICES_VAT_INCLUSIVE,
     created_at: now.toISOString(),
+    branch_id: input.saleBranchId ?? null,
+    document_discount: documentDiscount,
+    document_surcharge: documentSurcharge,
+    ...(billParts
+      ? {
+          total: billTotal,
+          bill_parts: billParts.map((part, i) => ({
+            receipt_number: receiptNumbers[i],
+            total: part.total,
+            items: part.items.map((it) => ({
+              menu_item_id: it.menu_item_id,
+              combo_id: it.combo_id ?? null,
+              size: it.size ?? null,
+              quantity: it.quantity,
+              unit_price: it.unit_price,
+            })),
+            payments: part.payments.map((t) => ({
+              method: t.method,
+              amount: t.amount,
+              tendered: t.tendered ?? null,
+              card_terminal: t.cardTerminal ?? null,
+            })),
+          })),
+        }
+      : {}),
     items: input.items.map((it) => ({
       menu_item_id: it.menu_item_id,
+      combo_id: it.combo_id ?? null,
+      size: it.size ?? null,
       quantity: it.quantity,
       unit_price: it.unit_price,
       total_price: it.unit_price * it.quantity,
@@ -133,8 +233,8 @@ export async function recordOfflineSale(
 
   // Payment record (cash drawer event when shift is open)
   const paymentPayload = await protectPayload({
-    amount: total,
-    payment_method: input.paymentMethod,
+    amount: billTotal ?? total,
+    payment_method: saleMethod,
     shift_id: input.shiftId,
     receipt_number: receiptNumber,
     description: `Offline POS Sale ${receiptNumber}`,
@@ -160,7 +260,7 @@ export async function recordOfflineSale(
   });
 
   // Build sync queue entries with explicit dependencies.
-  const orderKey = buildIdempotencyKey(terminalId, "ORDER", orderLocalId);
+  const orderKey = input.idempotencyKey ?? buildIdempotencyKey(terminalId, "ORDER", orderLocalId);
   const paymentKey = buildIdempotencyKey(terminalId, "PAYMENT", paymentLocalId);
   const invoiceKey = buildIdempotencyKey(terminalId, "INVOICE", invoiceLocalId);
 
@@ -215,7 +315,8 @@ export async function recordOfflineSale(
   return {
     localOrderId: orderLocalId,
     receiptNumber,
-    total,
+    ...(billParts ? { receiptNumbers } : {}),
+    total: billTotal ?? total,
     offline: !isOnline(),
   };
 }

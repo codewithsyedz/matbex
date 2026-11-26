@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format, parseISO, subDays } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export type BalanceSheetSection = "asset" | "liability" | "equity";
@@ -61,7 +61,7 @@ export function useBalanceSheet(asOfDate: string, branchId: string | null, earni
     enabled: Boolean(tenantId && asOfDate),
     queryFn: async () => {
       if (!tenantId) throw new Error("Tenant context is required");
-      const { data, error } = await supabase.rpc("get_balance_sheet_by_branch", {
+      const { data, error } = await db.rpc("get_balance_sheet_by_branch", {
         p_tenant_id: tenantId,
         p_as_of_date: asOfDate,
         p_branch_id: branchId,
@@ -80,7 +80,7 @@ export function useBalanceSheet(asOfDate: string, branchId: string | null, earni
     enabled: Boolean(tenantId && openingDate),
     queryFn: async () => {
       if (!tenantId || !openingDate) throw new Error("Opening earnings date is required");
-      const { data, error } = await supabase.rpc("get_balance_sheet_by_branch", {
+      const { data, error } = await db.rpc("get_balance_sheet_by_branch", {
         p_tenant_id: tenantId,
         p_as_of_date: openingDate,
         p_branch_id: branchId,

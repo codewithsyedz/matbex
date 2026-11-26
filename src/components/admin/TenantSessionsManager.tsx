@@ -21,7 +21,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Monitor, Smartphone, Globe, LogOut, Shield, Clock, AlertTriangle } from "lucide-react";
 import { format, formatDistanceToNow } from "date-fns";
@@ -50,7 +50,7 @@ export function TenantSessionsManager({ tenantId }: TenantSessionsManagerProps) 
 
   const fetchSessions = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("user_sessions")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -61,7 +61,7 @@ export function TenantSessionsManager({ tenantId }: TenantSessionsManagerProps) 
 
       if (data && data.length > 0) {
         const userIds = [...new Set(data.map((s) => s.user_id))];
-        const { data: profiles } = await supabase
+        const { data: profiles } = await db
           .from("profiles")
           .select("id, full_name")
           .in("id", userIds);
@@ -89,7 +89,7 @@ export function TenantSessionsManager({ tenantId }: TenantSessionsManagerProps) 
 
   const handleRevokeSession = async (sessionId: string) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("user_sessions")
         .update({
           is_active: false,
@@ -108,7 +108,7 @@ export function TenantSessionsManager({ tenantId }: TenantSessionsManagerProps) 
 
   const handleRevokeAllTenantSessions = async () => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("user_sessions")
         .update({
           is_active: false,

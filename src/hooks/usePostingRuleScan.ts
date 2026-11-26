@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   summariseScan,
@@ -47,7 +47,7 @@ export function usePostingRuleScan(opts: PostingRuleScanOptions = {}) {
     staleTime: 60_000,
     queryFn: async () => {
       const accounts = (await fetchAll<ScanAccount>((from, to) =>
-        supabase
+        db
           .from("chart_of_accounts")
           .select("id, account_code, account_name, account_type, is_fixed_asset_account")
           .eq("tenant_id", tenantId!)
@@ -55,7 +55,7 @@ export function usePostingRuleScan(opts: PostingRuleScanOptions = {}) {
       )) as ScanAccount[];
 
       const expenses = (await fetchAll<ScanExpenseRow>((from, to) => {
-        let q = supabase
+        let q = db
           .from("expenses")
           .select("id, expense_date, description, amount, account_id, project_id, status, branch_id")
           .eq("tenant_id", tenantId!)
@@ -67,7 +67,7 @@ export function usePostingRuleScan(opts: PostingRuleScanOptions = {}) {
       })) as ScanExpenseRow[];
 
       const lines = (await fetchAll<ScanLedgerLine>((from, to) => {
-        let q = supabase
+        let q = db
           .from("account_transactions")
           .select(
             "id, batch_id, transaction_date, account_id, debit, credit, description, is_voided, project_id",

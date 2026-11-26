@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useFeatureCatalog } from "@/hooks/useFeatureCatalog";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Crown, Zap, Building2, Save, Loader2 } from "lucide-react";
 
@@ -15,21 +17,6 @@ interface Plan {
   default_feature_flags: Record<string, boolean>;
 }
 
-const FEATURE_FLAGS = [
-  { key: "daily_profit", label: "Daily Profit", description: "Daily profit calculations and reports" },
-  { key: "accounting", label: "Accounting Module", description: "Chart of accounts, journal entries, and period close" },
-  { key: "inventory", label: "Inventory Module", description: "Stock tracking and purchase management" },
-  { key: "payroll", label: "Payroll Module", description: "Labor cost tracking and payroll management" },
-  { key: "chat", label: "Team Chat", description: "Real-time team messaging and channels" },
-  { key: "cogs", label: "COGS Tracking", description: "Cost of goods sold analysis and reporting" },
-  { key: "menu", label: "Menu Management", description: "Menu items, recipes, and pricing" },
-  { key: "shifts", label: "Shifts & Cash Drawer", description: "Cashier shifts, drawer reconciliation, and cash events" },
-  { key: "advance_pay", label: "Advance Pay", description: "Employee advance payment feature" },
-  { key: "api_access", label: "API Access", description: "REST API access for integrations" },
-  { key: "multi_location", label: "Multi-Location", description: "Multiple restaurant locations" },
-  { key: "email_reports", label: "Email Reports", description: "Automated email report delivery" },
-  { key: "advanced_reports", label: "Advanced Reports", description: "Advanced analytics and reporting" },
-];
 
 const PLAN_ICONS: Record<string, React.ReactNode> = {
   free: <Building2 className="h-5 w-5" />,
@@ -38,6 +25,8 @@ const PLAN_ICONS: Record<string, React.ReactNode> = {
 };
 
 export function PlanFeaturesManager() {
+  // The shared feature catalogue (platform_features).
+  const FEATURE_FLAGS = useFeatureCatalog();
   const [plans, setPlans] = useState<Plan[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -49,7 +38,7 @@ export function PlanFeaturesManager() {
 
   const fetchPlans = async () => {
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("plans")
         .select("*")
         .eq("is_active", true)
@@ -93,7 +82,7 @@ export function PlanFeaturesManager() {
   const handleSavePlan = async (planId: string) => {
     setSaving(planId);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("plans")
         .update({ default_feature_flags: editedFlags[planId] })
         .eq("id", planId);
@@ -157,8 +146,8 @@ export function PlanFeaturesManager() {
                     {PLAN_ICONS[plan.name.toLowerCase()]}
                   </div>
                   <div>
-                    <CardTitle className="text-base font-medium capitalize">{plan.name}</CardTitle>
-                    <CardDescription>${plan.price}/month</CardDescription>
+                    <CardTitle className="text-base font-medium">{planLabel(plan.name)}</CardTitle>
+                    <CardDescription>{sarPrice(plan.price)} per branch / month</CardDescription>
                   </div>
                 </div>
                 {hasChanges(plan.id) && (

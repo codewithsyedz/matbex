@@ -1,6 +1,6 @@
 import { useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFiscalSettings, getFiscalMonthRange } from "@/hooks/useFiscalSettings";
 import { resolvePayrollPeriod, describePayrollPeriod } from "@/lib/payrollCutoff";
@@ -209,7 +209,7 @@ export function FiscalMonthPayableBreakdown() {
     queryKey: ["staff-active-full", restaurant?.id, compareEnabled ? "all-compare" : activeBranchId],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      let q = supabase
+      let q = db
         .from("staff")
         .select("id, name, role, payment_type, monthly_salary, hourly_rate, assigned_branch_id, joined_date")
         .eq("restaurant_id", restaurant.id)
@@ -228,7 +228,7 @@ export function FiscalMonthPayableBreakdown() {
     queryKey: ["payroll-fiscal-month", restaurant?.id, fiscalStartStr, fiscalEndStr],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("payroll_records")
         .select("id, staff_id, amount, period_start, period_end, payment_date")
         .eq("restaurant_id", restaurant.id)
@@ -246,7 +246,7 @@ export function FiscalMonthPayableBreakdown() {
     queryKey: ["staff-pending-fines", restaurant?.id, fiscalEndStr, fineAllocationMode],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("employee_fines")
         .select(
           "id, staff_id, amount, recovered_amount, payroll_month, created_at, fine_number, description, installment_number, installment_count, installment_group_id"
@@ -297,7 +297,7 @@ export function FiscalMonthPayableBreakdown() {
       // advances + fines + other deductions may not exceed a % of the due wage.
       // Cap the recovery here (fines first, advances with what's left) and carry
       // the excess to the next payroll instead of failing the whole payment.
-      const { data: capSetting } = await supabase
+      const { data: capSetting } = await db
         .from("payroll_deduction_settings")
         .select("max_total_deduction_pct, branch_id, effective_from")
         .eq("restaurant_id", restaurant.id)
@@ -327,7 +327,7 @@ export function FiscalMonthPayableBreakdown() {
       let payrollId = flow.payrollId;
       if (!flow.done.has("record")) {
         setStep("record", "running");
-        const { data: payroll, error: payrollError } = await supabase
+        const { data: payroll, error: payrollError } = await db
           .from("payroll_records")
           .insert({
           restaurant_id: restaurant.id,
@@ -372,7 +372,7 @@ export function FiscalMonthPayableBreakdown() {
       if (!flow.done.has("fines")) {
         if (staffPayable.pendingFines > 0) {
           setStep("fines", "running");
-          const { error: fineError } = await supabase.rpc("apply_fines_to_payroll", {
+          const { error: fineError } = await db.rpc("apply_fines_to_payroll", {
             p_payroll_id: payrollId!,
           });
           if (fineError) {
@@ -402,7 +402,7 @@ export function FiscalMonthPayableBreakdown() {
             if (remaining <= 0.009) break;
             const outstanding = advanceOutstanding(advance);
             if (outstanding <= remaining + 0.009) {
-              const { error: deductError } = await supabase.rpc("deduct_advance_from_payroll", {
+              const { error: deductError } = await db.rpc("deduct_advance_from_payroll", {
                 p_advance_id: advance.id,
                 p_payroll_id: payrollId!,
               });
@@ -413,7 +413,7 @@ export function FiscalMonthPayableBreakdown() {
               remaining = Math.round((remaining - outstanding) * 100) / 100;
             } else {
               // Partial recovery — the rest stays outstanding for the next payroll.
-              const { error: partialError } = await supabase.rpc("record_staff_advance_repayment", {
+              const { error: partialError } = await db.rpc("record_staff_advance_repayment", {
                 p_advance_id: advance.id,
                 p_amount: remaining,
                 p_repayment_date: format(new Date(), "yyyy-MM-dd"),
@@ -438,7 +438,7 @@ export function FiscalMonthPayableBreakdown() {
       // Post payroll to ledger
       if (!flow.done.has("ledger")) {
         setStep("ledger", "running");
-        const { error: ledgerError } = await supabase.rpc("post_payroll_to_ledger", {
+        const { error: ledgerError } = await db.rpc("post_payroll_to_ledger", {
           p_payroll_id: payrollId!,
         });
         if (ledgerError) {

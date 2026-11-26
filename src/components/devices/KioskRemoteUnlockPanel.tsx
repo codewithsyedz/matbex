@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { formatDistanceToNow } from "date-fns";
 import { Loader2, Unlock, ShieldCheck, XCircle, Clock } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -49,7 +49,7 @@ export function KioskRemoteUnlockPanel({ restaurantId, canManage }: Props) {
     queryKey: ["kiosk-unlock-devices", restaurantId],
     enabled: !!restaurantId,
     queryFn: async (): Promise<DeviceRow[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("device_licenses" as never)
         .select("id, terminal_id, device_label, platform, tenant_id")
         .eq("restaurant_id", restaurantId!)
@@ -65,7 +65,7 @@ export function KioskRemoteUnlockPanel({ restaurantId, canManage }: Props) {
     enabled: !!restaurantId,
     refetchInterval: 15_000,
     queryFn: async (): Promise<UnlockRow[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("kiosk_unlock_requests" as never)
         .select("id, terminal_id, status, reason, created_at, expires_at, acknowledged_at")
         .eq("restaurant_id", restaurantId!)
@@ -84,8 +84,8 @@ export function KioskRemoteUnlockPanel({ restaurantId, canManage }: Props) {
   const submit = async () => {
     if (!target || !restaurantId) return;
     setSaving(true);
-    const { data: userRes } = await supabase.auth.getUser();
-    const { error } = await supabase.from("kiosk_unlock_requests" as never).insert({
+    const { data: userRes } = await db.auth.getUser();
+    const { error } = await db.from("kiosk_unlock_requests" as never).insert({
       tenant_id: target.tenant_id,
       restaurant_id: restaurantId,
       terminal_id: target.terminal_id,
@@ -109,7 +109,7 @@ export function KioskRemoteUnlockPanel({ restaurantId, canManage }: Props) {
   };
 
   const cancel = async (id: string) => {
-    const { error } = await supabase
+    const { error } = await db
       .from("kiosk_unlock_requests" as never)
       .update({ status: "cancelled" } as never)
       .eq("id", id);

@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { settlementKindOf, type SettlementKind } from "@/lib/apSettlement";
 
@@ -61,7 +61,7 @@ export function useApAuditTrail({ expenseId, branchId, from, to, includePostings
     enabled: !!tenantId,
     staleTime: 1000 * 60,
     queryFn: async (): Promise<ApAuditEvent[]> => {
-      let legQuery = supabase
+      let legQuery = db
         .from("account_transactions")
         .select(
           "id, account_id, batch_id, branch_id, reference_id, transaction_date, debit, credit, description, created_at, created_by, is_voided, voided_at, voided_by, void_reason",
@@ -88,16 +88,16 @@ export function useApAuditTrail({ expenseId, branchId, from, to, includePostings
       const expenseIds = Array.from(new Set(rows.map((r: any) => r.reference_id).filter(Boolean)));
 
       const [batchesRes, accountsRes, branchesRes, expensesRes] = await Promise.all([
-        supabase
+        db
           .from("journal_entry_batches")
           .select("id, reference_number, entry_type, description, created_at, created_by, posted_at, posted_by, branch_id")
           .in("id", batchIds),
         accountIds.length
-          ? supabase.from("chart_of_accounts").select("id, account_code, account_name").in("id", accountIds)
+          ? db.from("chart_of_accounts").select("id, account_code, account_name").in("id", accountIds)
           : Promise.resolve({ data: [] } as any),
-        supabase.from("branches").select("id, name"),
+        db.from("branches").select("id, name"),
         expenseIds.length
-          ? supabase.from("expenses").select("id, description, supplier_id").in("id", expenseIds as string[])
+          ? db.from("expenses").select("id, description, supplier_id").in("id", expenseIds as string[])
           : Promise.resolve({ data: [] } as any),
       ]);
 
@@ -114,7 +114,7 @@ export function useApAuditTrail({ expenseId, branchId, from, to, includePostings
       ) as string[];
 
       const profilesRes = userIds.length
-        ? await supabase.from("profiles").select("id, full_name").in("id", userIds)
+        ? await db.from("profiles").select("id, full_name").in("id", userIds)
         : ({ data: [] } as any);
 
       const names = new Map<string, string>();
@@ -130,7 +130,7 @@ export function useApAuditTrail({ expenseId, branchId, from, to, includePostings
         new Set((expensesRes.data || []).map((e: any) => e.supplier_id).filter(Boolean)),
       ) as string[];
       const suppliersRes = supplierIds.length
-        ? await supabase.from("suppliers").select("id, name").in("id", supplierIds)
+        ? await db.from("suppliers").select("id, name").in("id", supplierIds)
         : ({ data: [] } as any);
       const supplierNames = new Map<string, string>();
       (suppliersRes.data || []).forEach((s: any) => supplierNames.set(s.id, s.name));

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -78,7 +78,7 @@ export default function FloorAuditLog() {
     queryKey: ["floor-audit-layout", tenantId, fromIso, toIso],
     queryFn: async () => {
       if (!tenantId) return [] as LayoutRow[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_floor_audit_log")
         .select("*")
         .eq("tenant_id", tenantId)
@@ -96,7 +96,7 @@ export default function FloorAuditLog() {
     queryKey: ["floor-audit-status", tenantId, fromIso, toIso],
     queryFn: async () => {
       if (!tenantId) return [] as StatusRow[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("pos_table_status_events")
         .select("id,table_id,from_status,to_status,guest_count,changed_by,occurred_at,floor_plan_id")
         .eq("tenant_id", tenantId)
@@ -129,7 +129,7 @@ export default function FloorAuditLog() {
     queryKey: ["floor-audit-profiles", userIds.join(",")],
     queryFn: async () => {
       if (userIds.length === 0) return {} as Record<string, string>;
-      const { data } = await supabase.from("profiles").select("id,full_name").in("id", userIds);
+      const { data } = await db.from("profiles").select("id,full_name").in("id", userIds);
       const m: Record<string, string> = {};
       (data || []).forEach((p: any) => { m[p.id] = p.full_name || "Unknown"; });
       return m;
@@ -141,7 +141,7 @@ export default function FloorAuditLog() {
     queryKey: ["floor-audit-tables", tableIds.join(",")],
     queryFn: async () => {
       if (tableIds.length === 0) return {} as Record<string, string>;
-      const { data } = await supabase.from("pos_tables").select("id,label").in("id", tableIds);
+      const { data } = await db.from("pos_tables").select("id,label").in("id", tableIds);
       const m: Record<string, string> = {};
       (data || []).forEach((t: any) => { m[t.id] = t.label; });
       return m;

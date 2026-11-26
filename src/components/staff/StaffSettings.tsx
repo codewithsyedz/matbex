@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -47,7 +47,7 @@ export function StaffSettings() {
     queryKey: ["staff-settings", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return null;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_settings")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -85,7 +85,7 @@ export function StaffSettings() {
       };
 
       if (settings?.id) {
-        const { error } = await supabase
+        const { error } = await db
           .from("staff_settings")
           .update(payload)
           .eq("id", settings.id);
@@ -93,7 +93,7 @@ export function StaffSettings() {
       } else {
         // A row may already exist but not be visible in this query cache —
         // upsert on the unique restaurant_id avoids duplicate key errors.
-        const { error } = await supabase
+        const { error } = await db
           .from("staff_settings")
           .upsert(payload, { onConflict: "restaurant_id" });
         if (error) throw error;

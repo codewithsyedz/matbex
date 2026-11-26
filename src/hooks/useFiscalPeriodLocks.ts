@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { getFiscalMonthRange } from "./useFiscalSettings";
@@ -30,7 +30,7 @@ export function useFiscalPeriodLocks() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("fiscal_period_locks")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -67,7 +67,7 @@ export function useFiscalPeriodLocks() {
     mutationFn: async ({ periodStart, periodEnd }: { periodStart: Date; periodEnd: Date }) => {
       if (!restaurant?.id) throw new Error("No restaurant selected");
 
-      const { data, error } = await supabase.rpc("lock_fiscal_period", {
+      const { data, error } = await db.rpc("lock_fiscal_period", {
         p_restaurant_id: restaurant.id,
         p_period_start: periodStart.toISOString().split("T")[0],
         p_period_end: periodEnd.toISOString().split("T")[0],
@@ -88,7 +88,7 @@ export function useFiscalPeriodLocks() {
   // Unlock a fiscal period
   const unlockPeriod = useMutation({
     mutationFn: async ({ lockId, reason }: { lockId: string; reason: string }) => {
-      const { data, error } = await supabase.rpc("unlock_fiscal_period", {
+      const { data, error } = await db.rpc("unlock_fiscal_period", {
         p_lock_id: lockId,
         p_reason: reason,
       });
@@ -111,7 +111,7 @@ export function useFiscalPeriodLocks() {
     const now = new Date();
     
     // Start from previous fiscal month
-    let current = new Date(now);
+    const current = new Date(now);
     current.setMonth(current.getMonth() - 1);
     
     for (let i = 0; i < count; i++) {

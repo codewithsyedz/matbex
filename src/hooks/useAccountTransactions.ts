@@ -1,15 +1,7 @@
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { useQuery } from "@tanstack/react-query";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
-import { toast } from "sonner";
-import { 
-  parseCoaError, 
-  validateTransactionData, 
-  getErrorExplanation,
-  TransactionReferenceType,
-  CoaValidationError 
-} from "@/lib/coaValidation";
 
 function emptyMeta(): AccountTransactionsMeta {
   return {
@@ -67,16 +59,6 @@ export interface AccountTransaction {
   } | null;
 }
 
-export interface CreateTransactionData {
-  account_id: string;
-  transaction_date?: string;
-  debit?: number;
-  credit?: number;
-  description?: string;
-  reference_type?: TransactionReferenceType;
-  reference_id?: string;
-}
-
 export interface AccountTransactionsMeta {
   loadedCount: number;
   earliestLoadedAt: string | null;
@@ -85,12 +67,11 @@ export interface AccountTransactionsMeta {
 }
 
 export function useAccountTransactions(accountId?: string) {
-  const { user, profile } = useAuth();
+  const { profile } = useAuth();
   const { activeBranchId, pinnedBranchId } = useBranch();
   const branchKey =
     pinnedBranchId ??
     (activeBranchId && activeBranchId !== "all" ? activeBranchId : null);
-  const queryClient = useQueryClient();
   const tenantId = profile?.tenant_id;
 
   // Fetch transactions for a specific account or all
@@ -105,7 +86,7 @@ export function useAccountTransactions(accountId?: string) {
       const maxPages = 6;
       const rows: AccountTransaction[] = [];
       for (let page = 0; page < maxPages; page++) {
-        let query = supabase
+        let query = db
           .from('account_transactions')
           .select(`
             *,
@@ -151,124 +132,12 @@ export function useAccountTransactions(accountId?: string) {
   const transactions = data?.transactions ?? [];
   const meta = data?.meta ?? emptyMeta();
 
-  // Create transaction with full validation
-  const createTransaction = useMutation({
-    mutationFn: async (data: CreateTransactionData): Promise<AccountTransaction> => {
-      if (!tenantId || !user?.id) {
-        throw new Error('Authentication required to create transactions.');
-      }
-
-      // Pre-validate before sending to database
-      const validationError = validateTransactionData(data);
-      if (validationError) {
-        throw new Error(validationError.message);
-      }
-
-      const { data: result, error } = await supabase
-        .from('account_transactions')
-        .insert({
-          ...data,
-          tenant_id: tenantId,
-          created_by: user.id,
-        })
-        .select(`
-          *,
-          account:chart_of_accounts(account_code, account_name, account_type)
-        `)
-        .single();
-
-      if (error) throw error;
-      return result as AccountTransaction;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['account-transactions', tenantId] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts', tenantId] });
-      toast.success('Transaction recorded successfully');
-    },
-    onError: (error: Error) => {
-      const parsed = parseCoaError(error);
-      const explanation = getErrorExplanation(parsed.code);
-      
-      // Show detailed error toast
-      toast.error(parsed.message, {
-        description: explanation,
-        duration: 6000,
-      });
-      
-      console.error('Transaction validation error:', {
-        code: parsed.code,
-        message: parsed.message,
-        field: parsed.field,
-        details: parsed.details,
-      });
-    },
-  });
-
-  // Batch create for journal entries (multiple transactions at once)
-  const createBatchTransactions = useMutation({
-    mutationFn: async (transactions: CreateTransactionData[]): Promise<AccountTransaction[]> => {
-      if (!tenantId || !user?.id) {
-        throw new Error('Authentication required to create transactions.');
-      }
-
-      // Validate all transactions before sending
-      const errors: CoaValidationError[] = [];
-      transactions.forEach((tx, index) => {
-        const error = validateTransactionData(tx);
-        if (error) {
-          errors.push({ ...error, details: { ...error.details, index } });
-        }
-      });
-
-      if (errors.length > 0) {
-        throw new Error(`Validation failed for ${errors.length} transaction(s): ${errors[0].message}`);
-      }
-
-      // Validate double-entry balance (debits must equal credits)
-      const totalDebits = transactions.reduce((sum, tx) => sum + (tx.debit || 0), 0);
-      const totalCredits = transactions.reduce((sum, tx) => sum + (tx.credit || 0), 0);
-      
-      if (Math.abs(totalDebits - totalCredits) > 0.01) {
-        throw new Error(`Journal entry is unbalanced. Debits (${totalDebits.toFixed(2)}) must equal Credits (${totalCredits.toFixed(2)}).`);
-      }
-
-      const { data: result, error } = await supabase
-        .from('account_transactions')
-        .insert(
-          transactions.map(tx => ({
-            ...tx,
-            tenant_id: tenantId,
-            created_by: user.id,
-          }))
-        )
-        .select(`
-          *,
-          account:chart_of_accounts(account_code, account_name, account_type)
-        `);
-
-      if (error) throw error;
-      return result as AccountTransaction[];
-    },
-    onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['account-transactions', tenantId] });
-      queryClient.invalidateQueries({ queryKey: ['chart-of-accounts', tenantId] });
-      toast.success(`${data.length} transactions recorded successfully`);
-    },
-    onError: (error: Error) => {
-      const parsed = parseCoaError(error);
-      toast.error(parsed.message, {
-        description: getErrorExplanation(parsed.code),
-        duration: 6000,
-      });
-    },
-  });
-
+  // Ledger lines are written only by the server (posting functions and /api/v1/ledger);
+  // manual journal entries go through useJournalEntries.
   return {
     transactions,
     meta,
     isLoading,
     error,
-    createTransaction,
-    createBatchTransactions,
   };
 }

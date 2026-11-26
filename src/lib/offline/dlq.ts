@@ -7,7 +7,7 @@
 // Failures here are best-effort: never throw back into the sync loop.
 // =====================================================================
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import type { OfflineRecord, SyncQueueItem } from "./types";
 import type { SyncTrace } from "./api";
 
@@ -47,14 +47,14 @@ export async function reportFailedSyncItem(
     let branchId: string | null = null;
 
     if (restaurantId) {
-      const { data } = await supabase
+      const { data } = await db
         .from("restaurants")
         .select("tenant_id")
         .eq("id", restaurantId)
         .maybeSingle();
       tenantId = (data?.tenant_id as string | undefined) ?? null;
 
-      const { data: primary } = await supabase
+      const { data: primary } = await db
         .rpc("get_primary_branch_id", { _restaurant_id: restaurantId });
       if (typeof primary === "string") branchId = primary;
     }
@@ -63,7 +63,7 @@ export async function reportFailedSyncItem(
 
     const trace = extras.trace ?? null;
 
-    const { data: inserted } = await (supabase as any).from("failed_sync_items").insert({
+    const { data: inserted } = await (db as any).from("failed_sync_items").insert({
       tenant_id: tenantId,
       restaurant_id: restaurantId,
       branch_id: branchId,
@@ -122,7 +122,7 @@ export async function reportFailedSyncItem(
     // Append the attempt that pushed this item into the DLQ, with its trace.
     const itemId = (inserted as { id?: string } | null)?.id;
     if (itemId) {
-      await (supabase as any).rpc("append_failed_sync_attempt", {
+      await (db as any).rpc("append_failed_sync_attempt", {
         _item_id: itemId,
         _attempt_number: qi.retry_count,
         _outcome: "failed",

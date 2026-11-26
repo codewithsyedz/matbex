@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useCurrency } from "@/hooks/useCurrency";
 import {
   Dialog,
@@ -76,7 +76,7 @@ export function StaffAdvanceLedgerDialog({ advanceId, open, onOpenChange }: Prop
     queryKey: ["staff-advance-audit", advanceId],
     queryFn: async () => {
       if (!advanceId) return null;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff_advances")
         .select(
           "id, amount, repaid_amount, status, created_at, updated_at, advance_date, deducted_at, deducted_from_payroll_id, ledger_posted, ledger_reversed, ledger_reversed_at, ledger_reversal_reason, branch_id, staff:staff_id(name, branch_id)"
@@ -93,7 +93,7 @@ export function StaffAdvanceLedgerDialog({ advanceId, open, onOpenChange }: Prop
     queryKey: ["staff-advance-ledger", advanceId],
     queryFn: async () => {
       if (!advanceId) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("account_transactions")
         .select(
           "id, transaction_date, created_at, batch_id, reference_type, original_transaction_id, voided_at, void_reason, debit, credit, description, is_voided, branch_id, chart_of_accounts:account_id(account_code, account_name)"
@@ -139,7 +139,7 @@ export function StaffAdvanceLedgerDialog({ advanceId, open, onOpenChange }: Prop
     queryKey: ["staff-advance-recovery-branches", advanceId],
     queryFn: async () => {
       if (!advanceId) return [];
-      const { data: reps, error: repErr } = await supabase
+      const { data: reps, error: repErr } = await db
         .from("staff_advance_repayments")
         .select("payroll_id")
         .eq("advance_id", advanceId);
@@ -155,7 +155,7 @@ export function StaffAdvanceLedgerDialog({ advanceId, open, onOpenChange }: Prop
         )
       );
       if (ids.length === 0) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("payroll_records")
         .select("id, branch_id")
         .in("id", ids);

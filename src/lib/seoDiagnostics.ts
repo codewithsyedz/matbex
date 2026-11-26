@@ -155,10 +155,10 @@ export async function runSeoDiagnostics(): Promise<SeoDiagnosticsReport> {
     id: "title",
     label: "Title tag",
     value: title || null,
-    status: !title || /lovable app/i.test(title) ? "fail" : title.length > TITLE_MAX ? "warn" : "pass",
+    status: !title || /^(vite \+ react|untitled)/i.test(title) ? "fail" : title.length > TITLE_MAX ? "warn" : "pass",
     detail: !title
       ? "No <title> found — Google will invent one from page content."
-      : /lovable app/i.test(title)
+      : /^(vite \+ react|untitled)/i.test(title)
         ? "Still the template default. Replace it with a real product title."
         : `${title.length} characters (recommended ≤ ${TITLE_MAX}).`,
   });
@@ -168,14 +168,14 @@ export async function runSeoDiagnostics(): Promise<SeoDiagnosticsReport> {
     id: "description",
     label: "Meta description",
     value: description,
-    status: !description || /lovable generated project/i.test(description)
+    status: !description || /^generated project$/i.test(description)
       ? "fail"
       : description.length > DESC_MAX || description.length < DESC_MIN
         ? "warn"
         : "pass",
     detail: !description
       ? "Missing — Google will pick an arbitrary snippet."
-      : /lovable generated project/i.test(description)
+      : /^generated project$/i.test(description)
         ? "Still the template default."
         : `${description.length} characters (recommended ${DESC_MIN}–${DESC_MAX}).`,
   });

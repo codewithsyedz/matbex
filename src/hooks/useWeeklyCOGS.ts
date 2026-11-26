@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { startOfWeek, endOfWeek, format, subWeeks } from "date-fns";
@@ -60,7 +60,7 @@ export function useWeeklyCOGS() {
   const fetchWeeklyItems = async (weekStart: Date, weekEnd: Date) => {
     if (!restaurant?.id) return [];
     
-    const { data, error } = await supabase.rpc('get_weekly_cogs_items', {
+    const { data, error } = await db.rpc('get_weekly_cogs_items', {
       p_restaurant_id: restaurant.id,
       p_week_start: format(weekStart, 'yyyy-MM-dd'),
       p_week_end: format(weekEnd, 'yyyy-MM-dd'),
@@ -76,7 +76,7 @@ export function useWeeklyCOGS() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
       
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('weekly_stocktakes')
         .select('*')
         .eq('restaurant_id', restaurant.id)
@@ -91,7 +91,7 @@ export function useWeeklyCOGS() {
 
   // Fetch stocktake items for a specific stocktake
   const fetchStocktakeItems = async (stocktakeId: string) => {
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from('weekly_stocktake_items')
       .select('*')
       .eq('stocktake_id', stocktakeId)
@@ -122,7 +122,7 @@ export function useWeeklyCOGS() {
       const weeklyItems = await fetchWeeklyItems(weekStart, weekEnd);
       
       // Create stocktake record
-      const { data: stocktake, error: stocktakeError } = await supabase
+      const { data: stocktake, error: stocktakeError } = await db
         .from('weekly_stocktakes')
         .insert({
           tenant_id: profile.tenant_id,
@@ -167,14 +167,14 @@ export function useWeeklyCOGS() {
         };
       });
 
-      const { error: itemsError } = await supabase
+      const { error: itemsError } = await db
         .from('weekly_stocktake_items')
         .insert(lineItems);
         
       if (itemsError) throw itemsError;
 
       // Update totals
-      const { error: updateError } = await supabase
+      const { error: updateError } = await db
         .from('weekly_stocktakes')
         .update({
           total_opening_value: totalOpening,
@@ -202,7 +202,7 @@ export function useWeeklyCOGS() {
     mutationFn: async (stocktakeId: string) => {
       if (!user?.id) throw new Error('User not authenticated');
       
-      const { data, error } = await supabase.rpc('post_weekly_cogs_to_ledger', {
+      const { data, error } = await db.rpc('post_weekly_cogs_to_ledger', {
         p_stocktake_id: stocktakeId,
         p_posted_by: user.id,
       });

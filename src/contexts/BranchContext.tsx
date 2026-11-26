@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useQuery, useIsFetching } from "@tanstack/react-query";
 import { useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { AuthContext } from "@/contexts/AuthContext";
 
 /**
@@ -26,6 +26,8 @@ function releaseBodyPointerLock() {
   // single delayed clear races with Radix's own cleanup, leaving the
   // page unclickable. Poll for ~1s and clear every time it reappears.
   const clear = () => {
+    // Delayed calls can outlive the page (tests tear the DOM down within the 1 s window).
+    if (typeof document === "undefined" || !document.body) return;
     if (document.body.style.pointerEvents === "none") {
       document.body.style.pointerEvents = "";
     }
@@ -144,7 +146,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     queryKey: ["branches", restaurantId],
     queryFn: async () => {
       if (!restaurantId) return [] as Branch[];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("branches" as any)
         .select("id, restaurant_id, name, code, is_primary, is_active, country, city")
         .eq("restaurant_id", restaurantId)
@@ -162,7 +164,7 @@ export function BranchProvider({ children }: { children: ReactNode }) {
     queryKey: ["staff-pinned-branch", user?.id, restaurantId],
     queryFn: async () => {
       if (!user?.id || !restaurantId) return null;
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("staff")
         .select("assigned_branch_id")
         .eq("user_id", user.id)
@@ -433,6 +435,11 @@ export function BranchProvider({ children }: { children: ReactNode }) {
   return (
     <BranchContext.Provider value={value}>{children}</BranchContext.Provider>
   );
+}
+
+/** Branch context, or null outside <BranchProvider> (for hooks also used on public pages). */
+export function useOptionalBranch() {
+  return useContext(BranchContext) ?? null;
 }
 
 export function useBranch() {

@@ -15,7 +15,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { parseZatcaQr } from "@/lib/zatcaQr";
 
 const empty = { accountId: "", supplierName: "", vatNumber: "", invoiceNumber: "", invoiceDate: format(new Date(), "yyyy-MM-dd"), subtotal: "", vat: "", zatcaUuid: "", qr: "", notes: "" };
@@ -61,7 +61,7 @@ export default function ZatcaInvoices() {
     queryKey: ["zatca-post-accounts", tenantId],
     enabled: !!tenantId,
     queryFn: async () => {
-      const { data, error } = await supabase.from("chart_of_accounts")
+      const { data, error } = await db.from("chart_of_accounts")
         .select("id, account_code, account_name, account_type")
         .eq("tenant_id", tenantId!).in("account_type", ["expense", "cogs"]).eq("is_active", true)
         .order("account_code");
@@ -78,7 +78,7 @@ export default function ZatcaInvoices() {
   };
 
   const postToBooks = async (invoiceId: string, accountId: string | null) => {
-    const { data, error } = await supabase.rpc("post_zatca_purchase_invoice", { p_invoice_id: invoiceId, p_account_id: accountId ?? undefined });
+    const { data, error } = await db.rpc("post_zatca_purchase_invoice", { p_invoice_id: invoiceId, p_account_id: accountId ?? undefined });
     if (error) throw error;
     return (data as { status?: string } | null)?.status ?? "unknown";
   };
@@ -99,7 +99,7 @@ export default function ZatcaInvoices() {
     queryKey: ["zatca-purchase-invoices", fromDate, toDate, branchId],
     enabled: Boolean(fromDate && toDate),
     queryFn: async () => {
-      let q = supabase.from("purchase_invoices")
+      let q = db.from("purchase_invoices")
         .select("id, invoice_number, invoice_date, supplier_name_text, supplier_vat_number, subtotal, tax_amount, total_amount, branch_id, image_url, zatca_uuid, posting_status, posting_note, linked_expense_id")
         .eq("source", "zatca_upload").gte("invoice_date", fromDate).lte("invoice_date", toDate)
         .order("invoice_date", { ascending: false });
@@ -121,11 +121,11 @@ export default function ZatcaInvoices() {
       if (file) {
         if (file.size > 5 * 1024 * 1024) throw new Error(L("File must be under 5MB", "الملف يجب أن يكون أقل من 5MB"));
         const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
-        const { data, error } = await supabase.storage.from("invoice-images").upload(`${branch.restaurant_id}/zatca-${Date.now()}.${ext}`, file, { upsert: false });
+        const { data, error } = await db.storage.from("invoice-images").upload(`${branch.restaurant_id}/zatca-${Date.now()}.${ext}`, file, { upsert: false });
         if (error) throw error;
         imageUrl = `invoice-images/${data.path}`;
       }
-      const { data: inserted, error } = await supabase.from("purchase_invoices").insert({
+      const { data: inserted, error } = await db.from("purchase_invoices").insert({
         restaurant_id: branch.restaurant_id,
         branch_id: branch.id,
         created_by: user.id,
@@ -164,7 +164,7 @@ export default function ZatcaInvoices() {
 
   const remove = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("purchase_invoices").delete().eq("id", id).eq("source", "zatca_upload").in("posting_status", ["not_posted", "needs_account"]);
+      const { error } = await db.from("purchase_invoices").delete().eq("id", id).eq("source", "zatca_upload").in("posting_status", ["not_posted", "needs_account"]);
       if (error) throw error;
     },
     onSuccess: () => {

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { toast } from "sonner";
 import { parseCoaError } from "@/lib/coaValidation";
@@ -33,7 +33,7 @@ export function useCOGSPosting() {
     queryFn: async () => {
       if (!tenantId) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('chart_of_accounts')
         .select('id, account_code, account_name, account_type, is_active')
         .eq('tenant_id', tenantId)
@@ -53,7 +53,7 @@ export function useCOGSPosting() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('inventory_usage')
         .select(`
           id,
@@ -88,7 +88,7 @@ export function useCOGSPosting() {
     queryFn: async () => {
       if (!restaurant?.id) return [];
 
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from('cogs_purchases')
         .select(`
           id,
@@ -121,7 +121,7 @@ export function useCOGSPosting() {
   // Post usage to COGS ledger
   const postUsageToCOGS = useMutation({
     mutationFn: async ({ usageId, cogsAccountId }: { usageId: string; cogsAccountId: string }) => {
-      const { data, error } = await supabase.rpc('post_inventory_usage_to_cogs', {
+      const { data, error } = await db.rpc('post_inventory_usage_to_cogs', {
         p_usage_id: usageId,
         p_cogs_account_id: cogsAccountId,
       });
@@ -144,7 +144,7 @@ export function useCOGSPosting() {
   // Post purchase to COGS ledger
   const postPurchaseToCOGS = useMutation({
     mutationFn: async ({ purchaseId, cogsAccountId }: { purchaseId: string; cogsAccountId: string }) => {
-      const { data, error } = await supabase.rpc('post_purchase_to_cogs', {
+      const { data, error } = await db.rpc('post_purchase_to_cogs', {
         p_purchase_id: purchaseId,
         p_cogs_account_id: cogsAccountId,
       });
@@ -177,14 +177,14 @@ export function useCOGSPosting() {
       
       for (const entry of entries) {
         if (entry.type === 'usage') {
-          const { data, error } = await supabase.rpc('post_inventory_usage_to_cogs', {
+          const { data, error } = await db.rpc('post_inventory_usage_to_cogs', {
             p_usage_id: entry.id,
             p_cogs_account_id: cogsAccountId,
           });
           if (error) throw error;
           results.push(data);
         } else {
-          const { data, error } = await supabase.rpc('post_purchase_to_cogs', {
+          const { data, error } = await db.rpc('post_purchase_to_cogs', {
             p_purchase_id: entry.id,
             p_cogs_account_id: cogsAccountId,
           });

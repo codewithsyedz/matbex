@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useFeatureFlag } from "@/hooks/useFeatureFlags";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -12,6 +12,7 @@ import { Separator } from "@/components/ui/separator";
 import { toast } from "sonner";
 import { Copy, Loader2 } from "lucide-react";
 import { LockedFeatureScreen } from "@/components/LockedFeatureScreen";
+import { DeliverectCard } from "@/components/aggregators/DeliverectCard";
 
 type Aggregator = "hungerstation" | "jahez" | "mrsool" | "talabat";
 
@@ -46,13 +47,12 @@ export default function Aggregators() {
   const [saving, setSaving] = useState<Aggregator | null>(null);
   const [creds, setCreds] = useState<Record<Aggregator, CredRow>>({} as any);
   const restaurantId = (user as any)?.user_metadata?.restaurant_id ?? null;
-  const projectRef = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-  const webhookBase = `https://${projectRef}.supabase.co/functions/v1/delivery-webhook`;
+  const webhookBase = `${import.meta.env.VITE_API_URL}/functions/v1/delivery-webhook`;
 
   useEffect(() => {
     let mounted = true;
     (async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("aggregator_credentials")
         .select("*");
       const map = {} as Record<Aggregator, CredRow>;
@@ -83,7 +83,7 @@ export default function Aggregators() {
       return;
     }
     setSaving(id);
-    const { error } = await supabase
+    const { error } = await db
       .from("aggregator_credentials")
       .upsert({ ...row, restaurant_id: restaurantId }, { onConflict: "restaurant_id,aggregator" });
     setSaving(null);
@@ -97,7 +97,13 @@ export default function Aggregators() {
   }
 
   if (!aggregatorsEnabled) {
-    return <LockedFeatureScreen featureName="Delivery Aggregators" />;
+    return (
+      <LockedFeatureScreen
+        featureName="Delivery Aggregators"
+        requiredPlan="Enterprise"
+        description="Delivery Aggregators (Jahez, HungerStation, Keeta and more through Deliverect) is part of the Enterprise plan. Contact sales to move your account over."
+      />
+    );
   }
 
   if (loading) {
@@ -113,9 +119,10 @@ export default function Aggregators() {
       <div>
         <h1 className="font-display text-2xl md:text-3xl font-semibold tracking-tight">Delivery Aggregators</h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Connect HungerStation, Jahez, Mrsool, and Talabat. Orders land in your unified queue.
+          Connect HungerStation, Jahez, Keeta and others through Deliverect, or a single app directly. Orders land in your unified queue.
         </p>
       </div>
+      <DeliverectCard />
       {AGGREGATORS.map((a) => {
         const row = creds[a.id];
         if (!row) return null;

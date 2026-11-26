@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, CheckCircle2, Loader2, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -19,7 +19,7 @@ export function SupplierApHeadGapCard() {
     enabled: !!tenant?.id,
     staleTime: 60_000,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("suppliers")
         .select("id, name")
         .eq("restaurant_id", tenant!.id)
@@ -33,7 +33,7 @@ export function SupplierApHeadGapCard() {
 
   const createHeads = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.rpc("backfill_supplier_ap_accounts", {
+      const { data, error } = await db.rpc("backfill_supplier_ap_accounts", {
         p_tenant_id: tenant!.id,
       });
       if (error) throw error;

@@ -18,7 +18,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useState } from "react";
 
 export interface VatCorrectionPlanLine {
@@ -79,7 +79,7 @@ export function VatCorrectionDialog({ batchId, open, onOpenChange, fmt, canApply
     queryKey: ["vat-posting-correction-plan", batchId],
     enabled: open && !!batchId,
     queryFn: async (): Promise<VatCorrectionPlan> => {
-      const { data, error } = await (supabase as any).rpc("suggest_vat_posting_correction", {
+      const { data, error } = await (db as any).rpc("suggest_vat_posting_correction", {
         p_batch_id: batchId,
       });
       if (error) throw error;
@@ -89,7 +89,7 @@ export function VatCorrectionDialog({ batchId, open, onOpenChange, fmt, canApply
 
   const apply = useMutation({
     mutationFn: async () => {
-      const { data, error } = await (supabase as any).rpc("apply_vat_posting_correction", {
+      const { data, error } = await (db as any).rpc("apply_vat_posting_correction", {
         p_batch_id: batchId,
         p_note: note.trim() || null,
       });

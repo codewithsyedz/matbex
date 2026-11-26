@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { FlaskConical, ArrowRight, ShieldCheck } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useDemoTrial } from "@/hooks/useDemoTrial";
 import { toast } from "sonner";
@@ -18,7 +18,7 @@ export function DemoActivateCard() {
     if (!tenant?.id) return;
     setBusy(true);
     try {
-      const { error } = await supabase.functions.invoke("activate-demo-tenant", {
+      const { error } = await db.functions.invoke("activate-demo-tenant", {
         body: { tenant_id: tenant.id },
       });
       if (error) throw error;

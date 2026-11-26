@@ -36,10 +36,11 @@ import {
 } from "@/components/ui/tooltip";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { ViewInvoiceDialog } from "./ViewInvoiceDialog";
+import { InvoiceScanButton, type InvoiceScanDraft } from "./InvoiceScanButton";
 import { InvoiceImageUploader } from "./InvoiceImageUploader";
 
 interface Invoice {
@@ -72,6 +73,14 @@ interface InventoryItem {
   id: string;
   name: string;
   unit_cost: number;
+  unit: string | null;
+}
+
+/** What a scan added to the form: warnings to check, a supplier to add, per-line hints. */
+interface ScanReview {
+  warnings: string[];
+  newSupplier: { name: string; vat_number: string | null } | null;
+  lineHints: Record<number, string>;
 }
 
 interface Supplier {
@@ -80,7 +89,7 @@ interface Supplier {
 }
 
 export function InvoiceManager() {
-  const { restaurant, user, isManager } = useAuth();
+  const { restaurant, user, isManager, canPostJournals } = useAuth();
   const { toast } = useToast();
   const [invoices, setInvoices] = useState<Invoice[]>([]);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
@@ -104,6 +113,65 @@ export function InvoiceManager() {
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [selectedStatus, setSelectedStatus] = useState("pending");
   const [items, setItems] = useState<InvoiceItem[]>([{ description: "", quantity: 1, unit_price: 0, total_price: 0 }]);
+  const [scanReview, setScanReview] = useState<ScanReview | null>(null);
+  const [addingSupplier, setAddingSupplier] = useState(false);
+
+  // Fill the form from an AI-read invoice; the person checks it and saves as usual.
+  const applyScan = (draft: InvoiceScanDraft) => {
+    if (draft.invoice_number) setInvoiceNumber(draft.invoice_number);
+    if (draft.invoice_date) setInvoiceDate(draft.invoice_date);
+    setDueDate(draft.due_date ?? "");
+    setSelectedSupplier(draft.supplier.matched_supplier_id ?? "");
+    const lineHints: Record<number, string> = {};
+    const next = draft.lines.map((l, i) => {
+      const item = l.matched_inventory_item_id ? inventoryItems.find((it) => it.id === l.matched_inventory_item_id) : undefined;
+      const hints: string[] = [];
+      if (item && (l.match_confidence === "medium" || l.match_confidence === "low")) hints.push(`AI match: ${l.match_confidence} confidence`);
+      if (item && l.unit && item.unit && l.unit.trim().toLowerCase() !== item.unit.trim().toLowerCase()) {
+        hints.push(`Invoice unit "${l.unit}", stock counted in "${item.unit}": check the quantity`);
+      }
+      if (hints.length) lineHints[i] = hints.join(" · ");
+      return {
+        description: l.description,
+        quantity: l.quantity,
+        unit_price: l.unit_price_excl_vat,
+        total_price: Math.round(l.quantity * l.unit_price_excl_vat * 100) / 100,
+        inventory_item_id: item?.id,
+      };
+    });
+    if (next.length) setItems(next);
+    const warnings = [...draft.warnings];
+    const linesTotal = next.reduce((s, l) => s + l.total_price, 0);
+    if (draft.vat_amount != null && Math.abs(draft.vat_amount - linesTotal * 0.15) > 0.05) {
+      warnings.push(`The invoice shows VAT ${draft.vat_amount.toFixed(2)}; this form adds 15% (${(linesTotal * 0.15).toFixed(2)}). Check zero-rated lines.`);
+    }
+    setScanReview({
+      warnings,
+      newSupplier: !draft.supplier.matched_supplier_id && draft.supplier.name
+        ? { name: draft.supplier.name, vat_number: draft.supplier.vat_number }
+        : null,
+      lineHints,
+    });
+  };
+
+  const addScannedSupplier = async () => {
+    const s = scanReview?.newSupplier;
+    if (!s || !restaurant?.id) return;
+    setAddingSupplier(true);
+    try {
+      const { data, error } = await db.from("suppliers")
+        .insert({ restaurant_id: restaurant.id, name: s.name, vat_number: s.vat_number, is_active: true })
+        .select("id, name").single();
+      if (error) throw error;
+      setSuppliers((prev) => [...prev, data].sort((a, b) => a.name.localeCompare(b.name)));
+      setSelectedSupplier(data.id);
+      setScanReview((r) => (r ? { ...r, newSupplier: null } : r));
+    } catch (e: any) {
+      toast({ title: "Could not add the supplier", description: e.message, variant: "destructive" });
+    } finally {
+      setAddingSupplier(false);
+    }
+  };
 
   useEffect(() => {
     if (restaurant?.id) {
@@ -116,21 +184,21 @@ export function InvoiceManager() {
     
     try {
       const [invoicesRes, suppliersRes, itemsRes] = await Promise.all([
-        supabase
+        db
           .from("purchase_invoices")
           .select("*, suppliers(name)")
           .eq("restaurant_id", restaurant.id)
           .order("created_at", { ascending: false })
           .limit(50),
-        supabase
+        db
           .from("suppliers")
           .select("id, name")
           .eq("restaurant_id", restaurant.id)
           .eq("is_active", true)
           .order("name"),
-        supabase
+        db
           .from("inventory_items")
-          .select("id, name, unit_cost")
+          .select("id, name, unit_cost, unit")
           .eq("restaurant_id", restaurant.id)
           .order("name"),
       ]);
@@ -216,7 +284,7 @@ export function InvoiceManager() {
         // Lines are replaced atomically server-side (delete + insert + total
         // recompute in one transaction) so re-saving can never double totals.
         const validItems = items.filter(item => item.description.trim());
-        const { error: itemsError } = await (supabase as any).rpc("replace_invoice_items", {
+        const { error: itemsError } = await (db as any).rpc("replace_invoice_items", {
           p_invoice_id: editingInvoice.id,
           p_items: validItems.map(item => ({
             description: item.description,
@@ -230,7 +298,7 @@ export function InvoiceManager() {
         if (itemsError) throw itemsError;
 
         // Written after the replace so tax-inclusive totals are preserved.
-        const { error: invoiceError } = await supabase
+        const { error: invoiceError } = await db
           .from("purchase_invoices")
           .update(invoiceData)
           .eq("id", editingInvoice.id);
@@ -240,7 +308,7 @@ export function InvoiceManager() {
         toast({ title: "Invoice updated" });
       } else {
         // Create new invoice
-        const { data: invoice, error: invoiceError } = await supabase
+        const { data: invoice, error: invoiceError } = await db
           .from("purchase_invoices")
           .insert({
             ...invoiceData,
@@ -254,7 +322,7 @@ export function InvoiceManager() {
         // Create invoice items through the atomic replace routine.
         const validItems = items.filter(item => item.description.trim());
         if (validItems.length > 0) {
-          const { error: itemsError } = await (supabase as any).rpc("replace_invoice_items", {
+          const { error: itemsError } = await (db as any).rpc("replace_invoice_items", {
             p_invoice_id: invoice.id,
             p_items: validItems.map(item => ({
               description: item.description,
@@ -268,7 +336,7 @@ export function InvoiceManager() {
 
           if (itemsError) throw itemsError;
 
-          const { error: totalsError } = await supabase
+          const { error: totalsError } = await db
             .from("purchase_invoices")
             .update({
               subtotal: totals.subtotal,
@@ -298,7 +366,7 @@ export function InvoiceManager() {
 
     try {
       // Lines are removed by the invoice's ON DELETE CASCADE.
-      const { error } = await supabase
+      const { error } = await db
         .from("purchase_invoices")
         .delete()
         .eq("id", invoice.id);
@@ -324,7 +392,7 @@ export function InvoiceManager() {
 
     // Fetch invoice items
     try {
-      const { data: invoiceItems, error } = await supabase
+      const { data: invoiceItems, error } = await db
         .from("invoice_items")
         .select("*")
         .eq("invoice_id", invoice.id);
@@ -355,14 +423,14 @@ export function InvoiceManager() {
     setGeneratingPdf(invoice.id);
     try {
       // Fetch invoice items
-      const { data: invoiceItems, error } = await supabase
+      const { data: invoiceItems, error } = await db
         .from("invoice_items")
         .select("*")
         .eq("invoice_id", invoice.id);
 
       if (error) throw error;
 
-      const response = await supabase.functions.invoke("generate-invoice-pdf", {
+      const response = await db.functions.invoke("generate-invoice-pdf", {
         body: {
           invoice: {
             ...invoice,
@@ -411,6 +479,7 @@ export function InvoiceManager() {
     setImageUrl(null);
     setSelectedStatus("pending");
     setItems([{ description: "", quantity: 1, unit_price: 0, total_price: 0 }]);
+    setScanReview(null);
   };
 
   const openDialog = () => {
@@ -454,7 +523,7 @@ export function InvoiceManager() {
       }
 
       // Call RPC to post payment to ledger
-      const { data, error } = await supabase.rpc("post_invoice_payment_to_ledger", {
+      const { data, error } = await db.rpc("post_invoice_payment_to_ledger", {
         p_invoice_id: invoiceToMarkPaid.id,
         p_payment_method: paymentMethod,
       });
@@ -572,6 +641,41 @@ export function InvoiceManager() {
               </DialogDescription>
             </DialogHeader>
             <div className="space-y-4 py-4">
+              {/* Invoice image: photo or PDF, which AI can read into this form */}
+              {restaurant?.id && (
+                <div className="space-y-2 rounded-md border p-3">
+                  <InvoiceImageUploader
+                    imageUrl={imageUrl}
+                    onImageChange={setImageUrl}
+                    restaurantId={restaurant.id}
+                    disabled={submitting}
+                  />
+                  <div className="flex flex-wrap items-center gap-2">
+                    <InvoiceScanButton restaurantId={restaurant.id} imagePath={imageUrl} onDraft={applyScan} disabled={submitting} />
+                    <span className="text-xs text-muted-foreground">
+                      {imageUrl ? "Fills the form from the invoice; check it before saving." : "Upload or photograph the supplier invoice first."}
+                    </span>
+                  </div>
+                  {scanReview && (scanReview.warnings.length > 0 || scanReview.newSupplier) && (
+                    <div className="rounded-md bg-warning/10 p-2 text-sm space-y-1">
+                      {scanReview.newSupplier && (
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span>New supplier on the invoice: <b>{scanReview.newSupplier.name}</b>{scanReview.newSupplier.vat_number ? ` (VAT ${scanReview.newSupplier.vat_number})` : ""}</span>
+                          <Button type="button" size="sm" variant="outline" onClick={addScannedSupplier} disabled={addingSupplier}>
+                            {addingSupplier ? "Adding…" : "Add supplier"}
+                          </Button>
+                        </div>
+                      )}
+                      {scanReview.warnings.length > 0 && (
+                        <ul className="list-disc ps-5 space-y-0.5">
+                          {scanReview.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                        </ul>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Invoice Number *</Label>
@@ -637,7 +741,8 @@ export function InvoiceManager() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="w-[40%]">Description</TableHead>
+                        <TableHead className="w-[30%]">Description</TableHead>
+                        <TableHead className="w-[25%]">Stock item</TableHead>
                         <TableHead>Qty</TableHead>
                         <TableHead>Unit Price</TableHead>
                         <TableHead>Total</TableHead>
@@ -654,6 +759,24 @@ export function InvoiceManager() {
                               onChange={(e) => updateItem(index, "description", e.target.value)}
                               className="h-8"
                             />
+                            {scanReview?.lineHints[index] && (
+                              <p className="mt-1 text-[11px] text-warning">{scanReview.lineHints[index]}</p>
+                            )}
+                          </TableCell>
+                          <TableCell>
+                            {/* Linked lines add stock when saved (trg_auto_create_purchases) */}
+                            <Select
+                              value={item.inventory_item_id ?? "none"}
+                              onValueChange={(v) => updateItem(index, "inventory_item_id", v === "none" ? undefined : v)}
+                            >
+                              <SelectTrigger className="h-8"><SelectValue /></SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">Not a stock item</SelectItem>
+                                {inventoryItems.map((it) => (
+                                  <SelectItem key={it.id} value={it.id}>{it.name}{it.unit ? ` (${it.unit})` : ""}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
                           </TableCell>
                           <TableCell>
                             <Input
@@ -716,16 +839,6 @@ export function InvoiceManager() {
                   </div>
                 </div>
               </div>
-
-              {/* Invoice Image Upload */}
-              {restaurant?.id && (
-                <InvoiceImageUploader
-                  imageUrl={imageUrl}
-                  onImageChange={setImageUrl}
-                  restaurantId={restaurant.id}
-                  disabled={submitting}
-                />
-              )}
 
               <div className="space-y-2">
                 <Label>Notes</Label>
@@ -825,7 +938,7 @@ export function InvoiceManager() {
                           <Download className="h-4 w-4" />
                         )}
                       </Button>
-                      {invoice.status !== "paid" && (
+                      {invoice.status !== "paid" && canPostJournals && (
                         <TooltipProvider>
                           <Tooltip>
                             <TooltipTrigger asChild>

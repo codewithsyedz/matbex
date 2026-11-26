@@ -1,7 +1,8 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useRef } from "react";
+import { useMoyasarCheckout } from "@/components/pos/MoyasarCheckout";
 import { qk } from "@/lib/query/queryKeys";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { useBranch } from "@/contexts/BranchContext";
@@ -27,14 +28,19 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
-import { Plus, Minus, ShoppingCart, Receipt, Trash2, CreditCard, Banknote, Wallet, QrCode, ImageIcon, Search, Info, UtensilsCrossed } from "lucide-react";
+import { Plus, Minus, ShoppingCart, Receipt, Trash2, CreditCard, Banknote, Wallet, QrCode, ImageIcon, Search, Info, UtensilsCrossed, SplitSquareHorizontal, Users } from "lucide-react";
 import { QRScanner } from "./QRScanner";
 import { usePOSHardware } from "@/hooks/usePOSHardware";
 import { recordOfflineSale } from "@/lib/offline/posService";
+import { quoteSale, recordSale, type CardTerminalApproval, type PriceChangedDetails, type RecordSaleInput, type SaleLineSize, type SaleTender } from "@/lib/api/pos";
+import { ApiError } from "@/lib/api/http";
 import { isOnline as isPosOnline } from "@/lib/offline/connectivity";
 import { useBranchVatRate } from "@/hooks/useBranchVatRate";
 import { PricingBranchBanner } from "@/components/pos/PricingBranchBanner";
-import { lineGross, splitListed, sumMoney } from "@/lib/vatInclusive";
+import { SplitTenderPanel } from "@/components/pos/SplitTenderPanel";
+import { SplitBillSheet } from "@/components/pos/SplitBillSheet";
+import { chargeCardTenders, splitIsComplete, tenderParts, toSalePayments, useSplitTenders, type TenderMethod } from "@/lib/pos/splitTenders";
+import { lineGross, roundMoney, splitListed, sumMoney } from "@/lib/vatInclusive";
 import { useTranslation } from "react-i18next";
 
 interface CartItem {
@@ -58,6 +64,7 @@ interface MenuItem {
   image_url?: string | null;
 }
 
+
 interface QRData {
   restaurantId: string;
   menuItemId: string;
@@ -75,12 +82,14 @@ export function SalesRecorder() {
   const [isOpen, setIsOpen] = useState(false);
   const [isScannerOpen, setIsScannerOpen] = useState(false);
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card" | "other">("cash");
+  const [paymentMethod, setPaymentMethod] = useState<TenderMethod | "split">("cash");
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
 
   // Fetch menu items
   const { activeBranchId, isAllBranches, activeBranch } = useBranch();
+  const moyasar = useMoyasarCheckout(activeBranchId ?? null);
+  const moyasarPaidRef = useRef<{ intentId: string; amount: number } | null>(null);
   // Deferred until the dialog opens: passing null keeps these branch lookups
   // (prices, VAT, per-branch categories) idle while the dashboard loads.
   const priceBranchId = isOpen && !isAllBranches ? activeBranchId : null;
@@ -91,7 +100,7 @@ export function SalesRecorder() {
     queryKey: ["menu-items-for-sale", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -122,7 +131,7 @@ export function SalesRecorder() {
     queryKey: ["active-shifts-for-sale", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id, opened_at, drawer_id")
         .eq("restaurant_id", restaurant.id)
@@ -135,8 +144,44 @@ export function SalesRecorder() {
     staleTime: 30 * 1000,
   });
 
+  // Card on the integrated terminal (Hala) or gateway (Moyasar) for one amount; used by split
+  // tender and split bill. Throws when the card is declined.
+  const integratedCard = posSettings?.hala_enabled ? "hala" : moyasar.enabled ? "moyasar" : null;
+  const chargeCard = async (amount: number, reference: string): Promise<CardTerminalApproval> => {
+    if (integratedCard === "hala") {
+      toast.info("Sending amount to Hala terminal...", { id: "hala-charge" });
+      const { data, error } = await db.functions.invoke("charge-hala-card", {
+        body: {
+          amount,
+          currency: "SAR",
+          terminalId: posSettings!.hala_terminal_id,
+          receiptNumber: reference,
+          mock: posSettings!.hala_mock_mode ?? true,
+          approveProbability: posSettings!.hala_approve_probability ?? 0.9,
+        },
+      });
+      toast.dismiss("hala-charge");
+      if (error) throw new Error(`Hala terminal error: ${error.message}`);
+      if (data?.status !== "approved") {
+        throw new Error(
+          data?.status === "declined"
+            ? `Card declined for ${formatCurrency(amount)}${data?.message ? ` - ${data.message}` : ""}. Change that payment and pay the rest.`
+            : `Hala terminal did not approve ${formatCurrency(amount)}`,
+        );
+      }
+      return { provider: "hala", status: data.status, reference: data.reference ?? null, response: data } as CardTerminalApproval;
+    }
+    const intentId = await moyasar.charge({ amount, branchId: activeBranchId ?? null, description: `${restaurant?.name ?? "Matbex"} POS` });
+    return { provider: "moyasar", status: "approved", reference: intentId } as CardTerminalApproval;
+  };
+  const [splitBillOpen, setSplitBillOpen] = useState(false);
+
   // Record sale mutation with inventory auto-deduction
   const recordSaleMutation = useMutation({
+    // The browser may report offline: this mutation queues the sale itself (offline queue), so
+    // it must run anyway. React Query's default ("online") pauses it instead, leaving the
+    // button on "Processing…" and nothing queued.
+    networkMode: "always",
     mutationFn: async () => {
       if (!restaurant?.id || !user?.id || cart.length === 0) {
         throw new Error("Missing required data");
@@ -149,51 +194,104 @@ export function SalesRecorder() {
         pricesInclusive,
       );
       const shiftId = activeShifts[0]?.id || null;
-      const receiptNumber = `RCP-${Date.now()}`;
+      // One key per checkout, shared by the online attempt and the offline queue.
+      const saleKey = crypto.randomUUID();
+      const split = paymentMethod === "split";
+      const order = {
+        restaurantId: restaurant.id,
+        branchId: priceBranchId ?? null,
+        shiftId,
+        ...(split ? {} : { paymentMethod }),
+        lines: cart.map((c) => ({ menuItemId: c.menuItemId, size: (c.size ?? "regular") as SaleLineSize, quantity: c.quantity, unitPrice: c.unitPrice })),
+      };
 
-      // ── Offline guardrail ────────────────────────────────────────────
-      // If the device is offline, do NOT attempt direct Supabase inserts
-      // - fetch() has no timeout in most browsers and the Pay button
-      // would spin forever. Queue the sale to IndexedDB instead; the
-      // sync engine drains it when connectivity returns.
-      const browserOffline =
-        typeof navigator !== "undefined" && navigator.onLine === false;
-      if (browserOffline || !isPosOnline()) {
+      // Split tender: the entered tenders must cover the total exactly before anything is charged.
+      const parts = split ? tenderParts(splitTenders.tenders) : [];
+      if (split && !splitIsComplete(splitTenders.tenders, total)) {
+        throw new Error(t("app.pos.recorder.splitIncomplete"));
+      }
+      const toPayments = (): SaleTender[] => toSalePayments(parts);
+
+      const queueOffline = async () => {
         const result = await recordOfflineSale({
           branchId: restaurant.id,
+          saleBranchId: priceBranchId ?? null,
+          idempotencyKey: saleKey,
           cashierId: user.id,
           shiftId,
-          paymentMethod,
+          paymentMethod: split ? "split" : paymentMethod,
+          payments: split
+            ? toPayments().map((p) => ({
+                method: p.method,
+                amount: p.amount,
+                tendered: p.tendered ?? null,
+                cardTerminal: p.cardTerminal?.provider === "hala" ? { ...p.cardTerminal, provider: "hala" as const } : null,
+              }))
+            : null,
           vatRate,
           pricesVatInclusive: pricesInclusive,
           branchName: activeBranch?.name ?? null,
           items: cart.map((c) => ({
             menu_item_id: c.menuItemId,
             name: c.name,
+            size: c.size ?? "regular",
             quantity: c.quantity,
             unit_price: c.unitPrice,
           })),
         });
         return { receiptNumber: result.receiptNumber, total, offline: true as const };
-      }
+      };
 
-      // If paying by card and Hala terminal is enabled, push the charge first
-      // and only persist the sale on an approved response.
-      let halaResult: {
-        status: string;
-        reference: string | null;
-        message?: string;
-        [k: string]: unknown;
-      } | null = null;
+      // ── Offline guardrail ────────────────────────────────────────────
+      // If the device is offline, queue the sale to IndexedDB instead of
+      // letting the Pay button spin; the sync engine drains it later.
+      const browserOffline =
+        typeof navigator !== "undefined" && navigator.onLine === false;
+      if (browserOffline || !isPosOnline()) return queueOffline();
 
-      if (paymentMethod === "card" && posSettings?.hala_enabled) {
+      const applyCurrentPrices = (current: { menuItemId: string; size: string; current: number }[]) => {
+        setCart((prev) =>
+          prev.map((c) => {
+            const hit = current.find((l) => l.menuItemId === c.menuItemId && l.size === (c.size ?? "regular"));
+            return hit ? { ...c, unitPrice: hit.current } : c;
+          }),
+        );
+        void queryClient.invalidateQueries({ queryKey: ["branch-menu-prices"] });
+        return new Error("Prices changed since the menu was loaded. The cart now shows the current prices; check the total and charge again.");
+      };
+
+      // If paying by card and the Hala terminal is enabled, charge the server's quoted total
+      // first and only record the sale on an approved response, so the card and the receipt
+      // always show the same amount.
+      let cardTerminal: RecordSaleInput["cardTerminal"] = null;
+      if (split) {
+        // Each card tender is charged on the terminal for its own amount. A declined card
+        // stops here: tenders already approved keep their approval, the cashier changes the
+        // declined one and pays the rest.
+        const toCharge = integratedCard ? parts.filter((p) => p.method === "card" && !p.approval) : [];
+        if (toCharge.length) {
+          const quote = await quoteSale(order);
+          const stale = quote.lines
+            .map((q, i) => ({ menuItemId: q.menuItemId, size: q.size, shown: order.lines[i].unitPrice, current: q.unitPrice }))
+            .filter((l) => Math.abs(l.shown - l.current) >= 0.005);
+          if (stale.length) throw applyCurrentPrices(stale);
+          if (Math.abs(quote.total - total) >= 0.005) throw new Error(t("app.pos.recorder.splitIncomplete"));
+        }
+        await chargeCardTenders(toCharge, (amount, p) => chargeCard(amount, `POS-${saleKey.slice(0, 8)}-${p.id.slice(0, 4)}`), splitTenders.markApproved);
+      } else if (paymentMethod === "card" && posSettings?.hala_enabled) {
+        const quote = await quoteSale(order);
+        const stale = quote.lines
+          .map((q, i) => ({ menuItemId: q.menuItemId, size: q.size, shown: order.lines[i].unitPrice, current: q.unitPrice }))
+          .filter((l) => Math.abs(l.shown - l.current) >= 0.005);
+        if (stale.length) throw applyCurrentPrices(stale);
+
         toast.info("Sending amount to Hala terminal...", { id: "hala-charge" });
-        const { data, error } = await supabase.functions.invoke("charge-hala-card", {
+        const { data, error } = await db.functions.invoke("charge-hala-card", {
           body: {
-            amount: total,
+            amount: quote.total,
             currency: "SAR",
             terminalId: posSettings.hala_terminal_id,
-            receiptNumber,
+            receiptNumber: `POS-${saleKey.slice(0, 8)}`,
             mock: posSettings.hala_mock_mode ?? true,
             approveProbability: posSettings.hala_approve_probability ?? 0.9,
           },
@@ -203,7 +301,6 @@ export function SalesRecorder() {
         if (error) {
           throw new Error(`Hala terminal error: ${error.message}`);
         }
-        halaResult = data;
         if (data?.status !== "approved") {
           throw new Error(
             data?.status === "declined"
@@ -211,198 +308,44 @@ export function SalesRecorder() {
               : `Hala terminal did not approve the charge`
           );
         }
+        cardTerminal = { provider: "hala", status: data.status, reference: data.reference ?? null, response: data };
+      } else if (paymentMethod === "card" && moyasar.enabled) {
+        // Moyasar: the customer pays the server's quoted total by QR; the sales API checks it again.
+        const quote = await quoteSale(order);
+        const stale = quote.lines
+          .map((q, i) => ({ menuItemId: q.menuItemId, size: q.size, shown: order.lines[i].unitPrice, current: q.unitPrice }))
+          .filter((l) => Math.abs(l.shown - l.current) >= 0.005);
+        if (stale.length) throw applyCurrentPrices(stale);
+        const kept = moyasarPaidRef.current;
+        const intentId = kept && Math.abs(kept.amount - quote.total) < 0.005
+          ? kept.intentId
+          : await moyasar.charge({ amount: quote.total, branchId: activeBranchId ?? null, description: `${restaurant?.name ?? "Matbex"} POS` });
+        moyasarPaidRef.current = { intentId, amount: quote.total };
+        cardTerminal = { provider: "moyasar", status: "approved", reference: intentId };
       }
 
-      // Create transaction
-      const txPayload: {
-        restaurant_id: string;
-        shift_id: string | null;
-        payment_method: typeof paymentMethod;
-        subtotal: number;
-        tax: number;
-        total: number;
-        receipt_number: string;
-        hala_status?: string;
-        hala_reference?: string | null;
-        hala_response?: unknown;
-        hala_charged_at?: string;
-      } = {
-        restaurant_id: restaurant.id,
-        shift_id: shiftId,
-        payment_method: paymentMethod,
-        subtotal,
-        tax,
-        total,
-        receipt_number: receiptNumber,
+      // One server transaction (POST /api/v1/pos/sales): sale, lines, cash event, stock
+      // (database trigger, once), food-cost usage, reorder requests, kitchen ticket.
+      let saved;
+      try {
+        saved = await recordSale(
+          split ? { ...order, payments: toPayments() } : { ...order, cardTerminal },
+          { idempotencyKey: saleKey },
+        );
+      } catch (error) {
+        // Online-only card approvals (Moyasar) cannot be queued; terminal (Hala) ones can.
+        const onlineOnly = split ? parts.some((p) => p.approval?.provider === "moyasar") : !!cardTerminal;
+        if (!(error instanceof ApiError) && !onlineOnly) return queueOffline();
+        if (error instanceof ApiError && error.code === "price_changed") {
+          throw applyCurrentPrices((error.details as PriceChangedDetails | undefined)?.lines ?? []);
+        }
+        throw error;
+      }
+      moyasarPaidRef.current = null;
+      return {
+        transaction: saved.transaction,
+        lowStockItems: saved.lowStock.map((l) => ({ name: l.name, newStock: l.currentStock, reorderLevel: l.reorderLevel })),
       };
-      if (halaResult) {
-        txPayload.hala_status = halaResult.status;
-        txPayload.hala_reference = halaResult.reference;
-        txPayload.hala_response = halaResult as unknown;
-        txPayload.hala_charged_at = new Date().toISOString();
-      }
-
-      const { data: transaction, error: txError } = await supabase
-        .from("sales_transactions")
-        .insert([txPayload as never])
-        .select()
-        .single();
-
-      if (txError) throw txError;
-
-      // Create sales items
-      const salesItems = cart.map((item) => ({
-        transaction_id: transaction.id,
-        menu_item_id: item.menuItemId,
-        quantity: item.quantity,
-        unit_price: item.unitPrice,
-        total_price: item.unitPrice * item.quantity,
-        restaurant_id: restaurant.id,
-      }));
-
-      const { error: itemsError } = await supabase.from("sales_items").insert(salesItems);
-
-      if (itemsError) throw itemsError;
-      // Note: result type is widened by the offline branch above; the
-      // rest of the online path implicitly returns void on success which
-      // onSuccess handles via `void`-compatible toast.
-
-      // Create cash_event for shift tracking (all payment methods)
-      if (shiftId) {
-        await supabase.from("cash_events").insert({
-          shift_id: shiftId,
-          restaurant_id: restaurant.id,
-          event_type: "sale",
-          amount: total,
-          payment_method: paymentMethod,
-          created_by: user.id,
-          description: `POS Sale ${transaction.receipt_number}`,
-        });
-      }
-
-      // Auto-deduct inventory based on recipe ingredients
-      const menuItemIds = cart.map((item) => item.menuItemId);
-      
-      const { data: recipeIngredients, error: recipeError } = await supabase
-        .from("recipe_ingredients")
-        .select("menu_item_id, inventory_item_id, quantity_required")
-        .eq("restaurant_id", restaurant.id)
-        .in("menu_item_id", menuItemIds);
-
-      if (recipeError) {
-        console.error("Failed to fetch recipe ingredients:", recipeError);
-      } else if (recipeIngredients && recipeIngredients.length > 0) {
-        const usageMap = new Map<string, number>();
-        
-        for (const cartItem of cart) {
-          const itemRecipes = recipeIngredients.filter(
-            (r) => r.menu_item_id === cartItem.menuItemId
-          );
-          for (const recipe of itemRecipes) {
-            const currentUsage = usageMap.get(recipe.inventory_item_id) || 0;
-            usageMap.set(
-              recipe.inventory_item_id,
-              currentUsage + Number(recipe.quantity_required) * cartItem.quantity
-            );
-          }
-        }
-
-        const inventoryIds = Array.from(usageMap.keys());
-        if (inventoryIds.length > 0) {
-          const { data: inventoryItems, error: invError } = await supabase
-            .from("inventory_items")
-            .select("id, name, current_stock, unit_cost, reorder_level")
-            .in("id", inventoryIds);
-
-          if (invError) {
-            console.error("Failed to fetch inventory items:", invError);
-          } else if (inventoryItems) {
-            const usageRecords = [];
-            const stockUpdates = [];
-            const lowStockItems: { name: string; newStock: number; reorderLevel: number }[] = [];
-            const reorderRequests: any[] = [];
-
-            for (const [inventoryId, quantityUsed] of usageMap) {
-              const item = inventoryItems.find((i) => i.id === inventoryId);
-              if (item) {
-                const unitCost = Number(item.unit_cost);
-                const newStock = Math.max(0, Number(item.current_stock) - quantityUsed);
-                const reorderLevel = Number(item.reorder_level || 0);
-                
-                usageRecords.push({
-                  inventory_item_id: inventoryId,
-                  quantity_used: quantityUsed,
-                  unit_cost: unitCost,
-                  total_cost: unitCost * quantityUsed,
-                  shift_id: shiftId,
-                  restaurant_id: restaurant.id,
-                  created_by: user.id,
-                  usage_date: new Date().toISOString().split("T")[0],
-                  notes: `Auto-deducted from sale ${transaction.receipt_number}`,
-                });
-                
-                stockUpdates.push({
-                  id: inventoryId,
-                  newStock,
-                });
-
-                if (reorderLevel > 0 && newStock <= reorderLevel) {
-                  lowStockItems.push({
-                    name: item.name,
-                    newStock,
-                    reorderLevel,
-                  });
-                  
-                  reorderRequests.push({
-                    restaurant_id: restaurant.id,
-                    inventory_item_id: inventoryId,
-                    requested_quantity: reorderLevel * 2 - newStock,
-                    current_stock: newStock,
-                    reorder_level: reorderLevel,
-                    status: "pending",
-                    notes: `Auto-generated: Stock fell to ${newStock.toFixed(2)} (reorder level: ${reorderLevel})`,
-                  });
-                }
-              }
-            }
-
-            if (usageRecords.length > 0) {
-              const { error: usageError } = await supabase
-                .from("inventory_usage")
-                .insert(usageRecords);
-              if (usageError) {
-                console.error("Failed to record inventory usage:", usageError);
-              }
-            }
-
-            for (const update of stockUpdates) {
-              await supabase
-                .from("inventory_items")
-                .update({ current_stock: update.newStock })
-                .eq("id", update.id);
-            }
-
-            if (reorderRequests.length > 0) {
-              for (const request of reorderRequests) {
-                const { data: existingRequest } = await supabase
-                  .from("reorder_requests")
-                  .select("id")
-                  .eq("inventory_item_id", request.inventory_item_id)
-                  .eq("status", "pending")
-                  .maybeSingle();
-
-                if (!existingRequest) {
-                  await supabase.from("reorder_requests").insert(request);
-                }
-              }
-            }
-
-            return { transaction, lowStockItems };
-          }
-        }
-      }
-
-      return { transaction, lowStockItems: [] };
     },
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: qk.dailyProfit.entityAll("sales") });
@@ -412,6 +355,7 @@ export function SalesRecorder() {
       queryClient.invalidateQueries({ queryKey: ["inventory-usage"] });
       queryClient.invalidateQueries({ queryKey: ["reorder-requests"] });
       setCart([]);
+      splitTenders.reset();
       setIsOpen(false);
       if (result?.offline) {
         toast.success(`Queued offline · ${result.receiptNumber}`, {
@@ -435,7 +379,7 @@ export function SalesRecorder() {
     },
     onError: (error) => {
       console.error("Sale error:", error);
-      toast.error("Failed to record sale");
+      toast.error(error instanceof Error && error.message ? error.message : "Failed to record sale");
     },
   });
 
@@ -545,12 +489,20 @@ export function SalesRecorder() {
   const getCartItemKey = (item: CartItem) => `${item.menuItemId}-${item.size || "default"}`;
 
   const cartTotal = cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+  // What the guest pays (VAT-inclusive, same rounding as the server): split tenders add up to it.
+  const payTotal = useMemo(
+    () => splitListed(sumMoney(cart.map((item) => lineGross(item.unitPrice, item.quantity))), vatRate, pricesInclusive).gross,
+    [cart, vatRate, pricesInclusive],
+  );
+  const splitTenders = useSplitTenders(payTotal);
   const cartItemCount = cart.reduce((sum, item) => sum + item.quantity, 0);
 
   // Check if item has size variants
   const hasVariants = (item: MenuItem) => item.quarter_price > 0 || item.half_price > 0;
 
   return (
+    <>
+    {moyasar.dialog}
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button size="sm" className="h-9 gap-2">
@@ -834,7 +786,7 @@ export function SalesRecorder() {
 
               <div className="space-y-2">
                 <label className="text-xs text-muted-foreground">{t("app.pos.mobile.paymentMethod")}</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid grid-cols-2 gap-2">
                   <Button
                     variant={paymentMethod === "cash" ? "default" : "outline"}
                     size="sm"
@@ -862,12 +814,36 @@ export function SalesRecorder() {
                     <Wallet className="h-4 w-4" />
                     {t("app.sales.paymentMethods.other")}
                   </Button>
+                  <Button
+                    variant={paymentMethod === "split" ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setPaymentMethod("split")}
+                    className="h-9 gap-1.5"
+                  >
+                    <SplitSquareHorizontal className="h-4 w-4" />
+                    {t("app.pos.recorder.split")}
+                  </Button>
                 </div>
               </div>
 
+              {paymentMethod === "split" && (
+                <SplitTenderPanel split={splitTenders} formatCurrency={formatCurrency} />
+              )}
+
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-9 w-full gap-1.5"
+                disabled={cart.length === 0 || recordSaleMutation.isPending}
+                onClick={() => setSplitBillOpen(true)}
+              >
+                <Users className="h-4 w-4" />
+                {t("app.pos.billSplit.open")}
+              </Button>
+
               <Button
                 className="w-full h-11 gap-2"
-                disabled={cart.length === 0 || recordSaleMutation.isPending}
+                disabled={cart.length === 0 || recordSaleMutation.isPending || (paymentMethod === "split" && !splitTenders.ready)}
                 onClick={() => recordSaleMutation.mutate()}
               >
                 <Receipt className="h-4 w-4" />
@@ -878,6 +854,39 @@ export function SalesRecorder() {
             </div>
           </div>
         </div>
+
+        {restaurant?.id && user?.id && (
+          <SplitBillSheet
+            open={splitBillOpen}
+            onOpenChange={setSplitBillOpen}
+            lines={cart.map((c) => ({ key: getCartItemKey(c), menuItemId: c.menuItemId, name: c.name, size: (c.size ?? "regular") as SaleLineSize, quantity: c.quantity, unitPrice: c.unitPrice }))}
+            total={payTotal}
+            vatRate={vatRate}
+            pricesInclusive={pricesInclusive}
+            order={{ restaurantId: restaurant.id, branchId: priceBranchId ?? null, shiftId: activeShifts[0]?.id ?? null }}
+            offline={{ cashierId: user.id, branchName: activeBranch?.name ?? null }}
+            chargeCard={integratedCard ? (amount) => chargeCard(amount, `POS-BILL-${crypto.randomUUID().slice(0, 8)}`) : null}
+            onTenders={(amounts) => {
+              splitTenders.fill(amounts);
+              setPaymentMethod("split");
+            }}
+            onRecorded={(parts) => {
+              queryClient.invalidateQueries({ queryKey: qk.dailyProfit.entityAll("sales") });
+              queryClient.invalidateQueries({ queryKey: qk.dailyProfit.entityAll("sales-items") });
+              queryClient.invalidateQueries({ queryKey: ["reports-sales"] });
+              queryClient.invalidateQueries({ queryKey: ["inventory-items"] });
+              setCart([]);
+              splitTenders.reset();
+              setPaymentMethod("cash");
+              setIsOpen(false);
+              toast.success(t(parts[0]?.offline ? "app.pos.billSplit.queuedParts" : "app.pos.billSplit.recordedParts", { count: parts.length }), {
+                description: parts.map((p) => `${p.receiptNumber} · ${formatCurrency(p.totals.total)}`).join("\n"),
+              });
+            }}
+            formatCurrency={formatCurrency}
+            restaurantName={restaurant.name}
+          />
+        )}
 
         {/* QR Scanner */}
         {restaurant?.id && (
@@ -890,5 +899,6 @@ export function SalesRecorder() {
         )}
       </DialogContent>
     </Dialog>
+    </>
   );
 }

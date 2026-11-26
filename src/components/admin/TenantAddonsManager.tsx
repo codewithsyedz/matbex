@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/select";
 import { Loader2, Gift, Ban, Plus } from "lucide-react";
 import { useAddonCatalog, useTenantAddons } from "@/hooks/useAddons";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { format } from "date-fns";
 
@@ -37,8 +37,8 @@ export function TenantAddonsManager({ tenantId }: Props) {
     if (!selectedAddon) return;
     setGranting(true);
     try {
-      const { data: userData } = await supabase.auth.getUser();
-      const { error } = await supabase.from("tenant_addons" as any).insert({
+      const { data: userData } = await db.auth.getUser();
+      const { error } = await db.from("tenant_addons" as any).insert({
         tenant_id: tenantId,
         addon_id: selectedAddon,
         status: "active",
@@ -61,7 +61,7 @@ export function TenantAddonsManager({ tenantId }: Props) {
     if (!confirm("Revoke this addon? Tenant will lose access immediately.")) return;
     setRevoking(id);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("tenant_addons" as any)
         .update({ status: "cancelled", cancelled_at: new Date().toISOString() })
         .eq("id", id);

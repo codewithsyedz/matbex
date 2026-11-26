@@ -24,7 +24,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Switch } from "@/components/ui/switch";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { CopyToBranchDialog } from "@/components/shared/CopyToBranchDialog";
 import { BulkCopyToBranchDialog } from "@/components/shared/BulkCopyToBranchDialog";
@@ -79,7 +79,7 @@ export function SupplierManager() {
 
   const fetchBranches = async () => {
     if (!restaurant?.id) return;
-    const { data } = await supabase
+    const { data } = await db
       .from("branches")
       .select("id, name")
       .eq("restaurant_id", restaurant.id)
@@ -93,7 +93,7 @@ export function SupplierManager() {
     if (!restaurant?.id) return;
     
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("suppliers")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -128,7 +128,7 @@ export function SupplierManager() {
       };
 
       if (editingSupplier) {
-        const { error } = await supabase
+        const { error } = await db
           .from("suppliers")
           .update(supplierData)
           .eq("id", editingSupplier.id);
@@ -136,7 +136,7 @@ export function SupplierManager() {
         if (error) throw error;
         toast({ title: t("inventory.suppliers.updated") });
       } else {
-        const { error } = await supabase
+        const { error } = await db
           .from("suppliers")
           .insert(supplierData);
 
@@ -158,7 +158,7 @@ export function SupplierManager() {
     if (!confirm(t("inventory.suppliers.deleteConfirm", { name: supplier.name }))) return;
 
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("suppliers")
         .delete()
         .eq("id", supplier.id);
@@ -198,7 +198,7 @@ export function SupplierManager() {
 
   const toggleActive = async (supplier: Supplier) => {
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("suppliers")
         .update({ is_active: !supplier.is_active })
         .eq("id", supplier.id);

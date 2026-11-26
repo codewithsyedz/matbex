@@ -70,7 +70,7 @@ function TicketCard({ ticket, onAdvance, onCancel }: {
 
         <div className="flex-1 p-3 space-y-2 overflow-y-auto">
           {(ticket.items || []).map((it) => (
-            <div key={it.id} className="flex items-start gap-2 text-sm">
+            <div key={it.id} className={cn("flex items-start gap-2 text-sm", it.status === "cancelled" && "text-muted-foreground line-through")}>
               <span className="font-semibold w-6 shrink-0">{Number(it.quantity)}×</span>
               <div className="flex-1">
                 <div className="font-medium leading-tight">

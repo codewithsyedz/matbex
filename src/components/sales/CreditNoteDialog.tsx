@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import {
   Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
 } from "@/components/ui/dialog";
@@ -80,7 +80,7 @@ export function CreditNoteDialog({ open, onOpenChange, sale }: CreditNoteDialogP
     }
     setLoadingLines(true);
     (async () => {
-      const { data } = await supabase
+      const { data } = await db
         .from("sales_items")
         .select("quantity, unit_price, total_price, menu_items(name)")
         .eq("transaction_id", sale.id);
@@ -136,7 +136,7 @@ export function CreditNoteDialog({ open, onOpenChange, sale }: CreditNoteDialogP
           };
         });
       if (refundLines.length === 0) throw new Error("Select at least one line to refund");
-      const { data, error } = await supabase.functions.invoke("zatca-issue-credit-note", {
+      const { data, error } = await db.functions.invoke("zatca-issue-credit-note", {
         body: {
           original_sales_transaction_id: sale.id,
           reason_code: reasonCode,

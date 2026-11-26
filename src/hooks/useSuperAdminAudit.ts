@@ -1,6 +1,6 @@
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
-import type { Json } from "@/integrations/supabase/types";
+import type { Json } from "@/integrations/db/types";
 
 export type SuperAdminActionType =
   | "TENANT_CREATE"
@@ -70,7 +70,7 @@ export function useSuperAdminAudit() {
     }
 
     try {
-      const { data, error } = await supabase.rpc("log_superadmin_event", {
+      const { data, error } = await db.rpc("log_superadmin_event", {
         _actor_id: user.id,
         _actor_email: user.email || "unknown",
         _action_type: params.actionType,

@@ -226,7 +226,7 @@ export function ProjectAcquisitionTab({ api }: { api: ProjectsApi }) {
       if (prev.length === 0 || isBalanced(prev.map((f) => Number(f.amount) || 0), total)) return prev;
       return writeAmounts(prev, balanceAmounts(prev.map((f) => Number(f.amount) || 0), total));
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [total, autoBalance, paidBy]);
 
   const handleSave = async () => {

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 export interface ZatcaSettings {
@@ -71,7 +71,7 @@ export function useZatcaSettings() {
     queryKey: [...QK, tenantId],
     enabled: !!tenantId,
     queryFn: async (): Promise<ZatcaSettings | null> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("zatca_settings")
         .select("*")
         .eq("tenant_id", tenantId!)
@@ -85,7 +85,7 @@ export function useZatcaSettings() {
     mutationFn: async (input: ZatcaSettingsInput) => {
       if (!tenantId) throw new Error("No tenant context");
       const payload = { tenant_id: tenantId, ...input };
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("zatca_settings")
         .upsert(payload, { onConflict: "tenant_id" })
         .select()

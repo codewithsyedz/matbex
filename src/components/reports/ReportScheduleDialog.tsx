@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -75,7 +75,7 @@ export function ReportScheduleDialog({
         scheduleData.day_of_month = parseInt(dayOfMonth);
       }
 
-      const { error } = await supabase
+      const { error } = await db
         .from("report_schedules")
         .insert(scheduleData);
 

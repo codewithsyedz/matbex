@@ -39,7 +39,7 @@ import { useSupplierLedger } from "@/hooks/useSupplierLedger";
 import { SupplierApHeadGapCard } from "@/components/accounting/SupplierApHeadGapCard";
 import { SupplierApAccountHistoryCard } from "@/components/accounting/SupplierApAccountHistoryCard";
 import { exportSupplierLedgerPdf, renderSupplierLedgerPdfBase64 } from "@/lib/supplierLedgerPdf";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useTranslation } from "react-i18next";
 import { ar, enUS } from "date-fns/locale";
 
@@ -242,7 +242,7 @@ export default function SupplierLedger() {
     try {
       const args = buildPdfArgs();
       const pdfBase64 = await renderSupplierLedgerPdfBase64(args);
-      const { data, error } = await supabase.functions.invoke("email-report-pdf", {
+      const { data, error } = await db.functions.invoke("email-report-pdf", {
         body: {
           pdf_base64: pdfBase64,
           file_name: args.fileName,

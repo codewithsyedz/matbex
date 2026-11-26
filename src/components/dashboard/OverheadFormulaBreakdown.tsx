@@ -1,7 +1,7 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -66,7 +66,7 @@ export function OverheadFormulaBreakdown({ fiscalStart, fiscalEnd, totalDays, ca
 
       const [allocRes, payRes, staffRes, payrollRes, advancesRes] = await Promise.all([
         (async () => {
-          let q = supabase
+          let q = db
             .from("overhead_allocation")
             .select("id, name, monthly_amount, branch_id")
             .eq("restaurant_id", rid)
@@ -75,7 +75,7 @@ export function OverheadFormulaBreakdown({ fiscalStart, fiscalEnd, totalDays, ca
           return await q.order("monthly_amount", { ascending: false });
         })(),
         (async () => {
-          let q = supabase
+          let q = db
             .from("overhead_payments")
             .select("overhead_allocation_id, amount_paid, payment_date, payment_method, branch_id")
             .eq("restaurant_id", rid)
@@ -84,7 +84,7 @@ export function OverheadFormulaBreakdown({ fiscalStart, fiscalEnd, totalDays, ca
           return await q;
         })(),
         (async () => {
-          let q = supabase
+          let q = db
             .from("staff")
             .select("id, name, monthly_salary, hourly_rate, payment_type, joined_date, termination_date, is_active, assigned_branch_id")
             .eq("restaurant_id", rid);
@@ -92,13 +92,13 @@ export function OverheadFormulaBreakdown({ fiscalStart, fiscalEnd, totalDays, ca
           if (isCurrentPeriod(fiscalEnd)) q = q.eq("is_active", true);
           return await q;
         })(),
-        supabase
+        db
           .from("payroll_records")
           .select("staff_id, amount")
           .eq("restaurant_id", rid)
           .eq("period_start", fiscalStartStr)
           .eq("period_end", fiscalEndStr),
-        supabase
+        db
           .from("staff_advances")
           .select("staff_id, amount")
           .eq("restaurant_id", rid)

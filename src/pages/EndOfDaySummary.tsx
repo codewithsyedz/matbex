@@ -4,7 +4,7 @@ import { CalendarIcon, Banknote, CreditCard, Loader2, FileText, Calculator, Exte
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -28,6 +28,7 @@ import {
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
+import { recordSummarySales } from "@/lib/api/pos";
 
 export default function EndOfDaySummary() {
   const { restaurant, user, profile } = useAuth();
@@ -100,7 +101,7 @@ export default function EndOfDaySummary() {
     setShiftQueryDone(false);
     if (!restaurant?.id || !branchId || noPosMode) return;
     (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select(
           "id, opened_at, expected_cash, expected_card, counted_cash, counted_card, opening_float",
@@ -173,15 +174,8 @@ export default function EndOfDaySummary() {
     }
 
     setSubmitting(true);
-    // Use noon local time of selected day to avoid timezone day-boundary issues
-    const ts = new Date(effectiveDate);
-    ts.setHours(12, 0, 0, 0);
-    const isoTs = ts.toISOString();
     const dateStamp = format(effectiveDate, "yyyyMMdd");
     const isoDate = format(effectiveDate, "yyyy-MM-dd");
-    const rand = () =>
-      Math.floor(Math.random() * 10000).toString().padStart(4, "0");
-    const receiptPrefix = effectiveNoPos ? `EOD-NOPOS-${dateStamp}` : `EOD-${dateStamp}`;
     const noPosNote = effectiveNoPos ? "No POS" : "";
     const fullNotes = [noPosNote, effectiveNotes.trim()].filter(Boolean).join(" - ");
     const noteSuffix = fullNotes
@@ -202,41 +196,20 @@ export default function EndOfDaySummary() {
       }
     }
 
-    const rows: Array<Record<string, unknown>> = [];
-    if (cashAmount > 0) {
-      rows.push({
-        restaurant_id: restaurant.id,
-        branch_id: branchId,
-        payment_method: "cash",
-        subtotal: cashAmount,
-        tax: 0,
-        total: cashAmount,
-        receipt_number: `${receiptPrefix}-CASH-${rand()}`,
-        settlement_status: "paid",
-        created_at: isoTs,
-        shift_id: null,
-      });
-    }
-    if (cardAmount > 0) {
-      rows.push({
-        restaurant_id: restaurant.id,
-        branch_id: branchId,
-        payment_method: "card",
-        subtotal: cardAmount,
-        tax: 0,
-        total: cardAmount,
-        receipt_number: `${receiptPrefix}-CARD-${rand()}`,
-        settlement_status: "paid",
-        created_at: isoTs,
-        shift_id: null,
-      });
-    }
+    const entries: { paymentMethod: "cash" | "card"; total: number }[] = [];
+    if (cashAmount > 0) entries.push({ paymentMethod: "cash", total: cashAmount });
+    if (cardAmount > 0) entries.push({ paymentMethod: "card", total: cardAmount });
 
     try {
-      const { error } = await supabase
-        .from("sales_transactions")
-        .insert(rows as never);
-      if (error) throw error;
+      // POST /api/v1/pos/sales/summary: one sale per payment method at noon of the business day
+      // (restaurant time zone), VAT split with the branch rate, receipts EOD[-NOPOS]-YYYYMMDD-*.
+      await recordSummarySales({
+        restaurantId: restaurant.id,
+        branchId,
+        kind: effectiveNoPos ? "end_of_day_no_pos" : "end_of_day",
+        businessDate: isoDate,
+        entries,
+      });
 
       // ---- Optional estimated COGS posting ----
       let cogsToastDetail = "";
@@ -246,7 +219,7 @@ export default function EndOfDaySummary() {
           //    Use a unique shift_type label so it won't collide with the
           //    daily morning/night submissions on the same date.
           const submissionShiftType = `eod_estimate_${Date.now()}`;
-          const { data: sub, error: subErr } = await supabase
+          const { data: sub, error: subErr } = await db
             .from("daily_cogs_submissions")
             .insert({
               restaurant_id: restaurant.id,
@@ -270,7 +243,7 @@ export default function EndOfDaySummary() {
           if (subErr) throw subErr;
 
           // 2) Create a single COGS purchase row to carry the estimated amount
-          const { data: pur, error: purErr } = await supabase
+          const { data: pur, error: purErr } = await db
             .from("cogs_purchases")
             .insert({
               submission_id: sub!.id,
@@ -289,7 +262,7 @@ export default function EndOfDaySummary() {
           if (purErr) throw purErr;
 
           // 3) Post it to the ledger
-          const { error: postErr } = await supabase.rpc(
+          const { error: postErr } = await db.rpc(
             "post_purchase_to_cogs" as never,
             {
               p_purchase_id: pur!.id,

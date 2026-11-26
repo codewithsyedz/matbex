@@ -1,7 +1,7 @@
 /**
  * Pure permissions selector — single source of truth for role checks and
  * "Test as…" impersonation overrides. Kept dependency-free so it can be
- * unit-tested without React, Supabase, or any browser API.
+ * unit-tested without React, the API, or any browser API.
  *
  * Consumers:
  *   - AuthContext (wires the selector into live state)

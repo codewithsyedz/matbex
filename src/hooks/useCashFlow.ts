@@ -3,7 +3,7 @@ import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export type CashFlowSection = "operating" | "investing" | "financing";
 export type CashFlowDetail =
@@ -176,7 +176,7 @@ export function useCashFlow(from: Date | null, to: Date | null, branchId: string
     enabled: Boolean(tenantId && fromDate && toDate),
     queryFn: async () => {
       if (!tenantId || !fromDate || !toDate) throw new Error("Reporting period is required");
-      const { data, error } = await supabase.rpc("get_cash_flow_by_branch", {
+      const { data, error } = await db.rpc("get_cash_flow_by_branch", {
         p_tenant_id: tenantId,
         p_from_date: fromDate,
         p_to_date: toDate,

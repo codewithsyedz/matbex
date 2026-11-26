@@ -11,7 +11,7 @@ import {
   CartesianGrid,
   Legend,
 } from "recharts";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -54,7 +54,7 @@ export function BranchSpendingTrendChart({ restaurantId, branchId = null, filter
     queryKey: ["expenses-branch-trend", restaurantId, branchId, filters],
     enabled: !!restaurantId && !!filters.dateFrom && !!filters.dateTo,
     queryFn: async () => {
-      let query = supabase
+      let query = db
         .from("expenses")
         .select("amount, expense_date, branch_id")
         .eq("restaurant_id", restaurantId!)

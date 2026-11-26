@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 import { getEffectiveStartDate, RESTAURANT_START_DATE } from "@/lib/constants";
@@ -26,7 +26,7 @@ const lastPrefetchAt = new Map<string, number>();
  * without surfacing toasts or breaking the UI.
  */
 function logPrefetchFailure(scope: string, err: unknown) {
-  // eslint-disable-next-line no-console
+   
   console.warn(`[prefetch] ${scope} failed (non-fatal):`, err);
 }
 
@@ -138,7 +138,7 @@ function prefetchDashboard(qc: ReturnType<typeof useQueryClient>, restaurantId: 
     queryKey: ["dashboard", "shifts", restaurantId],
     staleTime: STALE,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("shifts")
         .select("id, status, opening_float, expected_cash, counted_cash, variance, opened_at, closed_at, cashier_user_id, cashier_staff_id, drawer_id, template_id")
         .eq("restaurant_id", restaurantId)
@@ -153,7 +153,7 @@ function prefetchDashboard(qc: ReturnType<typeof useQueryClient>, restaurantId: 
     queryKey: ["dashboard", "salesAgg", restaurantId, b.startDateUTC, b.endDateUTC],
     staleTime: STALE,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("dashboard_sales_summary", {
+      const { data, error } = await (db as any).rpc("dashboard_sales_summary", {
         p_restaurant_id: restaurantId, p_start: b.startDateUTC, p_end: b.endDateUTC,
       });
       if (error) throw error;
@@ -165,7 +165,7 @@ function prefetchDashboard(qc: ReturnType<typeof useQueryClient>, restaurantId: 
     queryKey: ["dashboard", "expensesAgg", restaurantId, b.startDate, b.endDate],
     staleTime: STALE,
     queryFn: async () => {
-      const { data, error } = await (supabase as any).rpc("dashboard_expense_summary", {
+      const { data, error } = await (db as any).rpc("dashboard_expense_summary", {
         p_restaurant_id: restaurantId, p_start_date: b.startDate, p_end_date: b.endDate,
       });
       if (error) throw error;
@@ -177,7 +177,7 @@ function prefetchDashboard(qc: ReturnType<typeof useQueryClient>, restaurantId: 
     queryKey: ["dashboard", "staffCount", restaurantId],
     staleTime: STALE_LONG,
     queryFn: async () => {
-      const { count, error } = await supabase
+      const { count, error } = await db
         .from("staff").select("id", { count: "exact", head: true })
         .eq("restaurant_id", restaurantId).eq("is_active", true);
       if (error) throw error;
@@ -189,7 +189,7 @@ function prefetchDashboard(qc: ReturnType<typeof useQueryClient>, restaurantId: 
     queryKey: ["dashboard", "drawers", restaurantId],
     staleTime: STALE_LONG,
     queryFn: async () => {
-      const { data, error } = await supabase.from("drawers").select("id, name").eq("restaurant_id", restaurantId);
+      const { data, error } = await db.from("drawers").select("id, name").eq("restaurant_id", restaurantId);
       if (error) throw error;
       return data || [];
     },
@@ -203,13 +203,13 @@ function prefetchSales(qc: ReturnType<typeof useQueryClient>, restaurantId: stri
     staleTime: STALE,
     queryFn: async () => {
       const today = new Date(); today.setHours(0, 0, 0, 0);
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("sales_transactions")
-        .select("total_amount")
+        .select("total")
         .eq("restaurant_id", restaurantId)
         .gte("created_at", today.toISOString());
       if (error) throw error;
-      return (data || []).reduce((s: number, r: any) => s + Number(r.total_amount || 0), 0);
+      return (data || []).reduce((s: number, r: any) => s + Number(r.total || 0), 0);
     },
   });
 }
@@ -219,7 +219,7 @@ function prefetchCustomers(qc: ReturnType<typeof useQueryClient>, restaurantId: 
     queryKey: ["customers", restaurantId],
     staleTime: STALE,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers").select("*")
         .eq("restaurant_id", restaurantId).order("name");
       if (error) throw error;
@@ -240,7 +240,7 @@ function prefetchSettlements(qc: ReturnType<typeof useQueryClient>, restaurantId
     queryFn: async () => {
       // Must match the Settlements page query exactly - it derives
       // branch-scoped balances client-side from this unfiltered list.
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("customers").select("*")
         .eq("restaurant_id", restaurantId)
         .order("current_balance", { ascending: false });

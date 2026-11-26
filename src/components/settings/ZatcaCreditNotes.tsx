@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Card, CardContent, CardDescription, CardHeader, CardTitle,
@@ -56,7 +56,7 @@ export function ZatcaCreditNotes() {
     enabled: !!tenantId,
     refetchInterval: 30_000,
     queryFn: async (): Promise<Row[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("zatca_credit_notes" as never)
         .select("id, credit_note_number, uuid, original_uuid, total_refunded, vat_refunded, reason_code, reason_text, clearance_status, clearance_response, schema_validation_errors, created_at")
         .order("created_at", { ascending: false })

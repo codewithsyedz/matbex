@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -41,7 +41,7 @@ export default function AdminChatModeration() {
   const { data: tenants = [] } = useQuery({
     queryKey: ["admin-tenants-list"],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("tenants")
         .select("id, name")
         .order("name");
@@ -55,7 +55,7 @@ export default function AdminChatModeration() {
   const { data: messages = [], isLoading } = useQuery({
     queryKey: ["admin-chat-messages", selectedTenant, searchTerm],
     queryFn: async () => {
-      let query = supabase
+      let query = db
         .from("chat_messages")
         .select(`
           id,
@@ -82,7 +82,7 @@ export default function AdminChatModeration() {
       
       // Get restaurant-tenant mapping for filtering
       const restaurantIds = [...new Set((data || []).map(m => m.restaurant_id))];
-      const { data: restaurants } = await supabase
+      const { data: restaurants } = await db
         .from("restaurants")
         .select("id, tenant_id, name")
         .in("id", restaurantIds);
@@ -91,7 +91,7 @@ export default function AdminChatModeration() {
       
       // Get sender profiles
       const senderIds = [...new Set((data || []).map(m => m.sender_id))];
-      const { data: profiles } = await supabase
+      const { data: profiles } = await db
         .from("profiles")
         .select("id, full_name")
         .in("id", senderIds);
@@ -117,7 +117,7 @@ export default function AdminChatModeration() {
 
   const deleteMutation = useMutation({
     mutationFn: async (messageId: string) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("chat_messages")
         .delete()
         .eq("id", messageId);

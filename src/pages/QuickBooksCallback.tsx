@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import { Loader2, CheckCircle2, AlertCircle } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 
 export default function QuickBooksCallback() {
   const [params] = useSearchParams();
@@ -40,7 +40,7 @@ export default function QuickBooksCallback() {
     // Must match exactly what is registered in the Intuit developer portal.
     const redirect_uri = "https://www.matbex.com/quickbooks/callback";
 
-    supabase.functions
+    db.functions
       .invoke("quickbooks-oauth-exchange", {
         body: { code, state, realm_id: realmId, redirect_uri },
       })

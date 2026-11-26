@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -117,7 +117,7 @@ export function TenantLocationsManager({ tenantId, onChanged }: Props) {
 
   const fetchLocations = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("restaurants")
       .select("id, name, currency, timezone, status, is_primary, created_at, paused_until, paused_reason")
       .eq("tenant_id", tenantId)
@@ -179,7 +179,7 @@ export function TenantLocationsManager({ tenantId, onChanged }: Props) {
       }
     });
     return list;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [locations, search, statusFilter, sortKey, sortDir]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -213,7 +213,7 @@ export function TenantLocationsManager({ tenantId, onChanged }: Props) {
     setSaving(true);
     try {
       if (editing) {
-        const { error } = await supabase
+        const { error } = await db
           .from("restaurants")
           .update({
             name: form.name.trim(),
@@ -225,7 +225,7 @@ export function TenantLocationsManager({ tenantId, onChanged }: Props) {
         toast.success("Location updated");
       } else {
         const isFirst = locations.length === 0;
-        const { error } = await supabase.from("restaurants").insert({
+        const { error } = await db.from("restaurants").insert({
           tenant_id: tenantId,
           name: form.name.trim(),
           currency: form.currency,
@@ -252,7 +252,7 @@ export function TenantLocationsManager({ tenantId, onChanged }: Props) {
     setWorking(true);
     try {
       const nextStatus = archiveTarget.status === "archived" ? "active" : "archived";
-      const { error } = await supabase
+      const { error } = await db
         .from("restaurants")
         .update({ status: nextStatus })
         .eq("id", archiveTarget.id);
@@ -277,7 +277,7 @@ export function TenantLocationsManager({ tenantId, onChanged }: Props) {
     setWorking(true);
     try {
       const nextStatus = inactiveTarget.status === "inactive" ? "active" : "inactive";
-      const { error } = await supabase
+      const { error } = await db
         .from("restaurants")
         .update({ status: nextStatus })
         .eq("id", inactiveTarget.id);
@@ -316,7 +316,7 @@ export function TenantLocationsManager({ tenantId, onChanged }: Props) {
     try {
       const until = new Date();
       until.setDate(until.getDate() + pauseDays);
-      const { error } = await supabase
+      const { error } = await db
         .from("restaurants")
         .update({
           paused_until: until.toISOString(),
@@ -338,7 +338,7 @@ export function TenantLocationsManager({ tenantId, onChanged }: Props) {
   const resumeBranch = async (l: Location) => {
     setWorking(true);
     try {
-      const { error } = await supabase
+      const { error } = await db
         .from("restaurants")
         .update({ paused_until: null, paused_reason: null })
         .eq("id", l.id);

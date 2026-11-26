@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useState, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { cn } from "@/lib/utils";
 import { Camera, Loader2, Upload, X, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
@@ -69,7 +69,7 @@ export const ReceiptUploaderField = forwardRef<HTMLDivElement, ReceiptUploaderFi
             filePath = receiptUrl.split('expense-receipts/').pop() || receiptUrl;
           }
           
-          const { data, error } = await supabase.storage
+          const { data, error } = await db.storage
             .from('expense-receipts')
             .createSignedUrl(filePath, 3600);
           
@@ -121,7 +121,7 @@ export const ReceiptUploaderField = forwardRef<HTMLDivElement, ReceiptUploaderFi
         const fileExt = (file.name.split(".").pop() || "jpg").toLowerCase();
         const fileName = `${restaurantId}/${timestamp}.${fileExt}`;
 
-        const { data, error } = await supabase.storage
+        const { data, error } = await db.storage
           .from("expense-receipts")
           .upload(fileName, file, { cacheControl: "3600", upsert: false });
         if (error) throw error;
@@ -131,7 +131,7 @@ export const ReceiptUploaderField = forwardRef<HTMLDivElement, ReceiptUploaderFi
         const storedPath = data.path;
         
         // Generate a signed URL for immediate preview (1 hour expiry)
-        const { data: signedData, error: signError } = await supabase.storage
+        const { data: signedData, error: signError } = await db.storage
           .from("expense-receipts")
           .createSignedUrl(storedPath, 3600);
         
@@ -162,7 +162,7 @@ export const ReceiptUploaderField = forwardRef<HTMLDivElement, ReceiptUploaderFi
           filePath = receiptUrl.split("expense-receipts/").pop() || receiptUrl;
         }
         if (filePath) {
-          await supabase.storage.from("expense-receipts").remove([filePath]);
+          await db.storage.from("expense-receipts").remove([filePath]);
         }
       }
       setPreviewUrl(null);

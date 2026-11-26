@@ -1,9 +1,8 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
-import { useQuota } from "@/hooks/useQuota";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,7 +24,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { Plus, Pencil, Trash2, ChefHat, DollarSign, Globe, GlobeLock } from "lucide-react";
-import { QuotaAlert } from "@/components/quota/QuotaAlert";
 
 interface MenuItem {
   id: string;
@@ -49,7 +47,6 @@ interface RecipeIngredient {
 export function MenuItemsManager() {
   const { restaurant, user } = useAuth();
   const { format: formatCurrency } = useCurrency();
-  const { usage, quotaLimits, checkQuota, isAtLimit } = useQuota();
   const queryClient = useQueryClient();
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [editingItem, setEditingItem] = useState<MenuItem | null>(null);
@@ -68,7 +65,7 @@ export function MenuItemsManager() {
     queryKey: ["menu-items", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("menu_items")
         .select("*")
         .eq("restaurant_id", restaurant.id)
@@ -84,7 +81,7 @@ export function MenuItemsManager() {
     queryKey: ["inventory-items-for-recipe", restaurant?.id],
     queryFn: async () => {
       if (!restaurant?.id) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("inventory_items")
         .select("id, name, unit, unit_cost")
         .eq("restaurant_id", restaurant.id)
@@ -100,7 +97,7 @@ export function MenuItemsManager() {
     queryKey: ["recipe-ingredients", selectedItemForRecipe],
     queryFn: async () => {
       if (!selectedItemForRecipe) return [];
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("recipe_ingredients")
         .select("*, inventory_items(name, unit, unit_cost)")
         .eq("menu_item_id", selectedItemForRecipe);
@@ -120,14 +117,8 @@ export function MenuItemsManager() {
   const addItemMutation = useMutation({
     mutationFn: async (item: typeof newItem) => {
       if (!restaurant?.id) throw new Error("No restaurant");
-      
-      // Check quota before adding
-      const quotaCheck = await checkQuota("menu_items");
-      if (!quotaCheck.allowed) {
-        throw new Error(`Menu item limit reached (${quotaCheck.current}/${quotaCheck.limit}). Please upgrade your plan.`);
-      }
-      
-      const { error } = await supabase.from("menu_items").insert({
+
+      const { error } = await db.from("menu_items").insert({
         restaurant_id: restaurant.id,
         name: item.name,
         category: item.category,
@@ -158,7 +149,7 @@ export function MenuItemsManager() {
   // Update menu item mutation
   const updateItemMutation = useMutation({
     mutationFn: async (item: MenuItem) => {
-      const { error } = await supabase
+      const { error } = await db
         .from("menu_items")
         .update({
           name: item.name,
@@ -185,7 +176,7 @@ export function MenuItemsManager() {
   // Delete menu item mutation
   const deleteItemMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("menu_items").delete().eq("id", id);
+      const { error } = await db.from("menu_items").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -199,7 +190,7 @@ export function MenuItemsManager() {
   const addIngredientMutation = useMutation({
     mutationFn: async () => {
       if (!selectedItemForRecipe || !restaurant?.id) throw new Error("Missing data");
-      const { error } = await supabase.from("recipe_ingredients").insert({
+      const { error } = await db.from("recipe_ingredients").insert({
         menu_item_id: selectedItemForRecipe,
         inventory_item_id: newIngredient.inventory_item_id,
         quantity_required: parseFloat(newIngredient.quantity_required) || 1,
@@ -218,7 +209,7 @@ export function MenuItemsManager() {
   // Delete recipe ingredient mutation
   const deleteIngredientMutation = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from("recipe_ingredients").delete().eq("id", id);
+      const { error } = await db.from("recipe_ingredients").delete().eq("id", id);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -245,9 +236,6 @@ export function MenuItemsManager() {
 
   return (
     <div className="space-y-6">
-      {/* Quota Alert */}
-      <QuotaAlert quotaType="menu_items" />
-      
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-lg font-medium">Menu Items & Recipes</h3>
@@ -256,15 +244,6 @@ export function MenuItemsManager() {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Quota remaining indicator */}
-          {quotaLimits.menu_items && usage && (
-            <div className="text-sm text-muted-foreground">
-              <span className={(usage.menu_item_count ?? 0) >= quotaLimits.menu_items ? "text-destructive font-medium" : ""}>
-                {Math.max(0, quotaLimits.menu_items - (usage.menu_item_count ?? 0))}
-              </span>
-              {" "}remaining
-            </div>
-          )}
         <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
           <DialogTrigger asChild>
             <Button size="sm">
@@ -436,7 +415,7 @@ export function MenuItemsManager() {
                               onClick={async (e) => {
                                 e.stopPropagation();
                                 const next = !(item.available_online !== false);
-                                const { error } = await supabase
+                                const { error } = await db
                                   .from("menu_items")
                                   .update({ available_online: next } as any)
                                   .eq("id", item.id);

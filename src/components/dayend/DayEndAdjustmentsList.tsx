@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { format, formatDistanceToNow } from "date-fns";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -66,7 +66,7 @@ export function DayEndAdjustmentsList({ scope, limit = 25 }: Props) {
     ],
     queryFn: async () => {
       if (!tenant?.id) return [];
-      let q = supabase
+      let q = db
         .from("day_end_adjustments")
         .select(
           "id, business_date, scope, reason, notes, amount, ledger_posted, created_at, created_by, reversed_at, reversed_by, reversal_reason, reversed_adjustment_id, reversal_of_id",
@@ -96,7 +96,7 @@ export function DayEndAdjustmentsList({ scope, limit = 25 }: Props) {
     queryKey: ["dea-profiles", userIds],
     enabled: userIds.length > 0,
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("profiles")
         .select("id, full_name")
         .in("id", userIds);
@@ -112,7 +112,7 @@ export function DayEndAdjustmentsList({ scope, limit = 25 }: Props) {
 
   const reverseMutation = useMutation({
     mutationFn: async ({ id, reason }: { id: string; reason: string }) => {
-      const { data, error } = await supabase.rpc(
+      const { data, error } = await db.rpc(
         "reverse_day_end_adjustment" as never,
         { p_adjustment_id: id, p_reason: reason } as never,
       );

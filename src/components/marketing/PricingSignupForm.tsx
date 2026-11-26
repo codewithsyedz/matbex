@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { z } from "zod";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { leadAttributionPayload, trackAdLead } from "@/lib/adConsent";
 import { ArrowRight, Loader2 } from "lucide-react";
@@ -74,7 +74,7 @@ export function PricingSignupForm({
 
     setSubmitting(true);
     const params = new URLSearchParams(window.location.search);
-    const { data, error } = await supabase.functions.invoke("send-contact-enquiry", {
+    const { data, error } = await db.functions.invoke("send-contact-enquiry", {
       body: {
         name: parsed.data.name,
         email: parsed.data.email,

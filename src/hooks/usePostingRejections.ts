@@ -1,6 +1,6 @@
 import { useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import type { RuleViolation } from "@/lib/accountPostingRules";
@@ -34,7 +34,7 @@ export function useRecordPostingRejection() {
         route: ctx.route ?? (typeof window !== "undefined" ? window.location.pathname : null),
       });
       if (!record) return;
-      void (supabase as any)
+      void (db as any)
         .from(TABLE)
         .insert(record)
         .then(({ error }: { error: unknown }) => {
@@ -62,7 +62,7 @@ export function usePostingRejections(filters: PostingRejectionFilters = {}) {
     staleTime: 60_000,
     queryFn: async (): Promise<PostingRejectionRow[]> => {
       const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
-      let query = (supabase as any)
+      let query = (db as any)
         .from(TABLE)
         .select("*")
         .eq("tenant_id", tenantId)

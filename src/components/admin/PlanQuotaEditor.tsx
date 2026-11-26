@@ -1,20 +1,20 @@
 import { useState } from "react";
+import { planLabel, sarPrice } from "@/lib/billing/planLabel";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Switch } from "@/components/ui/switch";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
-import { Save, Loader2, Users, UtensilsCrossed, Image, Mail } from "lucide-react";
+import { Save, Loader2, Users, Image, Mail } from "lucide-react";
 
 interface QuotaLimits {
   users?: number;
   owner?: number;
   manager?: number;
   cashier?: number;
-  menu_items?: number;
   image_uploads?: number;
   email_reminders?: number;
 }
@@ -36,7 +36,6 @@ const QUOTA_FIELDS = [
   { key: "owner", label: "Owners", icon: Users, description: "Maximum owner accounts" },
   { key: "manager", label: "Managers", icon: Users, description: "Maximum manager accounts" },
   { key: "cashier", label: "Cashiers", icon: Users, description: "Maximum cashier accounts" },
-  { key: "menu_items", label: "Menu Items", icon: UtensilsCrossed, description: "Maximum menu items" },
   { key: "image_uploads", label: "Image Uploads", icon: Image, description: "Maximum images (lifetime)" },
   { key: "email_reminders", label: "Email Reminders", icon: Mail, description: "Maximum emails (monthly)" },
 ] as const;
@@ -82,7 +81,7 @@ export function PlanQuotaEditor({ plan, onSaved }: PlanQuotaEditorProps) {
         }
       });
 
-      const { error } = await supabase
+      const { error } = await db
         .from("plans")
         .update({ quota_limits: JSON.parse(JSON.stringify(cleanedQuotas)) })
         .eq("id", plan.id);
@@ -104,9 +103,9 @@ export function PlanQuotaEditor({ plan, onSaved }: PlanQuotaEditorProps) {
   return (
     <Card className="border-border/40">
       <CardHeader className="pb-3">
-        <CardTitle className="text-base font-medium capitalize">{plan.name} Plan Quotas</CardTitle>
+        <CardTitle className="text-base font-medium">{planLabel(plan.name)} plan quotas</CardTitle>
         <CardDescription>
-          ${plan.price}/month - Set usage limits for this plan
+          {sarPrice(plan.price)} per branch / month · usage limits for this plan
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">

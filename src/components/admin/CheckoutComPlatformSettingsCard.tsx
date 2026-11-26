@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Eye, EyeOff, Loader2, CreditCard, Save } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 
 const KEY = "checkout_com_platform";
@@ -51,7 +51,7 @@ export function CheckoutComPlatformSettingsCard() {
 
   const load = async () => {
     setLoading(true);
-    const { data, error } = await supabase
+    const { data, error } = await db
       .from("platform_settings" as any)
       .select("value")
       .eq("key", KEY)
@@ -94,8 +94,8 @@ export function CheckoutComPlatformSettingsCard() {
           ? original.webhook_secret
           : values.webhook_secret.trim(),
     };
-    const { data: u } = await supabase.auth.getUser();
-    const { error } = await supabase
+    const { data: u } = await db.auth.getUser();
+    const { error } = await db
       .from("platform_settings" as any)
       .upsert(
         {
@@ -242,7 +242,7 @@ export function CheckoutComPlatformSettingsCard() {
               <p className="text-[11px] text-muted-foreground">
                 Webhook URL:{" "}
                 <code className="text-foreground">
-                  https://tlkyubkbbqwmzjaogavb.supabase.co/functions/v1/checkout-com-webhook
+                  {`${import.meta.env.VITE_API_URL}/functions/v1/checkout-com-webhook`}
                 </code>
               </p>
             </div>

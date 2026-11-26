@@ -1,8 +1,9 @@
 import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
+import { fetchTenantRestaurantIds } from "@/lib/tenantRestaurants";
 import {
   evaluateInvoiceReconciliation,
   round2,
@@ -76,10 +77,13 @@ export function useInvoiceLedgerReconciliation(filters: InvoiceReconFilters) {
     enabled: !!tenantId,
     staleTime: 1000 * 60,
     queryFn: async (): Promise<InvoiceReconRow[]> => {
-      let invQ: any = (supabase as any)
+      // Invoices, branches and suppliers belong to restaurants; the business id is not a restaurant id.
+      const restaurantIds = await fetchTenantRestaurantIds(tenantId!);
+      if (restaurantIds.length === 0) return [];
+      let invQ: any = (db as any)
         .from("purchase_invoices")
         .select("id, invoice_number, invoice_date, subtotal, total_amount, tax_amount, supplier_id, branch_id")
-        .eq("restaurant_id", tenantId!)
+        .in("restaurant_id", restaurantIds)
         .order("invoice_date", { ascending: false })
         .limit(2000);
       if (branchKey) invQ = invQ.eq("branch_id", branchKey);
@@ -88,8 +92,8 @@ export function useInvoiceLedgerReconciliation(filters: InvoiceReconFilters) {
 
       const [invRes, branchRes, supplierRes]: any[] = await Promise.all([
         invQ,
-        (supabase as any).from("branches").select("id, name").eq("tenant_id", tenantId!),
-        (supabase as any).from("suppliers").select("id, name").eq("restaurant_id", tenantId!),
+        (db as any).from("branches").select("id, name").in("restaurant_id", restaurantIds),
+        (db as any).from("suppliers").select("id, name").in("restaurant_id", restaurantIds),
       ]);
       if (invRes.error) throw invRes.error;
       const invoices = (invRes.data ?? []) as any[];
@@ -107,7 +111,7 @@ export function useInvoiceLedgerReconciliation(filters: InvoiceReconFilters) {
       // Line items
       const linesByInvoice = new Map<string, any[]>();
       for (const part of chunk(invoiceIds, 150)) {
-        const { data, error } = await (supabase as any)
+        const { data, error } = await (db as any)
           .from("invoice_items")
           .select("id, invoice_id, description, quantity, unit_price, total_price, created_at")
           .in("invoice_id", part);
@@ -122,7 +126,7 @@ export function useInvoiceLedgerReconciliation(filters: InvoiceReconFilters) {
       // Linked expenses
       const expenseByInvoice = new Map<string, any>();
       for (const part of chunk(invoiceIds, 150)) {
-        const { data, error } = await (supabase as any)
+        const { data, error } = await (db as any)
           .from("expenses")
           .select("id, purchase_invoice_id, amount, ledger_posted")
           .eq("tenant_id", tenantId!)
@@ -137,7 +141,7 @@ export function useInvoiceLedgerReconciliation(filters: InvoiceReconFilters) {
       const rawLegs: any[] = [];
       for (const part of chunk(expenseIds, 150)) {
         if (part.length === 0) continue;
-        const { data, error } = await (supabase as any)
+        const { data, error } = await (db as any)
           .from("account_transactions")
           .select("reference_id, debit, credit, is_voided, batch_id")
           .eq("tenant_id", tenantId!)
@@ -151,7 +155,7 @@ export function useInvoiceLedgerReconciliation(filters: InvoiceReconFilters) {
       const settlementBatches = new Set<string>();
       for (const part of chunk(batchIds, 150)) {
         if (part.length === 0) continue;
-        const { data } = await (supabase as any)
+        const { data } = await (db as any)
           .from("journal_entry_batches")
           .select("id, entry_type, reference_number")
           .in("id", part);

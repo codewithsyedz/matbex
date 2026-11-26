@@ -1,11 +1,8 @@
 import { useQuery } from "@tanstack/react-query";
 import { format } from "date-fns";
 
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
-
-const db = supabase as any;
-
 export type ReversalEventKind =
   | "void"
   | "reversal_batch"

@@ -9,7 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Search, X } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   emptyPostingFilters,
@@ -32,7 +32,7 @@ export function PostingFiltersBar({ value, onChange, branchPinned }: Props) {
     queryKey: ["posting-filter-branches", restaurantId],
     enabled: !!restaurantId && !branchPinned,
     queryFn: async () => {
-      const { data, error } = await (supabase as any)
+      const { data, error } = await (db as any)
         .from("branches")
         .select("id, name")
         .eq("restaurant_id", restaurantId)
@@ -47,7 +47,7 @@ export function PostingFiltersBar({ value, onChange, branchPinned }: Props) {
     queryKey: ["posting-filter-shifts", restaurantId, value.branchId, value.dateFrom, value.dateTo],
     enabled: !!restaurantId,
     queryFn: async () => {
-      let q = (supabase as any)
+      let q = (db as any)
         .from("shifts")
         .select("id, opened_at, closed_at, branch_id")
         .eq("restaurant_id", restaurantId)

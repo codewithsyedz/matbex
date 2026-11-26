@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { toast } from "sonner";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -52,7 +52,7 @@ export function TenantChatSettings({ tenantId }: TenantChatSettingsProps) {
   const { data: settings, isLoading } = useQuery({
     queryKey: ["admin-chat-settings", tenantId],
     queryFn: async () => {
-      const { data, error } = await (supabase
+      const { data, error } = await (db
         .from("chat_settings" as any)
         .select("*")
         .eq("tenant_id", tenantId)
@@ -79,14 +79,14 @@ export function TenantChatSettings({ tenantId }: TenantChatSettingsProps) {
   const updateMutation = useMutation({
     mutationFn: async (updates: Omit<ChatSettings, "id" | "tenant_id">) => {
       // Check if settings exist
-      const { data: existing } = await (supabase
+      const { data: existing } = await (db
         .from("chat_settings" as any)
         .select("id")
         .eq("tenant_id", tenantId)
         .maybeSingle() as any);
 
       if (existing) {
-        const { data, error } = await (supabase
+        const { data, error } = await (db
           .from("chat_settings" as any)
           .update(updates)
           .eq("tenant_id", tenantId)
@@ -96,7 +96,7 @@ export function TenantChatSettings({ tenantId }: TenantChatSettingsProps) {
         if (error) throw error;
         return data;
       } else {
-        const { data, error } = await (supabase
+        const { data, error } = await (db
           .from("chat_settings" as any)
           .insert({ tenant_id: tenantId, ...updates })
           .select()

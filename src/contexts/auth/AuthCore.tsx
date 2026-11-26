@@ -1,7 +1,7 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback, useRef } from "react";
-import { User, Session } from "@supabase/supabase-js";
-import { supabase } from "@/integrations/supabase/client";
-import { Json } from "@/integrations/supabase/types";
+import { User, Session } from "@matbex/client";
+import { db } from "@/integrations/db/client";
+import { Json } from "@/integrations/db/types";
 import { readSessionHydration, writeSessionHydration } from "@/lib/sessionHydration";
 import {
   selectEffectivePermissions,
@@ -66,6 +66,13 @@ interface AuthContextType {
   plan: Plan | null;
   featureFlags: Record<string, boolean>;
   loading: boolean;
+  /**
+   * Whether the signed-in user's profile and roles were last read successfully. "failed" means the
+   * reads errored (API restarting, network): the previous state is kept, and an empty tenant/roles
+   * must NOT be taken to mean "new user, needs onboarding".
+   */
+  userDataStatus: "pending" | "loaded" | "failed";
+  retryUserData: () => Promise<void>;
   signUp: (email: string, password: string, fullName: string) => Promise<{ error: Error | null }>;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signOut: () => Promise<void>;
@@ -121,6 +128,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [plan, setPlan] = useState<Plan | null>(hydratedSnapshot?.plan ?? null);
   const [featureFlags, setFeatureFlags] = useState<Record<string, boolean>>(hydratedSnapshot?.featureFlags ?? {});
   const [loading, setLoading] = useState(!hydratedSnapshot?.session?.user);
+  const [userDataStatus, setUserDataStatus] = useState<"pending" | "loaded" | "failed">("pending");
   const [impersonatedTenantId, setImpersonatedTenantId] = useState<string | null>(null);
   const [impersonatedRole, setImpersonatedRole] = useState<ImpersonatableRole | null>(() => {
     if (typeof window === "undefined") return null;
@@ -206,7 +214,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchTenantData = useCallback(async (tenantId: string) => {
-    const { data: tenantData } = await supabase
+    const { data: tenantData } = await db
       .from("tenants")
       .select("*")
       .eq("id", tenantId)
@@ -215,7 +223,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setTenant(tenantData);
 
     // Fetch all restaurants for this tenant
-    const { data: restaurantsData } = await supabase
+    const { data: restaurantsData } = await db
       .from("restaurants")
       .select("*")
       .eq("tenant_id", tenantId);
@@ -232,7 +240,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Fetch plan and feature flags
     if (tenantData?.plan_id) {
-      const { data: planData } = await supabase
+      const { data: planData } = await db
         .from("plans")
         .select("*")
         .eq("id", tenantData.plan_id)
@@ -240,36 +248,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setPlan(planData);
 
-      // Get tenant-specific feature overrides
-      const { data: tenantFeatures } = await supabase
-        .from("tenant_features")
-        .select("*")
-        .eq("tenant_id", tenantId);
-
-      // Merge plan defaults with tenant overrides
-      const planFlags = (planData?.default_feature_flags && typeof planData.default_feature_flags === 'object' && !Array.isArray(planData.default_feature_flags))
-        ? planData.default_feature_flags as Record<string, boolean>
-        : {};
-      const flags: Record<string, boolean> = { ...planFlags };
-      tenantFeatures?.forEach((tf: { feature_key: string; enabled: boolean }) => {
-        flags[tf.feature_key] = tf.enabled;
-      });
-
-      // Merge in features unlocked by active addons
-      const { data: activeAddons } = await supabase
-        .from("tenant_addons" as any)
-        .select("addon:addons(included_features)")
-        .eq("tenant_id", tenantId)
-        .eq("status", "active");
-      activeAddons?.forEach((row: any) => {
-        const feats = row?.addon?.included_features;
-        if (Array.isArray(feats)) {
-          feats.forEach((key: string) => {
-            if (typeof key === "string") flags[key] = true;
-          });
-        }
-      });
-
+      // What this business can use, computed once in the database (tenant_entitlements: plan,
+      // active add-ons, SuperAdmin overrides and rollout flags) — the same map the server checks.
+      const { data: ent, error: entError } = await db.rpc("tenant_entitlements", { _tenant_id: tenantId });
+      const features = (!entError && ent && typeof ent === "object" ? (ent as { features?: Record<string, { enabled?: boolean }> }).features : null) ?? {};
+      const flags: Record<string, boolean> = {};
+      for (const [key, v] of Object.entries(features)) flags[key] = v?.enabled === true;
+      if (entError) {
+        // Could not compute (network/API restart): fall back to the plan's own features rather
+        // than switching every module off.
+        const planFlags = planData?.default_feature_flags;
+        if (planFlags && typeof planFlags === "object" && !Array.isArray(planFlags)) Object.assign(flags, planFlags as Record<string, boolean>);
+      }
       setFeatureFlags(flags);
     } else {
       setPlan(null);
@@ -279,18 +269,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserData = useCallback(async (userId: string) => {
     try {
-      // Fetch profile
-      const { data: profileData } = await supabase
-        .from("profiles")
-        .select("*")
-        .eq("id", userId)
-        .maybeSingle();
-
-      // Fetch tenant roles
-      const { data: rolesDataRaw } = await supabase
-        .from("user_tenant_roles")
-        .select("*")
-        .eq("user_id", userId);
+      // Profile and roles decide everything else (tenant, onboarding). A failed read is retried a
+      // couple of times and then reported as "failed" without touching the state we already have:
+      // treating an error as "no roles" sent existing users to /onboarding and then /dashboard.
+      let profileData: Profile | null = null;
+      let rolesDataRaw: unknown[] | null = null;
+      for (let attempt = 0; ; attempt++) {
+        const [p, r] = await Promise.all([
+          db.from("profiles").select("*").eq("id", userId).maybeSingle(),
+          db.from("user_tenant_roles").select("*").eq("user_id", userId),
+        ]);
+        if (!p.error && !r.error) {
+          profileData = p.data as Profile | null;
+          rolesDataRaw = r.data as unknown[] | null;
+          break;
+        }
+        if (attempt >= 2) {
+          console.warn("Could not load the user's profile/roles:", p.error ?? r.error);
+          setUserDataStatus("failed");
+          return;
+        }
+        await new Promise((res) => setTimeout(res, attempt === 0 ? 800 : 2500));
+      }
 
       let rolesData = (rolesDataRaw as UserTenantRole[]) || [];
       let effectiveProfile = profileData;
@@ -305,7 +305,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           membershipSyncAttemptedRef.current = true;
 
           const token = sessionRef.current?.access_token;
-          const { error: syncError } = await supabase.functions.invoke(
+          const { error: syncError } = await db.functions.invoke(
             "sync-membership",
             token ? { headers: { Authorization: `Bearer ${token}` } } : undefined
           );
@@ -314,13 +314,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             console.warn("Membership sync failed:", syncError);
           } else {
             // Re-fetch now that roles/profile may have been repaired
-            const { data: profileAfter } = await supabase
+            const { data: profileAfter } = await db
               .from("profiles")
               .select("*")
               .eq("id", userId)
               .maybeSingle();
 
-            const { data: rolesAfter } = await supabase
+            const { data: rolesAfter } = await db
               .from("user_tenant_roles")
               .select("*")
               .eq("user_id", userId);
@@ -333,13 +333,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       setProfile(effectiveProfile);
       setRoles(rolesData);
+      setUserDataStatus("loaded");
 
       // Check for impersonation first - but only if user is a SuperAdmin
       const storedImpersonation = sessionStorage.getItem("impersonatedTenant");
       if (storedImpersonation) {
         try {
           // First verify this user is actually a SuperAdmin before using impersonation
-          const { data: superadminCheck } = await supabase
+          const { data: superadminCheck } = await db
             .from("superadmin_users")
             .select("id")
             .eq("user_id", userId)
@@ -388,7 +389,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let isMounted = true;
 
     // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+    const { data: { subscription } } = db.auth.onAuthStateChange(
       (event, session) => {
         if (!isMounted) return;
 
@@ -403,7 +404,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         sessionRef.current = session ?? null;
 
         // Let the initial getSession() hydration own first-load UX.
-        // Supabase can emit INITIAL_SESSION before/around that call.
+        // the API can emit INITIAL_SESSION before/around that call.
         if (event === "INITIAL_SESSION" && !hasInitializedRef.current) {
           return;
         }
@@ -457,7 +458,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     );
 
     // THEN check for existing session
-    supabase.auth.getSession().then(async ({ data: { session } }) => {
+    db.auth.getSession().then(async ({ data: { session } }) => {
       if (!isMounted) return;
       hasInitializedRef.current = true;
       
@@ -489,7 +490,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const signUp = async (email: string, password: string, fullName: string) => {
     const redirectUrl = `${window.location.origin}/`;
     
-    const { error } = await supabase.auth.signUp({
+    const { error } = await db.auth.signUp({
       email,
       password,
       options: {
@@ -503,7 +504,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
+    const { data, error } = await db.auth.signInWithPassword({
       email,
       password,
     });
@@ -519,14 +520,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const trackSession = async (userId: string) => {
     try {
       // Get user's tenant_id from profile
-      const { data: profileData } = await supabase
+      const { data: profileData } = await db
         .from("profiles")
         .select("tenant_id")
         .eq("id", userId)
         .maybeSingle();
 
       // Call session tracking edge function
-      await supabase.functions.invoke("track-session", {
+      await db.functions.invoke("track-session", {
         body: {
           user_id: userId,
           tenant_id: profileData?.tenant_id,
@@ -546,7 +547,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const activeLogId = impersonationLogId;
     if (activeLogId) {
       try {
-        await supabase
+        await db
           .from("role_impersonation_logs")
           .update({ ended_at: new Date().toISOString(), end_reason: "signout" })
           .eq("id", activeLogId);
@@ -558,7 +559,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setImpersonationLogId(null);
       setImpersonationExpiresAt(null);
     }
-    await supabase.auth.signOut();
+    await db.auth.signOut();
     setUser(null);
     sessionRef.current = null;
     setSession(null);
@@ -602,7 +603,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isSuperAdmin = roles.some((r) => r.role === "superadmin");
 
   // Mirror role-impersonation state into the global fetch-level write guard
-  // so every mutating Supabase call refuses to fire while "Test as…" is on,
+  // so every mutating the API call refuses to fire while "Test as…" is on,
   // regardless of whether the call site remembered useImpersonationGuard.
   useEffect(() => {
     setImpersonationActive(perms.isRoleImpersonating);
@@ -629,7 +630,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       };
     }
     try {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("role_impersonation_logs")
         .insert({
           tenant_id: tenant.id,
@@ -666,7 +667,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setImpersonationExpiresAt(null);
     if (logId) {
       try {
-        await supabase
+        await db
           .from("role_impersonation_logs")
           .update({ ended_at: new Date().toISOString(), end_reason: reason })
           .eq("id", logId);
@@ -687,7 +688,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     let cancelled = false;
 
     (async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .rpc("validate_active_impersonation", { _log_id: impersonationLogId });
       if (cancelled) return;
       const row = Array.isArray(data) ? data[0] : null;
@@ -746,7 +747,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         stopRoleImpersonation("invalidated");
         return;
       }
-      supabase
+      db
         .rpc("heartbeat_impersonation", { _log_id: impersonationLogId })
         .then(({ data }) => {
           // Server returned false → row was already closed (swept or timed out).
@@ -785,14 +786,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Best-effort: fire-and-forget keepalive PATCH to PostgREST so the
       // request survives the tab teardown.
       try {
-        const url = `${import.meta.env.VITE_SUPABASE_URL}/rest/v1/role_impersonation_logs?id=eq.${impersonationLogId}`;
+        const url = `${import.meta.env.VITE_API_URL}/rest/v1/role_impersonation_logs?id=eq.${impersonationLogId}`;
         const token = sessionRef.current?.access_token;
         fetch(url, {
           method: "PATCH",
           keepalive: true,
           headers: {
             "Content-Type": "application/json",
-            apikey: import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY ?? "",
+            apikey: import.meta.env.VITE_API_KEY ?? "",
             Authorization: token ? `Bearer ${token}` : "",
             Prefer: "return=minimal",
           },
@@ -830,6 +831,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         plan,
         featureFlags,
         loading,
+        userDataStatus,
+        retryUserData: async () => { if (user) { setUserDataStatus("pending"); await fetchUserData(user.id); } },
         signUp,
         signIn,
         signOut,

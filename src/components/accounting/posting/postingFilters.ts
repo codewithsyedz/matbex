@@ -1,6 +1,6 @@
 /**
  * Pure filter helpers for the Posting Center. Kept dependency-free so the
- * matching logic can be unit tested without React or Supabase.
+ * matching logic can be unit tested without React or the API.
  */
 import type {
   ImbalancedExpense,

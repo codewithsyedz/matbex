@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -94,7 +94,7 @@ export function ConvertFineToInstallmentsDialog({ fine, onOpenChange }: Props) {
   const submit = async () => {
     if (!fine || invalid) return;
     setSaving(true);
-    const { error } = await supabase.rpc("convert_fine_to_installments", {
+    const { error } = await db.rpc("convert_fine_to_installments", {
       p_fine_id: fine.id,
       p_already_deducted: already,
       p_monthly_limit: monthlyLimit || null,

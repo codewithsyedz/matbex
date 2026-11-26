@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useCurrency } from "@/hooks/useCurrency";
 import { toast } from "sonner";
@@ -47,7 +47,7 @@ export function AdvanceBranchConsistencyPanel() {
     queryKey: ["advance-branch-mismatches"],
     queryFn: async () => {
       const { data, error } = await (
-        supabase as unknown as {
+        db as unknown as {
           rpc: (fn: string) => Promise<{ data: unknown; error: { message: string } | null }>;
         }
       ).rpc("list_advance_branch_mismatches");
@@ -60,7 +60,7 @@ export function AdvanceBranchConsistencyPanel() {
   const realign = useMutation({
     mutationFn: async (advanceId: string) => {
       const { data, error } = await (
-        supabase as unknown as {
+        db as unknown as {
           rpc: (
             fn: string,
             args: Record<string, unknown>

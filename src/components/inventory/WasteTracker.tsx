@@ -30,7 +30,7 @@ import {
 } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { format } from "date-fns";
 
@@ -91,13 +91,13 @@ export function WasteTracker() {
     
     try {
       const [wasteRes, itemsRes] = await Promise.all([
-        supabase
+        db
           .from("waste_records")
           .select("id, inventory_item_id, quantity_wasted, unit_cost, total_cost, waste_reason, notes, waste_date, ledger_posted, inventory_items(name, unit)")
           .eq("restaurant_id", restaurant.id)
           .order("waste_date", { ascending: false })
           .limit(50),
-        supabase
+        db
           .from("inventory_items")
           .select("id, name, unit, unit_cost, current_stock")
           .eq("restaurant_id", restaurant.id)
@@ -136,7 +136,7 @@ export function WasteTracker() {
       const total = qty * item.unit_cost;
 
       // Insert waste record
-      const { error: wasteError } = await supabase
+      const { error: wasteError } = await db
         .from("waste_records")
         .insert({
           restaurant_id: restaurant.id,
@@ -152,7 +152,7 @@ export function WasteTracker() {
       if (wasteError) throw wasteError;
 
       // Deduct from inventory
-      const { error: updateError } = await supabase
+      const { error: updateError } = await db
         .from("inventory_items")
         .update({ current_stock: item.current_stock - qty })
         .eq("id", selectedItem);

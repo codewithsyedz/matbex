@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { KeyRound, ShieldCheck, Trash2 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useStaffPosPins } from "@/hooks/useStaffPosPins";
 import { validateStaffPinFormat } from "@/lib/pos/staffPin";
@@ -43,7 +43,7 @@ export function StaffPinManager() {
     queryKey: ["till-pin-members", restaurantId],
     enabled: !!restaurantId,
     queryFn: async (): Promise<Member[]> => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("user_roles")
         .select("user_id, role")
         .eq("restaurant_id", restaurantId!);
@@ -52,7 +52,7 @@ export function StaffPinManager() {
       const unique = Array.from(new Map(rows.map((r) => [r.user_id, r])).values());
       const withNames = await Promise.all(
         unique.map(async (r) => {
-          const { data: profile } = await supabase
+          const { data: profile } = await db
             .from("profiles")
             .select("full_name")
             .eq("id", r.user_id)

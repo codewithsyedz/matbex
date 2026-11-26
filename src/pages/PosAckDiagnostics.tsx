@@ -13,7 +13,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { getRestaurantDayBoundsUTC } from "@/lib/timezone";
 import { Stethoscope, RefreshCw, Download, AlertTriangle, CheckCircle2, ExternalLink } from "lucide-react";
 import { toast } from "sonner";
@@ -149,7 +149,7 @@ export default function PosAckDiagnostics() {
     enabled: !!branchId && canView,
     staleTime: 30_000,
     queryFn: async (): Promise<Diagnostics> => {
-      const { data, error } = await (supabase as any).rpc("pos_ack_diagnostics", {
+      const { data, error } = await (db as any).rpc("pos_ack_diagnostics", {
         _branch_id: branchId,
         _start_utc: bounds.start.toISOString(),
         _end_utc: bounds.endExclusive.toISOString(),

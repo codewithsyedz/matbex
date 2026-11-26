@@ -1,10 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 
 /** Untyped client helper for the daily-overhead tables/RPCs. */
-const db = supabase as any;
-
 export type DailyOverheadStatus =
   | "draft"
   | "finalized"

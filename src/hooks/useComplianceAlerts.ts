@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { supabase } from "@/integrations/supabase/client";
+import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
@@ -99,7 +99,7 @@ export function useComplianceAlerts() {
   const violationsQ = useQuery({
     queryKey: ["compliance-alerts", "violations", rid, branchId, lookbackFrom],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("compliance_violations")
         .select(
           `id,branch_id,violation_number,violation_date,status,is_overdue,is_municipality_fine,
@@ -123,7 +123,7 @@ export function useComplianceAlerts() {
   const runsQ = useQuery({
     queryKey: ["compliance-alerts", "runs", rid, branchId, lookbackFrom],
     queryFn: async () => {
-      let q = supabase
+      let q = db
         .from("compliance_checklist_runs")
         .select(
           `id,branch_id,run_date,completed_at,reviewed_at,approved_at,
@@ -146,7 +146,7 @@ export function useComplianceAlerts() {
   const acksQ = useQuery({
     queryKey: ["compliance-alert-acks", rid],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await db
         .from("compliance_alert_acks")
         .select("id,alert_key,note,acknowledged_by,acknowledged_at")
         .eq("restaurant_id", rid!);
@@ -263,7 +263,7 @@ export function useComplianceAlerts() {
 
   const acknowledge = useMutation({
     mutationFn: async ({ alert, note }: { alert: ComplianceAlert; note?: string }) => {
-      const { error } = await supabase.from("compliance_alert_acks").insert({
+      const { error } = await db.from("compliance_alert_acks").insert({
         restaurant_id: rid!,
         branch_id: alert.branchId,
         alert_key: alert.key,
@@ -294,7 +294,7 @@ export function useComplianceAlerts() {
           acknowledged_by: profile?.id ?? undefined,
         }));
       if (!rows.length) return;
-      const { error } = await supabase.from("compliance_alert_acks").insert(rows as never);
+      const { error } = await db.from("compliance_alert_acks").insert(rows as never);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -306,7 +306,7 @@ export function useComplianceAlerts() {
 
   const undoAcknowledge = useMutation({
     mutationFn: async (ackId: string) => {
-      const { error } = await supabase.from("compliance_alert_acks").delete().eq("id", ackId);
+      const { error } = await db.from("compliance_alert_acks").delete().eq("id", ackId);
       if (error) throw error;
     },
     onSuccess: () => {
