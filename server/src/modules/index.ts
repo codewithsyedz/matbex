@@ -14,6 +14,7 @@ import { posSalesAdminRoutes } from "./pos/sales-admin.routes.js";
 import { posChecksRoutes } from "./pos/checks.routes.js";
 import { creditRoutes } from "./credit/credit.routes.js";
 import { zatcaRoutes } from "./zatca/zatca.routes.js";
+import { ledgerRoutes } from "./ledger/ledger.routes.js";
 
 export async function apiV1Routes(app: FastifyInstance) {
   await app.register(posSalesRoutes);
@@ -21,4 +22,5 @@ export async function apiV1Routes(app: FastifyInstance) {
   await app.register(posChecksRoutes);
   await app.register(creditRoutes);
   await app.register(zatcaRoutes);
+  await app.register(ledgerRoutes);
 }

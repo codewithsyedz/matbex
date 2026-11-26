@@ -51,7 +51,21 @@ Original plan:
 - Audit the hooks that read `account_transactions` without `is_voided`, and fix the ones that sum amounts.
 - Tests: a DB test that inserts, voids by flag, voids with a reversal and checks `balance` = live sum.
 
-### Phase B: manual journals move server-side; close browser ledger writes (M, ~1–2 weeks)
+### Phase B: manual journals move server-side; close browser ledger writes (M, ~1–2 weeks): **built 2026-11-26, not yet deployed**
+
+What shipped:
+
+- `server/src/modules/ledger/` (schema → routes → service → repository). Three routes:
+  - `POST /api/v1/ledger/journal-entries`: checks balance to the cent, one side per line, active accounts of the business, branch access and an open period. Owners and managers post directly. Accountants go through `submit_pending_journal_entry`, so the approval queue and notifications are unchanged.
+  - `POST /api/v1/ledger/journal-entries/:id/void`: owner/manager. Voids every line of the entry while its period is open.
+  - `POST /api/v1/ledger/journal-entries/:id/reverse`: owner/manager. Posts a mirror entry (`journal_entry_reversal`, each line linked through `original_transaction_id`) dated today or in another open period.
+  - Both refuse supplier-payment batches (`EXPPAY-…`), postings from other flows (`not_manual_entry`), and entries already voided or reversed. Database refusals come back as 4xx codes, not 500s.
+- `useJournalEntries` calls the API. `TransactionLedger` voids or reverses the whole entry and requires a reason. In a locked period it offers "Reverse in current period" instead. Lines posted by other flows show a tooltip pointing to their source document. The dead single-line insert helpers in `useAccountTransactions` were removed.
+- `db/migrations/20261126114729_ledger_close_browser_writes.sql` drops the browser INSERT policy on `account_transactions` and the INSERT/UPDATE policies on `journal_entry_batches`, and revokes write grants from `anon` and `authenticated`. Every other ledger writer is a SECURITY DEFINER function. The one invoker function, `post_customer_credit_to_ledger`, is called only by the credit module.
+- Tests: `server/src/modules/ledger/ledger.db_test.ts` (6) covers posting, invalid input, void, reverse, locked periods and roles. End-to-end over HTTP on the local API: 400 for an unbalanced entry, post/void/reverse move the balance as expected, 409 on a second void, and `permission denied` for a direct browser insert.
+- Not done here: idempotency keys on posting (the form disables the button while pending), and the UX review's suggestions to void from P&L/account drill-downs and source documents (`docs/research/accounting-ux-review.md`, P9).
+
+Original plan:
 
 - New domain module `server/src/modules/ledger/` (schema → routes → service → Drizzle repository, `requireRestaurantRole`, scoped by tenant). Two routes:
   - `POST /api/v1/ledger/journal-entries`: one DB transaction. It checks balance server-side and keeps the approval rules: non-managers → pending (same semantics as `submit_pending_journal_entry`), managers → posted. It is idempotent by client key.

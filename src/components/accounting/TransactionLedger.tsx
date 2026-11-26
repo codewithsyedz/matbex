@@ -52,6 +52,7 @@ import {
   X,
   CalendarRange,
   AlertCircle,
+  Info,
 } from "lucide-react";
 import {
   Tooltip,
@@ -71,6 +72,7 @@ import {
 } from "@/hooks/useAccountTransactions";
 import { useAccountOpeningBalance } from "@/hooks/useAccountOpeningBalance";
 import { useJournalEntries } from "@/hooks/useJournalEntries";
+import { useAuth } from "@/contexts/AuthContext";
 import { useChartOfAccounts } from "@/hooks/useChartOfAccounts";
 import { useFiscalPeriodLocks } from "@/hooks/useFiscalPeriodLocks";
 import { useCurrency } from "@/hooks/useCurrency";
@@ -90,7 +92,10 @@ export function TransactionLedger({ initialBatchId }: TransactionLedgerProps = {
   const { transactions, isLoading, meta } = useAccountTransactions(
     accountFilter !== "all" ? accountFilter : undefined,
   );
-  const { voidTransaction, isVoiding } = useJournalEntries();
+  const { voidEntry, reverseEntry, isVoiding } = useJournalEntries();
+  const { isManager, isOwner } = useAuth();
+  // Same rule as the server: only owners and managers void or reverse journal entries.
+  const canCorrectEntries = isManager || isOwner;
   const { accounts, isVisibleForBranch } = useChartOfAccounts();
   const { isDateLocked } = useFiscalPeriodLocks();
   const { format: formatCurrency } = useCurrency();
@@ -231,26 +236,26 @@ export function TransactionLedger({ initialBatchId }: TransactionLedgerProps = {
     return side === "debit" ? "Dr" : "Cr";
   };
 
-  const handleVoid = () => {
-    if (!voidingTx || !voidReason.trim()) return;
-    voidTransaction.mutate(
-      { transactionId: voidingTx.id, reason: voidReason },
-      {
-        onSuccess: () => {
-          setVoidingTx(null);
-          setVoidReason("");
-        },
-      }
-    );
+  // A whole manual journal entry is voided (period open) or reversed in the current period
+  // (period locked); single lines are never voided on their own.
+  const voidingLocked = voidingTx ? isDateLocked(new Date(voidingTx.transaction_date)) : false;
+  const handleCorrect = (mode: "void" | "reverse") => {
+    if (!voidingTx?.batch_id || !voidReason.trim()) return;
+    const done = {
+      onSuccess: () => {
+        setVoidingTx(null);
+        setVoidReason("");
+      },
+    };
+    if (mode === "void") voidEntry.mutate({ batchId: voidingTx.batch_id, reason: voidReason.trim() }, done);
+    else reverseEntry.mutate({ batchId: voidingTx.batch_id, reason: voidReason.trim() }, done);
   };
 
-  const canVoidTransaction = (tx: AccountTransaction): boolean => {
-    if (tx.is_voided) return false;
-    // Posted AP settlement / reversal entries are immutable — reversal only.
-    if (settlementKindOf(tx.batch?.reference_number)) return false;
-    const txDate = new Date(tx.transaction_date);
-    return !isDateLocked(txDate);
-  };
+  const isManualEntryLine = (tx: AccountTransaction) =>
+    tx.reference_type === "journal_entry" && !!tx.batch_id;
+
+  const canCorrectTransaction = (tx: AccountTransaction): boolean =>
+    canCorrectEntries && !tx.is_voided && isManualEntryLine(tx) && !settlementKindOf(tx.batch?.reference_number);
 
   if (isLoading) {
     return (
@@ -684,15 +689,30 @@ export function TransactionLedger({ initialBatchId }: TransactionLedgerProps = {
                                       </TooltipContent>
                                     </Tooltip>
                                   </TooltipProvider>
-                                ) : canVoidTransaction(tx) ? (
+                                ) : canCorrectTransaction(tx) ? (
                                   <Button
                                     variant="ghost"
                                     size="sm"
                                     onClick={() => setVoidingTx(tx)}
                                     className="text-destructive hover:text-destructive"
+                                    aria-label={isDateLocked(new Date(tx.transaction_date)) ? "Reverse journal entry" : "Void journal entry"}
                                   >
-                                    <Ban className="h-4 w-4" />
+                                    {isDateLocked(new Date(tx.transaction_date)) ? <Undo2 className="h-4 w-4" /> : <Ban className="h-4 w-4" />}
                                   </Button>
+                                ) : !tx.is_voided && !isManualEntryLine(tx) && tx.reference_type ? (
+                                  <TooltipProvider>
+                                    <Tooltip>
+                                      <TooltipTrigger asChild>
+                                        <span className="inline-flex text-muted-foreground" aria-label="How to correct this line">
+                                          <Info className="h-4 w-4" />
+                                        </span>
+                                      </TooltipTrigger>
+                                      <TooltipContent className="max-w-xs">
+                                        Posted automatically from {tx.reference_type.replace(/_/g, " ")}. Correct it from
+                                        that document, or post a correcting journal entry.
+                                      </TooltipContent>
+                                    </Tooltip>
+                                  </TooltipProvider>
                                 ) : null}
                               </TableCell>
                             </TableRow>
@@ -810,17 +830,18 @@ export function TransactionLedger({ initialBatchId }: TransactionLedgerProps = {
         </DialogContent>
       </Dialog>
 
-      {/* Void Transaction Dialog */}
+      {/* Void / reverse a whole journal entry */}
       <Dialog open={!!voidingTx} onOpenChange={() => setVoidingTx(null)}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Ban className="h-5 w-5 text-destructive" />
-              Void Transaction
+              {voidingLocked ? <Undo2 className="h-5 w-5 text-destructive" /> : <Ban className="h-5 w-5 text-destructive" />}
+              {voidingLocked ? "Reverse journal entry" : "Void journal entry"}
             </DialogTitle>
             <DialogDescription>
-              Voiding removes this line from balances and reports. The
-              original record is kept, marked voided, for audit purposes.
+              {voidingLocked
+                ? "This entry is in a locked period, so it can't be voided. A reversing entry dated today will cancel every line of it; the original stays in the locked month."
+                : "Every line of this journal entry is removed from balances and reports. The lines are kept, marked voided, for audit. To keep the original month untouched, reverse it instead."}
             </DialogDescription>
           </DialogHeader>
 
@@ -832,25 +853,27 @@ export function TransactionLedger({ initialBatchId }: TransactionLedgerProps = {
                   {format(new Date(voidingTx.transaction_date), "MMM d, yyyy")}
                 </p>
                 <p>
-                  <strong>Account:</strong> {voidingTx.account?.account_code} -{" "}
-                  {voidingTx.account?.account_name}
-                </p>
-                <p>
-                  <strong>Amount:</strong>{" "}
+                  <strong>Line you picked:</strong> {voidingTx.account?.account_code} -{" "}
+                  {voidingTx.account?.account_name},{" "}
                   {voidingTx.debit
-                    ? `Debit ${formatCurrency(voidingTx.debit)}`
-                    : `Credit ${formatCurrency(voidingTx.credit || 0)}`}
+                    ? `debit ${formatCurrency(voidingTx.debit)}`
+                    : `credit ${formatCurrency(voidingTx.credit || 0)}`}
                 </p>
                 <p>
                   <strong>Description:</strong> {voidingTx.description || "-"}
                 </p>
+                {voidingTx.batch?.reference_number && (
+                  <p>
+                    <strong>Reference:</strong> {voidingTx.batch.reference_number}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="void-reason">Reason for Voiding *</Label>
+                <Label htmlFor="void-reason">Reason *</Label>
                 <Textarea
                   id="void-reason"
-                  placeholder="Explain why this transaction needs to be voided..."
+                  placeholder="For example: entered twice, wrong account..."
                   value={voidReason}
                   onChange={(e) => setVoidReason(e.target.value)}
                   rows={3}
@@ -859,22 +882,35 @@ export function TransactionLedger({ initialBatchId }: TransactionLedgerProps = {
             </div>
           )}
 
-          <DialogFooter>
+          <DialogFooter className="gap-2">
             <Button variant="outline" onClick={() => setVoidingTx(null)}>
               Cancel
             </Button>
+            {!voidingLocked && (
+              <Button
+                variant="outline"
+                onClick={() => handleCorrect("reverse")}
+                disabled={isVoiding || voidReason.trim().length < 3}
+                className="gap-1"
+              >
+                <Undo2 className="h-4 w-4" />
+                Reverse instead
+              </Button>
+            )}
             <Button
               variant="destructive"
-              onClick={handleVoid}
-              disabled={isVoiding || !voidReason.trim()}
+              onClick={() => handleCorrect(voidingLocked ? "reverse" : "void")}
+              disabled={isVoiding || voidReason.trim().length < 3}
               className="gap-1"
             >
               {isVoiding ? (
                 <Loader2 className="h-4 w-4 animate-spin" />
+              ) : voidingLocked ? (
+                <Undo2 className="h-4 w-4" />
               ) : (
                 <Ban className="h-4 w-4" />
               )}
-              Void Transaction
+              {voidingLocked ? "Reverse in current period" : "Void entry"}
             </Button>
           </DialogFooter>
         </DialogContent>

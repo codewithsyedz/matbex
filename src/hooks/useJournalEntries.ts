@@ -4,6 +4,11 @@ import { db } from "@/integrations/db/client";
 import { useAuth } from "@/contexts/AuthContext";
 import { useBranch } from "@/contexts/BranchContext";
 import { toast } from "sonner";
+import {
+  createJournalEntry as apiCreateJournalEntry,
+  reverseJournalEntry as apiReverseJournalEntry,
+  voidJournalEntry as apiVoidJournalEntry,
+} from "@/lib/api/ledger";
 
 export interface JournalEntryBatch {
   id: string;
@@ -47,7 +52,7 @@ export interface CreateJournalEntryData {
 }
 
 export function useJournalEntries() {
-  const { user, profile, isManager } = useAuth();
+  const { user, profile, restaurant } = useAuth();
   const { activeBranchId, pinnedBranchId, isAllBranches } = useBranch();
   const queryClient = useQueryClient();
   const currentApproveBatchIdRef = useRef<string | null>(null);
@@ -107,101 +112,29 @@ export function useJournalEntries() {
   // Create a journal entry batch with lines
   const createJournalEntry = useMutation({
     mutationFn: async (data: CreateJournalEntryData) => {
-      if (!tenantId || !user?.id) {
+      if (!tenantId || !user?.id || !restaurant?.id) {
         throw new Error("Authentication required");
       }
-
-      // Validate double-entry balance
-      const totalDebits = data.lines.reduce((sum, line) => sum + (line.debit || 0), 0);
-      const totalCredits = data.lines.reduce((sum, line) => sum + (line.credit || 0), 0);
-
-      if (Math.abs(totalDebits - totalCredits) > 0.01) {
-        throw new Error(
-          `Journal entry is unbalanced. Debits (${totalDebits.toFixed(2)}) must equal Credits (${totalCredits.toFixed(2)}).`
-        );
-      }
-
       if (data.lines.length < 2) {
         throw new Error("Journal entry must have at least 2 lines (debit and credit).");
       }
-
-      // Create batch with journal_type for strict validation
-      const journalType = data.entry_type === 'adjustment' ? 'adjustment' :
-                          data.entry_type === 'correction' ? 'correction' :
-                          data.entry_type === 'reversal' ? 'reversal' :
-                          data.entry_type === 'opening_balance' ? 'opening_balance' :
-                          'adjustment';
-
-      // Accountants (and any non-manager who is allowed to post journals)
-      // route through the approval RPC so the entry lands in "pending" state.
-      if (!isManager) {
-        const { data: batchId, error: rpcError } = await db.rpc(
-          "submit_pending_journal_entry",
-          {
-            p_description: data.description,
-            p_entry_type: data.entry_type,
-            p_journal_type: journalType,
-            p_batch_date: data.batch_date || new Date().toISOString().split("T")[0],
-            p_reference_number: data.reference_number ?? null,
-            p_branch_id: data.branch_id ?? scopedBranchId ?? null,
-            p_lines: data.lines.map((l) => ({
-              account_id: l.account_id,
-              debit: l.debit ?? null,
-              credit: l.credit ?? null,
-              description: l.description ?? null,
-            })) as unknown as never,
-          }
-        );
-        if (rpcError) throw rpcError;
-        return { id: batchId, pending: true } as unknown as JournalEntryBatch;
-      }
-
-      const { data: batch, error: batchError } = await db
-        .from("journal_entry_batches")
-        .insert({
-          tenant_id: tenantId,
-          batch_date: data.batch_date || new Date().toISOString().split("T")[0],
-          description: data.description,
-          reference_number: data.reference_number,
-          entry_type: data.entry_type,
-          journal_type: journalType,
-          branch_id: data.branch_id ?? scopedBranchId ?? null,
-          created_by: user.id,
-          is_posted: true,
-          posted_at: new Date().toISOString(),
-          posted_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (batchError) throw batchError;
-
-      // Create transaction lines
-      const transactions = data.lines.map((line) => ({
-        tenant_id: tenantId,
-        account_id: line.account_id,
-        transaction_date: data.batch_date || new Date().toISOString().split("T")[0],
-        branch_id: data.branch_id ?? scopedBranchId ?? null,
-        debit: line.debit || null,
-        credit: line.credit || null,
-        description: line.description || data.description,
-        reference_type: "journal_entry" as const,
-        reference_id: batch.id,
-        created_by: user.id,
-        batch_id: batch.id,
-      }));
-
-      const { error: txError } = await db
-        .from("account_transactions")
-        .insert(transactions);
-
-      if (txError) {
-        // Rollback batch if transactions fail
-        await db.from("journal_entry_batches").delete().eq("id", batch.id);
-        throw txError;
-      }
-
-      return batch;
+      // The server checks balance, accounts, branch and period, then posts (owner/manager)
+      // or queues the entry for approval (accountant), all in one transaction.
+      const result = await apiCreateJournalEntry({
+        restaurantId: restaurant.id,
+        date: data.batch_date || new Date().toISOString().split("T")[0],
+        description: data.description,
+        entryType: data.entry_type,
+        referenceNumber: data.reference_number ?? null,
+        branchId: data.branch_id ?? scopedBranchId ?? null,
+        lines: data.lines.map((l) => ({
+          accountId: l.account_id,
+          debit: l.debit || null,
+          credit: l.credit || null,
+          description: l.description || null,
+        })),
+      });
+      return { id: result.id, pending: result.status === "pending" };
     },
     onSuccess: (result: any) => {
       queryClient.invalidateQueries({ queryKey: ["journal-entry-batches"] });
@@ -362,26 +295,37 @@ export function useJournalEntries() {
     },
   });
 
-  const voidTransaction = useMutation({
-    mutationFn: async ({ transactionId, reason }: { transactionId: string; reason: string }) => {
-      const { data, error } = await db.rpc("void_transaction", {
-        p_transaction_id: transactionId,
-        p_reason: reason,
-      });
-
-      if (error) throw error;
-      return data;
+  // Void a whole manual entry (all its lines) while its period is open. Owner/manager only.
+  const voidEntry = useMutation({
+    mutationFn: async ({ batchId, reason }: { batchId: string; reason: string }) => {
+      if (!restaurant?.id) throw new Error("Authentication required");
+      return apiVoidJournalEntry(batchId, { restaurantId: restaurant.id, reason });
     },
     onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["journal-entry-batches"] });
       queryClient.invalidateQueries({ queryKey: ["account-transactions"] });
       queryClient.invalidateQueries({ queryKey: ["chart-of-accounts"] });
-      toast.success("Transaction voided");
+      toast.success("Journal entry voided");
     },
     onError: (error: Error) => {
-      const message = error.message.includes("VALIDATION_ERROR")
-        ? error.message.replace("VALIDATION_ERROR: ", "")
-        : error.message;
-      toast.error("Failed to void transaction", { description: message });
+      toast.error("Could not void the entry", { description: error.message });
+    },
+  });
+
+  // Post a mirror entry in an open period (for entries in a locked period). Owner/manager only.
+  const reverseEntry = useMutation({
+    mutationFn: async ({ batchId, reason, date }: { batchId: string; reason: string; date?: string }) => {
+      if (!restaurant?.id) throw new Error("Authentication required");
+      return apiReverseJournalEntry(batchId, { restaurantId: restaurant.id, reason, date });
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["journal-entry-batches"] });
+      queryClient.invalidateQueries({ queryKey: ["account-transactions"] });
+      queryClient.invalidateQueries({ queryKey: ["chart-of-accounts"] });
+      toast.success("Reversing entry posted", { description: `Dated ${result.date}` });
+    },
+    onError: (error: Error) => {
+      toast.error("Could not reverse the entry", { description: error.message });
     },
   });
 
@@ -389,9 +333,10 @@ export function useJournalEntries() {
     batches,
     isLoading: batchesLoading,
     createJournalEntry,
-    voidTransaction,
+    voidEntry,
+    reverseEntry,
     isCreating: createJournalEntry.isPending,
-    isVoiding: voidTransaction.isPending,
+    isVoiding: voidEntry.isPending || reverseEntry.isPending,
     approveBatch,
     rejectBatch,
     acknowledgeBatch,
